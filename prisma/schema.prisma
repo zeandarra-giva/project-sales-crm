@@ -25,14 +25,26 @@ enum AccountType{
     GOVERNMENT
 }
 
-enum CLientStatus{
-    ACTIVE
-    INACTIVE
-    PROSPECT
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  PROSPECT
 }
 
 // Still not sure yet if this is part of the model
-// enum DecisionRank{}
+enum DecisionRank {
+  TIER_1_ECONOMIC_BUYER
+  TIER_2_DECISION_MAKER
+  TIER_3_INFLUENCER
+  TIER_4_END_USER
+  TIER_5_GATEKEEPER
+}
+
+enum PeriodType {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
 
 enum NotificationType{
     STAGE_CHANGE
@@ -122,6 +134,7 @@ model BD{
     dealAuditLogs DealAuditLog[] @relation("ChangedByBD")
     notifications Notification[]
     forecastSnapshot ForecastSnapshot[]
+    dealProjections DealProjection[]
 
     @@map("bd")
 }
