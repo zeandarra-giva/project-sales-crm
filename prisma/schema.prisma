@@ -6,3 +6,492 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role{
+    BD_REP
+    SALES_MANAGER
+}
+
+enum LeadSource{
+    INBOUND
+    OUTBOUND
+    REFERRAL
+}
+
+enum AccountType{
+    ENTERPRISE
+    CORPORATE
+    SMB
+    GOVERNMENT
+}
+
+enum CLientStatus{
+    ACTIVE
+    INACTIVE
+    PROSPECT
+}
+
+// Still not sure yet if this is part of the model
+// enum DecisionRank{}
+
+enum NotificationType{
+    STAGE_CHANGE
+    DEAL_STUCK
+    ACTION_PLAN_DUE
+    FOLLOW_UP_DUE
+    QUOTA_BEHIND_PACE
+    NEW_DEAL_ASSIGNED
+    LOST_DEAL_FOLLOW_UP
+}
+
+enum NotificationTrigger{
+    STAGE_CHANGE
+    ACTION_PLAN_PASSED
+    DAYS_IN_STAGE_EXCEEDED
+    NO_FOLLOW_UP_IN_14_DAYS
+    QUOTA_BEHIND_PACE
+    CLOSED_LOST_AGE
+}
+
+
+// Creating Data models, where every row is a Prisma field
+
+// ============================================================
+// Section 6.10 — Pipeline Stage (Dimension Table)
+// Stores stage metadata including target duration for stuck
+// deal calculations. Deal and DealAuditLog reference this
+// table via stage_id instead of using ENUM.
+// ============================================================
+
+model PipelineStage{
+    id String @id @default(uuid())
+    name String @unique @db.VarChar(30)
+    duration Int? //Target days in stage before stuck alert fires. NULL for Closed Won/Lost
+
+    // Reverse relations (1:N)
+    deals Deal[]
+    auditLogs DealAuditLog[]
+    dealSnapshots DealSnapshot[]
+
+    @@map("pipeline_stage")
+}
+
+// ============================================================
+// Section 6.9 — Industry (Dimension Table)
+// 13 predefined categories: Technology & IT, Financial
+// Services, Healthcare, Retail & E-commerce, Manufacturing,
+// Telecommunications, Media & Entertainment, Professional
+// Services, Government, Education, Real Estate, Hospitality
+// & Tourism, Other.
+// ============================================================
+
+model Industry {
+  id String @id @default(uuid())
+  name String @unique @db.VarChar(255)
+  parentIndustryId String?  @map("parent_industry_id")
+
+  // Self-referencing relation for sub-industry classification
+  parentIndustry  Industry?  @relation("IndustrySubIndustry", fields: [parentIndustryId], references: [id])
+  subIndustries   Industry[] @relation("IndustrySubIndustry")
+
+  // Reverse relations (1:N)
+  clients Client[]
+
+  @@map("industry")
+}
+
+// ============================================================
+// Section 6.1 — BD (Sales Representative)
+// ============================================================
+
+model BD{
+
+    id String @id @default(uuid())
+    firstName String @map("first_name") @db.VarChar(100)
+    lastName String @map("last_name") @db.VarChar(100)
+    email String @unique @db.VarChar(100)
+    password String @db.VarChar(255)
+    role Role @default(BD_REP)
+    isActive Boolean @default(true) @map("is_active")
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    // Reverse relations (1:N)
+    deal Deal[]
+    target Target[]
+    dealAuditLogs DealAuditLog[] @relation("ChangedByBD")
+    notifications Notification[]
+    forecastSnapshot ForecastSnapshot[]
+
+    @@map("bd")
+}
+
+// ============================================================
+// Section 6.3 — Service
+// ============================================================
+
+model Service {
+  id          String  @id @default(uuid())
+  name        String  @unique @db.VarChar(30)
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  // Reverse relations (1:N)
+  deals          Deal[]
+  bundleServices BundleService[]
+
+  @@map("service")
+}
+
+// ============================================================
+// Section 6.3 — Bundle
+// ============================================================
+
+model Bundle {
+  id   String @id @default(uuid())
+  name String @db.VarChar(30)
+
+  // Reverse relations (1:N)
+  deals          Deal[]
+  bundleServices BundleService[]
+
+  @@map("bundle")
+}
+
+// ============================================================
+// Section 6.3 — BundleService (Junction: Service <-> Bundle)
+// Composite PK on service_id + bundle_id
+// ============================================================
+
+model BundleService{
+    serviceId String @map("service_id")
+    bundleId String @map("bundle_id")
+    name String @db.VarChar(100)
+    serviceValue    Decimal @map("service_value")
+    revenueSharePct Decimal @map("revenue_share_pct") // 0-100
+
+    // Relations
+    service Service @relation(fields: [serviceId], references: [id])
+    bundle Bundle @relation(fields: [bundleId], references: [id])
+
+    @@id([serviceId, bundleId])
+    @@map("bundle_service")
+}
+
+// ============================================================
+// Section 6.1 — Client (Company Accounts)
+// ============================================================
+
+model Client {
+  id          String       @id @default(uuid())
+  name        String       @db.VarChar(100)
+  brand       String?      @db.VarChar(100)
+  accountType AccountType  @map("account_type")
+  type        String?      @db.VarChar(30)
+  status      ClientStatus @default(ACTIVE)
+  industryId  String?      @map("industry_id")
+  contactId   String?      @map("contact_id")
+  referralId  String?      @map("referral_id")
+
+  // Relations
+  industry   Industry? @relation(fields: [industryId], references: [id])
+  contact    Contact?  @relation("PrimaryContact", fields: [contactId], references: [id])
+  referredBy Client?   @relation("ClientReferral", fields: [referralId], references: [id])
+
+  // Reverse relations (1:N)
+  referrals Client[]  @relation("ClientReferral")
+  contacts  Contact[] @relation("ClientContacts")
+  deals     Deal[]
+
+  @@map("client")
+}
+
+// ============================================================
+// Section 6.1 — Contact (Client Representatives)
+// is_primary and client_id added so the primary contact per
+// company is unambiguous without requiring a junction query.
+// ============================================================
+
+model Contact {
+  id           String       @id @default(uuid())
+  firstName    String       @map("first_name") @db.VarChar(30)
+  lastName     String       @map("last_name") @db.VarChar(30)
+  email        String       @db.VarChar(100)
+  number       String?      @db.VarChar(15)
+  designation  String?      @db.VarChar(100)
+  decisionRank DecisionRank @map("decision_rank")
+  isPrimary    Boolean      @default(false) @map("is_primary")
+  clientId     String       @map("client_id")
+
+  // Relations
+  client Client @relation("ClientContacts", fields: [clientId], references: [id])
+
+  // Reverse relations
+  primaryForClients Client[]      @relation("PrimaryContact")
+  dealContacts      DealContact[]
+
+  @@map("contact")
+}
+
+// ============================================================
+// Section 6.8 — Date (Time Dimension)
+// Used for analytical queries. Deal date fields reference
+// this table via FK for dashboard metrics.
+// ============================================================
+
+model DateDimension {
+  id           String  @id @default(uuid())
+  timestamp    DateTime
+  year         Int
+  month        Int
+  monthNumber  Int     @map("month_number")
+  day          Int
+  dayOfWeek    String  @map("day_of_week")
+  quarter      Int
+  isQuarterEnd Boolean @map("is_quarter_end")
+
+  // Reverse relations (1:N)
+  dealProjections   DealProjection[]
+  targets           Target[]
+  dealSnapshots     DealSnapshot[]
+  forecastSnapshots ForecastSnapshot[]
+  payments          Payment[]
+
+  @@map("date_dimension")
+}
+
+// ============================================================
+// Section 6.1 — Deal (Central Fact Table)
+// All pipeline, forecasting, and loss analysis functions
+// depend on deal data being accurate and complete.
+// ============================================================
+
+model Deal {
+  id                    String   @id @default(uuid())
+  dealName              String   @map("deal_name") @db.VarChar(255)
+  monthlySubscription   Decimal  @map("monthly_subscription")
+  revenue               Decimal? // COMPUTED: monthly_subscription x duration
+  duration              Int      // Contract length in months
+  isClosed              Boolean  @default(false) @map("is_closed")
+  remarks               String?  // Running BD notes. Required — blocks Closed Lost if empty
+  actionPlan            String?  @map("action_plan") // Next planned steps
+  proposalRevisionCount Int      @default(0) @map("proposal_revision_count")
+  proposalLink          String?  @map("proposal_link")
+  contractLink          String?  @map("contract_link")
+  leadSource            LeadSource @map("lead_source")
+  finalProposedValue    Decimal?   @map("final_proposed_value") // Last price before Closed Lost
+  salesCycleDays        Int?       @map("sales_cycle_days") // COMPUTED: start_date to closed_date
+
+  // Foreign Keys — Stage, BD, Client, Service, Bundle
+  stageId   String @map("stage_id")
+  bdId      String @map("bd_id")
+  clientId  String @map("client_id")
+  serviceId String? @map("service_id") // Nullable if bundle deal
+  bundleId  String? @map("bundle_id")  // Nullable if single-service deal
+
+  // Date fields — using native DateTime for query simplicity
+  // PRD specifies FK -> Date dimension, but native dates are
+  // more practical for MVP. Date dimension used for reporting.
+  startDate          DateTime? @map("start_date")
+  dueDate            DateTime? @map("due_date")
+  closedDate         DateTime? @map("closed_date")
+  lastStageUpdateAt  DateTime? @map("last_stage_update_at")
+  lastFollowUpAt     DateTime? @map("last_follow_up_at")
+  initialMeetingDate DateTime? @map("initial_meeting_date")
+  actionPlanDueDate  DateTime? @map("action_plan_due_date")
+
+  // Relations
+  stage   PipelineStage @relation(fields: [stageId], references: [id])
+  bd      BD            @relation(fields: [bdId], references: [id])
+  client  Client        @relation(fields: [clientId], references: [id])
+  service Service?      @relation(fields: [serviceId], references: [id])
+  bundle  Bundle?       @relation(fields: [bundleId], references: [id])
+
+  // Reverse relations (1:N)
+  auditLogs     DealAuditLog[]
+  projection    DealProjection?
+  dealContacts  DealContact[]
+  dealSnapshots DealSnapshot[]
+  notifications Notification[]
+  payments      Payment[]
+
+  @@map("deal")
+}
+
+// ============================================================
+// Section 6.2 — Deal_Audit_Log (Stage Transition Event Log)
+// A new row is inserted every time Deal.stage changes. The
+// previous row's exited_at is set to now(). This gives exact
+// stage duration data and powers stuck-deal alerts.
+// ============================================================
+
+model DealAuditLog {
+  id          String    @id @default(uuid())
+  dealId      String    @map("deal_id")
+  stageId     String    @map("stage_id")
+  enteredAt   DateTime  @map("entered_at")
+  exitedAt    DateTime? @map("exited_at") // NULL means this is the current stage
+  daysInStage Int?      @map("days_in_stage") // COMPUTED: exited_at - entered_at
+  changedById String    @map("changed_by")
+  notes       String?   // Why the stage changed. Primary source for loss analysis
+
+  // Relations
+  deal      Deal          @relation(fields: [dealId], references: [id])
+  stage     PipelineStage @relation(fields: [stageId], references: [id])
+  changedBy BD            @relation("ChangedByBD", fields: [changedById], references: [id])
+
+  @@map("deal_audit_log")
+}
+
+// ============================================================
+// Section 6.2 — Deal_Projection (Per-Deal Forward Forecast)
+// bd_id enables direct per-BD member forecast aggregation
+// without joining through Deal.
+// ============================================================
+
+model DealProjection {
+  id              String  @id @default(uuid())
+  dealId          String  @unique @map("deal_id") // 1:1 with Deal
+  bdId            String  @map("bd_id")
+  projectedAmount Decimal @map("projected_amount")
+  probabilityPct  Decimal @map("probability_pct") // 0-100
+  weightedValue   Decimal? @map("weighted_value") // COMPUTED: projected_amount x (probability_pct / 100)
+  dateId          String? @map("date_id")
+
+  // Relations
+  deal Deal          @relation(fields: [dealId], references: [id])
+  bd   BD            @relation(fields: [bdId], references: [id])
+  date DateDimension? @relation(fields: [dateId], references: [id])
+
+  @@map("deal_projection")
+}
+
+// ============================================================
+// Section 6.2 — Deal_Contact (Deal-to-Contact Junction)
+// Allows multiple contacts to be linked to one deal —
+// important for enterprise deals with multi-stakeholder
+// approval chains.
+// ============================================================
+
+model DealContact {
+  id            String    @id @default(uuid())
+  dealId        String    @map("deal_id")
+  contactId     String    @map("contact_id")
+  roleInDeal    String?   @map("role_in_deal") @db.VarChar(100)
+  isPrimary     Boolean   @default(false) @map("is_primary")
+  lastContacted DateTime? @map("last_contacted")
+
+  // Relations
+  deal    Deal    @relation(fields: [dealId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+
+  @@map("deal_contact")
+}
+
+// ============================================================
+// Section 6.4 — Target (BD Member Quota Records)
+// ============================================================
+
+model Target {
+  id         String     @id @default(uuid())
+  quota      Decimal
+  periodType PeriodType @map("period_type")
+  dateId     String?    @map("date_id")
+  bdId       String     @map("bd_id")
+
+  // Relations
+  bd   BD             @relation(fields: [bdId], references: [id])
+  date DateDimension? @relation(fields: [dateId], references: [id])
+
+  @@map("target")
+}
+
+// ============================================================
+// Section 6.5 — Deal_Snapshot (Point-in-Time Deal State)
+// For trend analysis and historical pipeline reconstruction.
+// ============================================================
+
+model DealSnapshot {
+  id              String  @id @default(uuid())
+  stageId         String  @map("stage_id")
+  probabilityPct  Decimal? @map("probability_pct")
+  projectedAmount Decimal? @map("projected_amount")
+  weightedValue   Decimal? @map("weighted_value")
+  remarks         String?
+  actionPlan      String? @map("action_plan")
+  dealId          String  @map("deal_id")
+  dateId          String? @map("date_id")
+
+  // Relations
+  stage PipelineStage  @relation(fields: [stageId], references: [id])
+  deal  Deal           @relation(fields: [dealId], references: [id])
+  date  DateDimension? @relation(fields: [dateId], references: [id])
+
+  @@map("deal_snapshot")
+}
+
+// ============================================================
+// Section 6.5 — Forecast_Snapshot (Team-Level Pipeline Snapshot)
+// Forecast snapshots are stored per BD member, enabling the
+// individual BD performance dashboard to show personal
+// forecast trends over time.
+// ============================================================
+
+model ForecastSnapshot {
+  id                 String  @id @default(uuid())
+  totalPipelineValue Decimal @map("total_pipeline_value")
+  totalWeightedValue Decimal @map("total_weighted_value")
+  dealCount          Int     @map("deal_count")
+  bdId               String? @map("bd_id") // NULL for team-level snapshot
+  snapshotDateId     String? @map("snapshot_date_id")
+
+  // Relations
+  bd           BD?            @relation(fields: [bdId], references: [id])
+  snapshotDate DateDimension? @relation(fields: [snapshotDateId], references: [id])
+
+  @@map("forecast_snapshot")
+}
+
+// ============================================================
+// Section 6.6 — Notifications
+// ============================================================
+
+model Notification {
+  id          String              @id @default(uuid())
+  content     String
+  type        NotificationType
+  isRead      Boolean             @default(false) @map("is_read")
+  triggeredBy NotificationTrigger @map("triggered_by")
+  scheduledAt DateTime?           @map("scheduled_at") // NULL means fire immediately
+  createdAt   DateTime            @default(now()) @map("created_at")
+  bdId        String              @map("bd_id")
+  dealId      String?             @map("deal_id") // Nullable for quota-level alerts
+
+  // Relations
+  bd   BD    @relation(fields: [bdId], references: [id])
+  deal Deal? @relation(fields: [dealId], references: [id])
+
+  @@map("notification")
+}
+
+// ============================================================
+// Section 6.7 — Payment (Monthly Payment Tracking)
+// Tracks the amount paid in a certain month. Logs each
+// monthly payment against a deal, enabling revenue
+// recognition tracking separate from deal close value.
+// ============================================================
+
+model Payment {
+  id     String  @id @default(uuid())
+  amount Decimal
+  dateId String? @map("date_id")
+  dealId String  @map("deal_id")
+
+  // Relations
+  date DateDimension? @relation(fields: [dateId], references: [id])
+  deal Deal           @relation(fields: [dealId], references: [id])
+
+  @@map("payment")
+}
+
+
