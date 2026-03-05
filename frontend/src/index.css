@@ -1,0 +1,232 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme {
+  --font-display: "Syne", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+
+  --color-bg: #f4f6fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f8;
+  --color-surface-3: #e6eaf5;
+  --color-border: #e2e6f0;
+  --color-border-strong: #c8cfe8;
+
+  --color-text-primary: #1a1d2e;
+  --color-text-secondary: #4a5068;
+  --color-text-muted: #8b90a8;
+
+  --color-accent: #3d5af1;
+  --color-accent-glow: #3d5af120;
+  --color-accent-dim: #dce3fd;
+
+  --color-emerald: #059669;
+  --color-emerald-dim: #d1fae5;
+  --color-rose: #e11d48;
+  --color-rose-dim: #ffe4e6;
+  --color-amber: #d97706;
+  --color-amber-dim: #fef3c7;
+  --color-violet: #7c3aed;
+  --color-violet-dim: #ede9fe;
+  --color-cyan: #0891b2;
+  --color-cyan-dim: #cffafe;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 3px #1a1d2e12;
+  --shadow-md: 0 4px 16px #1a1d2e14;
+  --shadow-glow: 0 0 32px var(--color-accent-glow);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+/* Custom utilities */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #1a1d2e 0%, #4a5068 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-accent-gradient {
+  background: linear-gradient(135deg, #3d5af1 0%, #6b7ff5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.card-elevated {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+}
+
+.glow-accent {
+  box-shadow: 0 0 0 1px var(--color-accent), 0 0 24px var(--color-accent-glow);
+}
+
+/* Stage pill colors */
+.stage-inquiry {
+  background: #eef0f8;
+  color: #6b7280;
+  border-color: #d1d5e8;
+}
+
+.stage-prospecting {
+  background: #eef1fe;
+  color: #3d5af1;
+  border-color: #c7d0fb;
+}
+
+.stage-discovery {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #a7f3d0;
+}
+
+.stage-proposal {
+  background: #f5f0fe;
+  color: #7c3aed;
+  border-color: #ddd6fe;
+}
+
+.stage-negotiation {
+  background: #fffbeb;
+  color: #d97706;
+  border-color: #fde68a;
+}
+
+.stage-closed-won {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #6ee7b7;
+}
+
+.stage-closed-lost {
+  background: #fff1f2;
+  color: #e11d48;
+  border-color: #fecdd3;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 8px var(--color-accent-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 24px var(--color-accent-glow);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease forwards;
+}
+
+.stagger-1 {
+  animation-delay: 0.05s;
+}
+
+.stagger-2 {
+  animation-delay: 0.1s;
+}
+
+.stagger-3 {
+  animation-delay: 0.15s;
+}
+
+.stagger-4 {
+  animation-delay: 0.2s;
+}
+
+.stagger-5 {
+  animation-delay: 0.25s;
+}
+
+.stagger-6 {
+  animation-delay: 0.3s;
+}
