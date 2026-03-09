@@ -10,13 +10,13 @@ import { Avatar } from '../ui/index';
 import { MOCK_NOTIFICATIONS } from '../../mockData';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
-  { to: '/executive', icon: TrendingUp, label: 'Executive View', roles: ['Manager'] },
-  { to: '/pipeline', icon: Briefcase, label: 'Pipeline', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
-  { to: '/clients', icon: Users, label: 'Clients', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
-  { to: '/contacts', icon: UserCheck, label: 'Contacts', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
-  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
-  { to: '/payments', icon: CreditCard, label: 'Payments', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/executive', icon: TrendingUp, label: 'Executive View', roles: ['SALES_MANAGER'] },
+  { to: '/pipeline', icon: Briefcase, label: 'Pipeline', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/clients', icon: Users, label: 'Clients', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/contacts', icon: UserCheck, label: 'Contacts', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/payments', icon: CreditCard, label: 'Payments', roles: ['BD_REP', 'SALES_MANAGER'] },
 ];
 
 export default function Sidebar() {
@@ -109,9 +109,9 @@ export default function Sidebar() {
       <div className={cn('border-t border-[#e2e6f0] p-3', !sidebarOpen && 'flex justify-center')}>
         {sidebarOpen ? (
           <div className="flex items-center gap-3">
-            <Avatar name={`${user?.first_name} ${user?.last_name}`} size="sm" />
+            <Avatar name={`${user?.firstName} ${user?.lastName}`} size="sm" />
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-[#1a1d2e] truncate">{user?.first_name} {user?.last_name}</div>
+              <div className="text-xs font-semibold text-[#1a1d2e] truncate">{user?.firstName} {user?.lastName}</div>
               <div className="text-[10px] text-[#8b90a8] truncate">{user?.role}</div>
             </div>
             <button onClick={handleLogout} className="text-[#8b90a8] hover:text-[#e11d48] transition-colors">

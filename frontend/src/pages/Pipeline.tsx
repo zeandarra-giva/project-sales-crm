@@ -5,8 +5,9 @@ import Header from '../components/layout/Header';
 import PipelineBoard from '../components/deals/PipelineBoard';
 import StagePill from '../components/deals/StagePill';
 import { Card } from '../components/ui/index';
+import { useQuery } from '@tanstack/react-query';
+import { getDeals } from '../api/deals';
 import { useAuthStore } from '../store/authStore';
-import { MOCK_DEALS } from '../mockData';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types/index';
 
@@ -20,9 +21,10 @@ export default function PipelinePage() {
   const [sourceFilter, setSourceFilter] = useState('All');
   const [showClosed, setShowClosed] = useState(false);
 
-  const allDeals = user?.role === 'Manager'
-    ? MOCK_DEALS
-    : MOCK_DEALS.filter(d => d.bd_id === user?.id);
+  const { data: allDeals = [], isLoading } = useQuery({
+    queryKey: ['deals'],
+    queryFn: getDeals,
+  });
 
   const filteredDeals = allDeals.filter(deal => {
     if (!showClosed && deal.is_closed) return false;
@@ -34,6 +36,17 @@ export default function PipelinePage() {
   const activeDeals = filteredDeals.filter(d => !d.is_closed);
   const totalPipelineValue = activeDeals.reduce((sum, d) => sum + d.revenue, 0);
   const weightedValue = activeDeals.reduce((sum, d) => sum + d.revenue * (d.probability_pct || 0) / 100, 0);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title="Pipeline" action={{ label: 'New Deal', to: '/deals/new' }} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[#8b90a8]">Loading pipeline...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -150,7 +163,7 @@ export default function PipelinePage() {
                         <div className="text-xs text-[#8b90a8]">{deal.probability_pct}% prob</div>
                       </div>
                       <div className="col-span-2 text-xs text-[#4a5068]">
-                        {deal.bd?.first_name} {deal.bd?.last_name}
+                        {deal.bd?.firstName} {deal.bd?.lastName}
                       </div>
                       <div className="col-span-2 text-xs text-[#8b90a8]">
                         {deal.due_date

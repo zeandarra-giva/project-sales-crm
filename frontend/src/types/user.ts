@@ -1,12 +1,12 @@
-export type UserRole = 'BD Rep' | 'Senior BD Rep' | 'Manager';
+export type UserRole = 'BD_REP' | 'SALES_MANAGER';
 
 export interface BD {
   id: string;
-  first_name: string;
-  last_name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   role: UserRole;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -1,12 +1,25 @@
-import apiClient from './client';
-import type { Deal } from '../types';
+import apiClient from './client'
+import type { Deal } from '../types'
 
-export const dealsApi = {
-  list:       (params?: Record<string, string>) => apiClient.get<Deal[]>('/deals', { params }),
-  getById:    (id: string)                       => apiClient.get<Deal>(`/deals/${id}`),
-  create:     (data: Partial<Deal>)              => apiClient.post<Deal>('/deals', data),
-  update:     (id: string, data: Partial<Deal>)  => apiClient.patch<Deal>(`/deals/${id}`, data),
-  updateStage:(id: string, stage: string)        => apiClient.patch<Deal>(`/deals/${id}/stage`, { stage }),
-  delete:     (id: string)                       => apiClient.delete(`/deals/${id}`),
-  history:    (id: string)                       => apiClient.get(`/deals/${id}/history`),
-};
+export async function getDeals() {
+  const response = await apiClient.get<any[]>('/api/deals')
+  // Depending on how backend is typed, we can map properties back to Deal
+  // We'll trust the Motia response gives us what we matched on the backend.
+  return response.data
+}
+
+export interface CreateDealPayload {
+  dealName: string;
+  clientId: string;
+  monthlySubscription: number;
+  duration: number;
+  leadSource: 'INBOUND' | 'OUTBOUND' | 'REFERRAL';
+  serviceId?: string;
+  bundleId?: string;
+  proposalLink?: string;
+}
+
+export async function createDeal(data: CreateDealPayload) {
+  const response = await apiClient.post('/api/deals', data)
+  return response.data
+}
