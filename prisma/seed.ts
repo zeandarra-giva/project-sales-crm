@@ -74,7 +74,7 @@ async function main() {
     const bdMembers = [
         { firstName: 'Henne', lastName: 'Unknown', email: 'henne@company.com', role: 'BD_REP' as const },
         { firstName: 'Isten', lastName: 'Unknown', email: 'isten@company.com', role: 'BD_REP' as const },
-        { firstName: 'Brian', lastName: 'Unknown', email: 'brian@company.com', role: 'BD_REP' as const },
+        { firstName: 'Brian', lastName: 'Unknown', email: 'brian@company.cocall it m', role: 'BD_REP' as const },
         { firstName: 'Manager', lastName: 'Unknown', email: 'manager@company.com', role: 'SALES_MANAGER' as const },
     ]
 
