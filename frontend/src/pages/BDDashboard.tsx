@@ -27,7 +27,7 @@ export default function BDDashboard() {
   const { user } = useAuthStore();
   const [selectedQ, setSelectedQ] = useState('Q1 2026');
   const dash = MOCK_BD_DASHBOARD;
-  const myDeals = MOCK_DEALS.filter(d => d.bd_id === user?.id || user?.role === 'Manager');
+  const myDeals = MOCK_DEALS.filter(d => d.bd_id === user?.id || user?.role === 'SALES_MANAGER');
   const stuckDeals = myDeals.filter(d => (d.days_in_stage || 0) > 3 && !d.is_closed);
   const openDeals = myDeals.filter(d => !d.is_closed);
   const closedWon = myDeals.filter(d => d.stage === 'Closed Won');
@@ -39,7 +39,7 @@ export default function BDDashboard() {
   return (
     <div className="flex flex-col h-full">
       <Header
-        title={`${user?.first_name}'s Dashboard`}
+        title={`${user?.firstName}'s Dashboard`}
         subtitle="Q1 2026 · Jan 1 – Mar 31"
         action={{ label: 'New Deal', to: '/deals/new' }}
       />

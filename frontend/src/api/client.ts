@@ -1,34 +1,32 @@
-import axios from 'axios';
-import 'dotenv/config';
+import axios from 'axios'
+import { useAuthStore } from '../store/authStore'
 
 const apiClient = axios.create({
-  baseURL: process.env.BACKEND_URL,
-  withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
-});
+  baseURL: 'http://localhost:3111',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
-// Request interceptor — attach JWT
-apiClient.interceptors.request.use(config => {
-  const raw = localStorage.getItem('auth-storage');
-  if (raw) {
-    try {
-      const { state } = JSON.parse(raw);
-      if (state?.token) config.headers.Authorization = `Bearer ${state.token}`;
-    } catch { }
+// Before every request, attach the JWT token
+apiClient.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
   }
-  return config;
-});
+  return config
+})
 
-// Response interceptor — handle 401
+// If any response is 401, clear auth and redirect to login
 apiClient.interceptors.response.use(
-  res => res,
-  err => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('auth-storage');
-      window.location.href = '/login';
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      useAuthStore.getState().logout()
+      window.location.href = '/login'
     }
-    return Promise.reject(err);
+    return Promise.reject(error)
   }
-);
+)
 
-export default apiClient;
+export default apiClient
