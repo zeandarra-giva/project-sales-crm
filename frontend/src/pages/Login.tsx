@@ -5,15 +5,15 @@ import { Button, Input } from '../components/ui/index';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 const DEMO_USERS = [
-  { email: 'henne@company.com', label: 'Henne (Senior BD Rep)', password: 'demo' },
-  { email: 'isten@company.com', label: 'Isten (BD Rep)', password: 'demo' },
-  { email: 'brian@company.com', label: 'Brian (BD Rep)', password: 'demo' },
-  { email: 'maria@company.com', label: 'Maria (Manager)', password: 'demo' },
+  { email: 'henne@company.com', label: 'Henne (Senior BD Rep)', password: 'changeme123' },
+  { email: 'isten@company.com', label: 'Isten (BD Rep)', password: 'changeme123' },
+  { email: 'brian@company.com', label: 'Brian (BD Rep)', password: 'changeme123' },
+  { email: 'manager@company.com', label: 'Manager', password: 'changeme123' },
 ];
 
 export default function LoginPage() {
   const [email, setEmail] = useState('henne@company.com');
-  const [password, setPassword] = useState('demo');
+  const [password, setPassword] = useState('changeme123');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
