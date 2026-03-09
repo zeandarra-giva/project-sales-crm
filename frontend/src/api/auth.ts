@@ -1,11 +1,11 @@
-import apiClient from './client';
-import type { BD } from '../types';
+import apiClient from './client'
 
-export interface LoginPayload { email: string; password: string; }
-export interface AuthResponse { user: BD; token: string; }
+export async function login(email: string, password: string) {
+  const response = await apiClient.post('/api/auth/login', { email, password })
+  return response.data
+}
 
-export const authApi = {
-  login:  (data: LoginPayload)    => apiClient.post<AuthResponse>('/auth/login', data),
-  logout: ()                      => apiClient.post('/auth/logout'),
-  me:     ()                      => apiClient.get<BD>('/auth/me'),
-};
+export async function getMe() {
+  const response = await apiClient.get('/api/auth/me')
+  return response.data
+}
