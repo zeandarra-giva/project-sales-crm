@@ -29,10 +29,25 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
     try {
         const user = await authenticate(req)
         const { id } = req.pathParams
+        const { phone, jobTitle, decisionMakerTier, ...rest } = req.body
+
+        // Map decision-maker tier (1-5) to Prisma Enum
+        const rankMapping: Record<number, string> = {
+            1: 'TIER_1_ECONOMIC_BUYER',
+            2: 'TIER_2_DECISION_MAKER',
+            3: 'TIER_3_INFLUENCER',
+            4: 'TIER_4_END_USER',
+            5: 'TIER_5_GATEKEEPER'
+        }
 
         const contact = await prisma.contact.update({
             where: { id },
-            data: req.body,
+            data: {
+                ...rest,
+                ...(phone && { number: phone }),
+                ...(jobTitle && { designation: jobTitle }),
+                ...(decisionMakerTier && { decisionRank: rankMapping[decisionMakerTier] as any }),
+            },
             include: { client: { select: { id: true, name: true } } },
         })
 
