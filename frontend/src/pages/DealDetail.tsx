@@ -319,9 +319,9 @@ export default function DealDetail() {
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">People</div>
               {deal.bd && (
                 <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#f0f2f8]">
-                  <Avatar name={`${deal.bd.first_name} ${deal.bd.last_name}`} />
+                  <Avatar name={`${deal.bd.firstName} ${deal.bd.lastName}`} />
                   <div>
-                    <div className="text-xs font-semibold text-[#1a1d2e]">{deal.bd.first_name} {deal.bd.last_name}</div>
+                    <div className="text-xs font-semibold text-[#1a1d2e]">{deal.bd.firstName} {deal.bd.lastName}</div>
                     <div className="text-[10px] text-[#8b90a8]">{deal.bd.role} · BD Owner</div>
                   </div>
                 </div>

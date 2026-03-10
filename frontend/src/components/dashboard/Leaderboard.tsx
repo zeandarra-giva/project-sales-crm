@@ -27,7 +27,7 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-[#1a1d2e]">
-                {entry.bd.first_name} {entry.bd.last_name}
+                {entry.bd.firstName} {entry.bd.lastName}
               </div>
               <div className="text-[10px] text-[#8b90a8]">Win rate {entry.win_rate}%</div>
             </div>

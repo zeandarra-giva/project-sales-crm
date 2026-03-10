@@ -40,7 +40,7 @@ export default function StuckDealsList({ deals, limit = 5 }: StuckDealsListProps
           </div>
           <div className="text-right flex-shrink-0">
             <div className="text-xs font-bold text-[#1a1d2e]">{formatCurrency(deal.revenue, true)}</div>
-            <div className="text-[10px] text-[#8b90a8]">{deal.bd?.first_name}</div>
+            <div className="text-[10px] text-[#8b90a8]">{deal.bd?.firstName}</div>
           </div>
           <ArrowRight size={13} className="text-[#c8cfe8] group-hover:text-[#3d5af1] transition-colors flex-shrink-0" />
         </Link>

@@ -14,13 +14,14 @@
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "motia": "^1.0.0-rc.26"
+    "motia": "^1.0.0-rc.26",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.35",
-    "prisma": "^5.22.0",
+    "prisma": "^7.4.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
@@ -31,7 +32,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   }

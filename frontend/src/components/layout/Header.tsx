@@ -29,7 +29,7 @@ export default function Header({ title, subtitle, action }: HeaderProps) {
           onChange={e => switchUser(e.target.value)}
         >
           {MOCK_BDS.map(bd => (
-            <option key={bd.id} value={bd.id}>{bd.first_name} ({bd.role})</option>
+            <option key={bd.id} value={bd.id}>{bd.firstName} ({bd.role})</option>
           ))}
         </select>
 

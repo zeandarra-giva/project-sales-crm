@@ -141,9 +141,13 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
 }
 
 // Card
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
+}
+
+export function Card({ children, className, ...props }: CardProps) {
   return (
-    <div className={cn('bg-white border border-[#e2e6f0] rounded-2xl shadow-sm', className)}>
+    <div className={cn('bg-white border border-[#e2e6f0] rounded-2xl shadow-sm', className)} {...props}>
       {children}
     </div>
   );
