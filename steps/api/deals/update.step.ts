@@ -1,0 +1,145 @@
+import { type Handlers, type StepConfig } from 'motia'
+import { z } from 'zod'
+import { prisma } from '../../../lib/db'
+import { authenticate } from '../../../lib/auth'
+import { Prisma } from '@prisma/client'
+
+export const config = {
+    name: 'UpdateDeal',
+    description: 'Update an existing deal',
+    triggers: [
+        {
+            type: 'http' as const,
+            method: 'PATCH' as const,
+            path: '/api/deals/:id',
+            bodySchema: z.object({
+                dealName: z.string().min(1).optional(),
+                monthlySubscription: z.number().min(0).optional(),
+                duration: z.number().min(1).optional(),
+                stageId: z.string().uuid().optional(),
+                remarks: z.string().optional(),
+                actionPlan: z.string().optional(),
+                dueDate: z.string().datetime().optional(),
+                proposalLink: z.string().url().optional(),
+                contractLink: z.string().url().optional(),
+            }),
+        },
+    ],
+    enqueues: [],
+    flows: ['sales-pipeline'],
+} as const satisfies StepConfig
+
+export const handler: Handlers<typeof config> = async (req, { logger }) => {
+    try {
+        const user = await authenticate(req)
+        const { id } = req.pathParams
+        const { stageId, remarks, monthlySubscription, duration, ...rest } = req.body
+
+        // 1. Fetch current deal + target stage if changing
+        const deal = await prisma.deal.findUnique({
+            where: { id },
+            include: { stage: true }
+        })
+
+        if (!deal) {
+            return { status: 404, body: { error: 'Deal not found' } }
+        }
+
+        let targetStageName = ""
+        if (stageId && stageId !== deal.stageId) {
+            const targetStage = await prisma.pipelineStage.findUnique({
+                where: { id: stageId }
+            })
+            targetStageName = targetStage?.name || ""
+        }
+
+        // 2. Business rule: If moving to Closed Lost, require remarks
+        if (targetStageName === 'Closed Lost' && !remarks && !deal.remarks) {
+            return {
+                status: 400,
+                body: { error: 'Remarks (Loss Reason) are required when closing a deal as lost' }
+            }
+        }
+
+        // 3. Prepare Update Data
+        const updateData: any = {
+            ...rest,
+            remarks: remarks || deal.remarks,
+        }
+
+        // Handle computed revenue if fields changed
+        if (monthlySubscription !== undefined || duration !== undefined) {
+            const newMonthly = monthlySubscription ?? Number(deal.monthlySubscription)
+            const newDuration = duration ?? deal.duration
+            updateData.monthlySubscription = newMonthly
+            updateData.duration = newDuration
+            updateData.revenue = newMonthly * newDuration
+        }
+
+        if (stageId && stageId !== deal.stageId) {
+            updateData.stageId = stageId
+            updateData.lastStageUpdateAt = new Date()
+
+            if (targetStageName === 'Closed Won' || targetStageName === 'Closed Lost') {
+                updateData.isClosed = true
+                updateData.closedDate = new Date()
+            } else {
+                updateData.isClosed = false
+                updateData.closedDate = null
+            }
+        }
+
+        // 4. Update the deal
+        const updatedDeal = await prisma.deal.update({
+            where: { id },
+            data: updateData,
+            include: {
+                stage: true,
+                client: true,
+                bd: {
+                    select: { id: true, firstName: true, lastName: true }
+                }
+            }
+        })
+
+        // 5. Record history in DealAuditLog if stage changed
+        if (stageId && stageId !== deal.stageId) {
+            // Optional: Close out the previous audit log entry
+            await prisma.dealAuditLog.updateMany({
+                where: { dealId: id, exitedAt: null },
+                data: { exitedAt: new Date() }
+            })
+
+            await prisma.dealAuditLog.create({
+                data: {
+                    dealId: id,
+                    stageId: stageId,
+                    changedById: user.id,
+                    enteredAt: new Date(),
+                    notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
+                }
+            })
+        }
+
+        logger.info('Updated deal', { dealId: id, by: user.id })
+
+        return {
+            status: 200,
+            body: updatedDeal,
+        }
+
+    } catch (error: any) {
+        if (error.name === 'AuthError') {
+            return { status: 401, body: { error: error.message } }
+        }
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+            return { status: 400, body: { error: 'Record not found or invalid ID provided' } }
+        }
+
+        logger.error('Failed to update deal', { error: error.message, dealId: req.pathParams.id })
+        return {
+            status: 500,
+            body: { error: 'Internal server error' },
+        }
+    }
+}

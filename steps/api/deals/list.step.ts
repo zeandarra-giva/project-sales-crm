@@ -1,16 +1,12 @@
-import { type Handlers, type StepConfig } from 'motia'
-import { prisma } from '../../../lib/db'
+import type { StepConfig, Handlers } from 'motia'
 import { authenticate } from '../../../lib/auth'
+import { prisma } from '../../../lib/db'
 
 export const config = {
     name: 'ListDeals',
-    description: 'Get list of deals for the current user (or all if manager)',
+    description: 'Get list of all deals',
     triggers: [
-        {
-            type: 'http' as const,
-            method: 'GET' as const,
-            path: '/api/deals',
-        },
+        { type: 'http', method: 'GET', path: '/api/deals' },
     ],
     enqueues: [],
     flows: ['sales-pipeline'],
@@ -19,55 +15,41 @@ export const config = {
 export const handler: Handlers<typeof config> = async (req, { logger }) => {
     try {
         const user = await authenticate(req)
-
-        // If Manager, they can see all deals.
-        // If BD Rep, they can only see their own deals.
-        const whereClause = user.role === 'SALES_MANAGER' ? {} : { bdId: user.id }
+        logger.info('Listing deals', { userId: user.id })
 
         const deals = await prisma.deal.findMany({
-            where: whereClause,
             include: {
-                client: true,
-                stage: true,
-                bd: {
+                stage: true,                              // pipeline stage info
+                bd: { select: { id: true, firstName: true, lastName: true } },
+                client: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        name: true,
+                        accountType: true,
+                        contact: { // This is how you get the Client's Primary Contact
+                            select: { id: true, firstName: true, lastName: true }
+                        }
                     }
                 },
                 service: true,
                 bundle: true,
+                _count: {
+                    select: {
+                        auditLogs: true,
+                        dealContacts: true
+                    }
+                },
             },
-            orderBy: {
-                startDate: 'desc'
-            }
+            orderBy: { startDate: 'desc' },
         })
 
-        // Map the result to match the frontend expectations slightly, 
-        // especially computing `days_in_stage` which usually lives on the Deal Audit Log, 
-        // but we'll mock it for now with difference between `now` and `lastStageUpdateAt`.
-        const formattedDeals = deals.map(deal => {
-            const today = new Date()
-            const lastUpdate = deal.lastStageUpdateAt || deal.startDate || today
-            const daysInStage = Math.floor((today.getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24))
+        return { status: 200, body: deals }
 
-            return {
-                ...deal,
-                stage_name: deal.stage.name,
-                days_in_stage: daysInStage,
-            }
-        })
-
-        return {
-            status: 200,
-            body: formattedDeals,
-        }
     } catch (error: any) {
-        logger.warn('Failed to list deals', { error: error.message })
-        return {
-            status: error.message === 'Not authenticated' ? 401 : 500,
-            body: { error: error.message },
+        if (error.name === 'AuthError') {
+            return { status: 401, body: { error: error.message } }
         }
+        logger.error('Failed to list deals', { error })
+        return { status: 500, body: { error: 'Internal server error' } }
     }
 }

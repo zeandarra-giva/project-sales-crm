@@ -2,6 +2,7 @@ import { type Handlers, type StepConfig } from 'motia'
 import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
+import { Prisma } from '@prisma/client'
 
 export const config = {
     name: 'CreateDeal',
@@ -56,7 +57,15 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
                 bundleId,
                 proposalLink,
                 startDate: new Date(),
-                lastStageUpdateAt: new Date()
+                lastStageUpdateAt: new Date(),
+                auditLogs: {
+                    create: {
+                        stageId: inquiryStage.id,
+                        changedById: user.id,
+                        enteredAt: new Date(),
+                        notes: 'Initial inquiry created'
+                    }
+                }
             },
             include: {
                 client: true,
@@ -85,10 +94,19 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         }
 
     } catch (error: any) {
-        logger.warn('Failed to create deal', { error: error.message })
-        return {
-            status: error.message === 'Not authenticated' ? 401 : 500,
-            body: { error: error.message },
+        if (error.name === 'AuthError') {
+            return { status: 401, body: { error: error.message } }
         }
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2025'
+        ) {
+            return {
+                status: 400,
+                body: { error: 'Related record not found — check bdMemberId, clientId, serviceIds, etc.' }
+            }
+        }
+        logger.error('Failed to create deal', { error })
+        return { status: 500, body: { error: 'Internal server error' } }
     }
 }
