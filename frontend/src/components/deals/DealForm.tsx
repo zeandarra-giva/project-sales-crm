@@ -1,12 +1,14 @@
 // DealForm — reusable form field group used by NewDeal and DealDetail edit flow
 import { Input, Select, Textarea } from '../ui/index';
-import { MOCK_CLIENTS, MOCK_SERVICES, MOCK_BUNDLES } from '../../mockData';
+import { useClients } from '../../hooks/useClients';
+import { useQuery } from '@tanstack/react-query';
+import { servicesApi } from '../../api/services';
 import { Package, Wrench } from 'lucide-react';
 
 const LEAD_SOURCES = [
-  { value: 'Inbound',  label: 'Inbound'  },
-  { value: 'Outbound', label: 'Outbound' },
-  { value: 'Referral', label: 'Referral' },
+  { value: 'INBOUND', label: 'Inbound' },
+  { value: 'OUTBOUND', label: 'Outbound' },
+  { value: 'REFERRAL', label: 'Referral' },
 ];
 
 export interface DealFormState {
@@ -29,7 +31,7 @@ export interface DealFormState {
 export const defaultDealForm = (): DealFormState => ({
   deal_name: '', client_id: '', service_id: '', bundle_id: '',
   dealType: 'service', monthly_subscription: '', duration: '12',
-  lead_source: 'Outbound', due_date: '', action_plan_due_date: '',
+  lead_source: 'OUTBOUND', due_date: '', action_plan_due_date: '',
   proposal_link: '', contract_link: '', remarks: '', action_plan: '',
 });
 
@@ -39,11 +41,14 @@ interface DealFormProps {
 }
 
 export default function DealForm({ form, update }: DealFormProps) {
-  const clientOptions  = MOCK_CLIENTS.map(c => ({ value: c.id, label: c.name }));
-  const serviceOptions = MOCK_SERVICES.map(s => ({ value: s.id, label: s.name }));
-  const bundleOptions  = MOCK_BUNDLES.map(b => ({ value: b.id, label: b.name }));
-  const selectedBundle = MOCK_BUNDLES.find(b => b.id === form.bundle_id);
-  const contractValue  = parseFloat(form.monthly_subscription || '0') * parseFloat(form.duration || '0');
+  const { clients } = useClients();
+  const { data: servicesData } = useQuery({ queryKey: ['services'], queryFn: async () => { const r = await servicesApi.list(); return (r.data as any)?.services ?? r.data ?? []; } });
+  const { data: bundlesData } = useQuery({ queryKey: ['bundles'], queryFn: async () => { const r = await servicesApi.bundles(); return (r.data as any)?.bundles ?? r.data ?? []; } });
+  const clientOptions = clients.map((c: any) => ({ value: c.id, label: c.name }));
+  const serviceOptions = (servicesData ?? []).map((s: any) => ({ value: s.id, label: s.name }));
+  const bundleOptions = (bundlesData ?? []).map((b: any) => ({ value: b.id, label: b.name }));
+  const selectedBundle = (bundlesData ?? []).find((b: any) => b.id === form.bundle_id);
+  const contractValue = parseFloat(form.monthly_subscription || '0') * parseFloat(form.duration || '0');
 
   return (
     <div className="flex flex-col gap-4">
@@ -61,9 +66,8 @@ export default function DealForm({ form, update }: DealFormProps) {
             <button
               key={t} type="button"
               onClick={() => { update('dealType', t); update(t === 'service' ? 'bundle_id' : 'service_id', ''); }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border font-medium transition-all ${
-                form.dealType === t ? 'bg-[#eef1fe] border-[#c7d0fb] text-[#3d5af1]' : 'bg-white border-[#e2e6f0] text-[#8b90a8]'
-              }`}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border font-medium transition-all ${form.dealType === t ? 'bg-[#eef1fe] border-[#c7d0fb] text-[#3d5af1]' : 'bg-white border-[#e2e6f0] text-[#8b90a8]'
+                }`}
             >
               {t === 'service' ? <Wrench size={12} /> : <Package size={12} />}
               {t === 'service' ? 'Single Service' : 'Bundle'}

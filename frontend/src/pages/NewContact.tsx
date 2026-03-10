@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Input, Select, Button, Card } from '../components/ui/index';
-import { MOCK_CLIENTS } from '../mockData';
+import { useClients } from '../hooks/useClients';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { contactsApi } from '../api/contacts';
 
 const DECISION_RANKS = [
-  { value: 'Tier 1 Economic Buyer', label: 'Tier 1 – Economic Buyer' },
-  { value: 'Tier 2 Decision Maker', label: 'Tier 2 – Decision Maker' },
-  { value: 'Tier 3 Influencer', label: 'Tier 3 – Influencer' },
-  { value: 'Tier 4 End User', label: 'Tier 4 – End User' },
-  { value: 'Tier 5 Gatekeeper', label: 'Tier 5 – Gatekeeper' },
+  { value: 'TIER_1_ECONOMIC_BUYER', label: 'Tier 1 - Economic Buyer' },
+  { value: 'TIER_2_DECISION_MAKER', label: 'Tier 2 - Decision Maker' },
+  { value: 'TIER_3_INFLUENCER', label: 'Tier 3 - Influencer' },
+  { value: 'TIER_4_END_USER', label: 'Tier 4 - End User' },
+  { value: 'TIER_5_GATEKEEPER', label: 'Tier 5 - Gatekeeper' },
 ];
 
 export default function NewContactPage() {
@@ -23,24 +25,31 @@ export default function NewContactPage() {
     email: '',
     number: '',
     designation: '',
-    decision_rank: 'Tier 2 Decision Maker',
+    decision_rank: 'TIER_2_DECISION_MAKER',
     client_id: prefillClientId,
     is_primary: false,
   });
 
-  const clientOptions = MOCK_CLIENTS.map(c => ({ value: c.id, label: c.name }));
+  const { clients } = useClients();
+  const qc = useQueryClient();
+  const clientOptions = clients.map(c => ({ value: c.id, label: c.name }));
 
   const update = (field: string, value: string | boolean) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
+  const createMutation = useMutation({
+    mutationFn: (data: any) => contactsApi.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      if (prefillClientId) navigate(`/clients/${prefillClientId}`);
+      else navigate('/contacts');
+    },
+    onError: (err: any) => alert(err?.response?.data?.error ?? 'Failed to create contact'),
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Contact created successfully! (mock)');
-    if (prefillClientId) {
-      navigate(`/clients/${prefillClientId}`);
-    } else {
-      navigate('/contacts');
-    }
+    createMutation.mutate(form);
   };
 
   const backTo = prefillClientId ? `/clients/${prefillClientId}` : '/contacts';
@@ -131,14 +140,12 @@ export default function NewContactPage() {
                   <button
                     type="button"
                     onClick={() => update('is_primary', !form.is_primary)}
-                    className={`relative w-10 h-5 rounded-full transition-all ${
-                      form.is_primary ? 'bg-[#3d5af1]' : 'bg-[#e2e6f0]'
-                    }`}
+                    className={`relative w-10 h-5 rounded-full transition-all ${form.is_primary ? 'bg-[#3d5af1]' : 'bg-[#e2e6f0]'
+                      }`}
                   >
                     <span
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${
-                        form.is_primary ? 'left-5' : 'left-0.5'
-                      }`}
+                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${form.is_primary ? 'left-5' : 'left-0.5'
+                        }`}
                     />
                   </button>
                   <span className="text-xs text-[#4a5068]">

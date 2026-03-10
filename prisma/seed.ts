@@ -10,6 +10,7 @@ async function main() {
     const stages = [
         { name: 'Inquiry', duration: 3 },
         { name: 'Prospecting', duration: 3 },
+        { name: 'Discovery', duration: 3 },
         { name: 'Proposal Sent', duration: 3 },
         { name: 'Negotiation', duration: 3 },
         { name: 'Closed Won', duration: null },

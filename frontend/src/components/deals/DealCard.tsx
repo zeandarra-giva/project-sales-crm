@@ -11,7 +11,8 @@ interface DealCardProps {
 }
 
 export default function DealCard({ deal, compact = false }: DealCardProps) {
-  const isStuck = (deal.days_in_stage || 0) > 3 && !deal.is_closed;
+  const daysInStage = deal.days_in_stage ?? (deal as any).days_in_current_stage ?? 0;
+  const isStuck = daysInStage > 3 && !deal.is_closed;
   const isOverdue = deal.action_plan_due_date && new Date(deal.action_plan_due_date) < new Date() && !deal.is_closed;
 
   return (
@@ -34,15 +35,15 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
 
         {/* Revenue */}
         <div className="mb-3">
-          <div className="text-base font-bold font-display text-[#1a1d2e]">{formatCurrency(deal.revenue, true)}</div>
-          <div className="text-xs text-[#4a5068]">₱{(deal.monthly_subscription / 1000).toFixed(0)}K/mo · {deal.duration}mo</div>
+          <div className="text-base font-bold font-display text-[#1a1d2e]">{formatCurrency(Number(deal.revenue ?? 0), true)}</div>
+          <div className="text-xs text-[#4a5068]">₱{(Number(deal.monthly_subscription ?? 0) / 1000).toFixed(0)}K/mo · {deal.duration}mo</div>
         </div>
 
         {!compact && (
           <>
             {/* Stage */}
             <div className="mb-3">
-              <StagePill stage={deal.stage} daysInStage={deal.days_in_stage} size="sm" />
+              <StagePill stage={deal.stage} daysInStage={daysInStage} size="sm" />
             </div>
 
             {/* Probability bar */}

@@ -3,13 +3,13 @@ import type { Notification, NotificationType } from '../../types/index';
 import { formatRelativeDate, cn } from '../../lib/utils';
 
 const TYPE_CONFIG: Record<NotificationType, { icon: React.ReactNode; color: string; label: string }> = {
-  StageChange: { icon: <TrendingUp size={14} />, color: '#4f6ef7', label: 'Stage Update' },
-  DealStuck: { icon: <AlertTriangle size={14} />, color: '#f59e0b', label: 'Deal Stuck' },
-  ActionPlanDue: { icon: <Calendar size={14} />, color: '#f43f5e', label: 'Action Plan Due' },
-  QuotaAlert: { icon: <TrendingUp size={14} />, color: '#f43f5e', label: 'Quota Alert' },
-  FollowUpDue: { icon: <RefreshCw size={14} />, color: '#8b5cf6', label: 'Follow-Up Due' },
-  NewDealAssigned: { icon: <UserPlus size={14} />, color: '#10b981', label: 'New Deal' },
-  LostDealFollowUp: { icon: <RefreshCw size={14} />, color: '#06b6d4', label: 'Re-engage' },
+  STAGE_CHANGE: { icon: <TrendingUp size={14} />, color: '#4f6ef7', label: 'Stage Update' },
+  DEAL_STUCK: { icon: <AlertTriangle size={14} />, color: '#f59e0b', label: 'Deal Stuck' },
+  ACTION_PLAN_DUE: { icon: <Calendar size={14} />, color: '#f43f5e', label: 'Action Plan Due' },
+  QUOTA_ALERT: { icon: <TrendingUp size={14} />, color: '#f43f5e', label: 'Quota Alert' },
+  FOLLOW_UP_DUE: { icon: <RefreshCw size={14} />, color: '#8b5cf6', label: 'Follow-Up Due' },
+  NEW_DEAL_ASSIGNED: { icon: <UserPlus size={14} />, color: '#10b981', label: 'New Deal' },
+  LOST_DEAL_FOLLOW_UP: { icon: <RefreshCw size={14} />, color: '#06b6d4', label: 'Re-engage' },
 };
 
 interface NotificationItemProps {
@@ -18,7 +18,11 @@ interface NotificationItemProps {
 }
 
 export function NotificationItem({ notification, onRead }: NotificationItemProps) {
-  const config = TYPE_CONFIG[notification.type];
+  const config = TYPE_CONFIG[notification.type] ?? {
+    icon: <Bell size={14} />,
+    color: '#4a5068',
+    label: notification.type,
+  };
 
   return (
     <div

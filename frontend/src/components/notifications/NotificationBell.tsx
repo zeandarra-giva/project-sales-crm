@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils';
 
 export default function NotificationBell() {
   const { user } = useAuthStore();
-  const { notifications, unreadCount, markRead } = useNotifications(user?.id);
+  const { notifications, unreadCount, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

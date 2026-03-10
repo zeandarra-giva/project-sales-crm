@@ -1,0 +1,82 @@
+modules:
+  - class: modules::stream::StreamModule
+    config:
+      port: ${STREAM_PORT:3112}       # WebSocket server port (default: 3112)
+      host: 0.0.0.0                   # Host address to bind (default: 0.0.0.0)
+      adapter:
+        class: modules::stream::adapters::KvStore
+        config:
+          store_method: file_based    # "file_based" or "in_memory" (default: in_memory)
+          file_path: ./data/stream_store  # Directory for file-based persistence
+
+  - class: modules::state::StateModule
+    config:
+      adapter:
+        class: modules::state::adapters::KvStore
+        config:
+          store_method: file_based    # "file_based" or "in_memory" (default: in_memory)
+          file_path: ./data/state_store.db  # Directory for file-based persistence
+
+  - class: modules::api::RestApiModule
+    config:
+      port: 3111                      # HTTP server port (default: 3111)
+      host: 0.0.0.0                   # Host address to bind (default: 0.0.0.0)
+      default_timeout: 30000          # Request timeout in ms (default: 30000)
+      concurrency_request_limit: 1024 # Max concurrent requests (default: 1024)
+      cors:
+        allowed_origins:              # Origins allowed to make cross-origin requests
+          - "*"
+        allowed_methods:              # HTTP methods allowed in CORS preflight
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        allowed_headers:
+          - Content-Type
+          - Authorization
+
+  - class: modules::observability::OtelModule
+    config:
+      enabled: ${OTEL_ENABLED:true}
+      service_name: ${OTEL_SERVICE_NAME:iii-engine}
+      service_version: ${SERVICE_VERSION:0.2.0}
+      service_namespace: ${SERVICE_NAMESPACE:production}
+      exporter: ${OTEL_EXPORTER_TYPE:memory}
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+      sampling_ratio: 1.0
+      memory_max_spans: ${OTEL_MEMORY_MAX_SPANS:10000}
+      metrics_enabled: true
+      metrics_exporter: ${OTEL_METRICS_EXPORTER:memory}
+      metrics_retention_seconds: 3600
+      metrics_max_count: 10000
+      logs_enabled: ${OTEL_LOGS_ENABLED:true}
+      logs_exporter: ${OTEL_LOGS_EXPORTER:memory}
+      logs_max_count: ${OTEL_LOGS_MAX_COUNT:1000}
+      logs_retention_seconds: ${OTEL_LOGS_RETENTION_SECONDS:3600}
+      logs_sampling_ratio: ${OTEL_LOGS_SAMPLING_RATIO:1.0}
+
+  - class: modules::queue::QueueModule
+    config:
+      adapter:
+        class: modules::queue::BuiltinQueueAdapter  # In-process queue (no external deps)
+
+  - class: modules::pubsub::PubSubModule
+    config:
+      adapter:
+        class: modules::pubsub::LocalAdapter  # In-process pubsub (no external deps)
+
+  - class: modules::cron::CronModule
+    config:
+      adapter:
+        class: modules::cron::KvCronAdapter  # KV-based scheduler (no external deps)
+
+  - class: modules::shell::ExecModule
+    config:
+      watch:                          # Glob patterns to watch for hot-reload
+        - steps/**/*.ts
+        - motia.config.ts
+      exec:                           # Choose ONE based on your runtime
+        - npx motia dev               # Node.js (default)
+        - node dist/index-dev.js

@@ -1,14 +1,16 @@
 import { ArrowRight } from 'lucide-react';
 import type { DealAuditLog, PipelineStage } from '../../types';
-import { PIPELINE_STAGES } from '../../mockData';
 import { formatDate } from '../../lib/utils';
 
 interface DealHistoryProps {
   logs: DealAuditLog[];
 }
 
-const stageColor = (stage: PipelineStage) =>
-  PIPELINE_STAGES.find(s => s.name === stage)?.color ?? '#8b90a8';
+const STAGE_COLORS: Partial<Record<PipelineStage, string>> = {
+  Inquiry: '#64748b', Prospecting: '#3b82f6', Discovery: '#8b5cf6',
+  'Proposal Sent': '#f59e0b', Negotiation: '#f97316', 'Closed Won': '#10b981', 'Closed Lost': '#e11d48',
+};
+const stageColor = (stage: PipelineStage) => STAGE_COLORS[stage] ?? '#8b90a8';
 
 export default function DealHistory({ logs }: DealHistoryProps) {
   if (logs.length === 0) {

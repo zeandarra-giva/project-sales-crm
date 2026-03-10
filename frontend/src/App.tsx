@@ -35,7 +35,8 @@ function ProtectedLayout() {
 
 function ManagerOnly() {
   const { user } = useAuthStore();
-  if (user?.role !== 'Manager') return <Navigate to="/dashboard" replace />;
+  const isManager = user?.role === 'Manager' || (user?.role as any) === 'SALES_MANAGER';
+  if (!isManager) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
 

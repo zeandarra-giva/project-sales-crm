@@ -1,9 +1,18 @@
 import type { Deal, PipelineStage } from '../../types/index';
 import { formatCurrency } from '../../lib/utils';
-import { PIPELINE_STAGES } from '../../mockData';
 import DealCard from './DealCard';
 import { EmptyState } from '../ui/index';
 import { Package } from 'lucide-react';
+
+const PIPELINE_STAGES = [
+  { id: '1', name: 'Inquiry' as PipelineStage,       probability: 10, color: '#64748b', duration: 3 },
+  { id: '2', name: 'Prospecting' as PipelineStage,   probability: 20, color: '#3b82f6', duration: 3 },
+  { id: '3', name: 'Discovery' as PipelineStage,     probability: 40, color: '#8b5cf6', duration: 3 },
+  { id: '4', name: 'Proposal Sent' as PipelineStage, probability: 60, color: '#f59e0b', duration: 3 },
+  { id: '5', name: 'Negotiation' as PipelineStage,   probability: 75, color: '#f97316', duration: 3 },
+  { id: '6', name: 'Closed Won' as PipelineStage,    probability: 100, color: '#10b981', duration: 0 },
+  { id: '7', name: 'Closed Lost' as PipelineStage,   probability: 0,  color: '#e11d48', duration: 0 },
+];
 
 interface PipelineBoardProps {
   deals: Deal[];
@@ -22,8 +31,8 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
     <div className="flex gap-3 overflow-x-auto pb-4 min-h-0">
       {activeStages.map((stage) => {
         const stageDeals = getDealsByStage(stage.name);
-        const totalValue = stageDeals.reduce((sum, d) => sum + d.revenue, 0);
-        const stuckCount = stageDeals.filter(d => (d.days_in_stage || 0) > 3).length;
+        const totalValue = stageDeals.reduce((sum, d) => sum + Number(d.revenue ?? 0), 0);
+        const stuckCount = stageDeals.filter(d => ((d.days_in_stage ?? (d as any).days_in_current_stage) || 0) > 3).length;
 
         return (
           <div key={stage.id} className="flex flex-col gap-2 min-w-[260px] w-[260px] flex-shrink-0">

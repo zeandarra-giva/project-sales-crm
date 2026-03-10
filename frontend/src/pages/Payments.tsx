@@ -1,296 +1,305 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../components/layout/Header';
-import { Card, Badge, Button, Input, Select } from '../components/ui/index';
+import { Card, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
-import { MOCK_DEALS, MOCK_BDS, MOCK_CLIENTS } from '../mockData';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { useDeals } from '../hooks/useDeals';
+import { formatCurrency } from '../lib/utils';
 import { useAuthStore } from '../store/authStore';
+import { paymentsApi } from '../api/payments';
 
 interface Payment {
   id: string;
-  deal_id: string;
-  bd_id: string;
   amount: number;
-  date: string;
-  status: 'Received' | 'Pending';
+  deal_id: string;
+  date_id?: string;
+  deal?: { id: string; deal_name: string; client?: { name: string }; stage?: { name: string }; monthly_subscription?: number; duration?: number };
+  date?: { year: number; month_number: number; month: number };
 }
 
-const INITIAL_PAYMENTS: Payment[] = [
-  { id: 'pay-001', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2025-12-01', status: 'Received' },
-  { id: 'pay-002', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-01-01', status: 'Received' },
-  { id: 'pay-003', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-02-01', status: 'Received' },
-  { id: 'pay-004', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-03-01', status: 'Pending' },
+type Draft = { dealId: string; amount: string; year: string; month: string };
+const emptyDraft = (): Draft => ({
+  dealId: '', amount: '',
+  year: String(new Date().getFullYear()),
+  month: String(new Date().getMonth() + 1),
+});
+
+const MONTHS = [
+  { value: '1', label: 'January' }, { value: '2', label: 'February' },
+  { value: '3', label: 'March' }, { value: '4', label: 'April' },
+  { value: '5', label: 'May' }, { value: '6', label: 'June' },
+  { value: '7', label: 'July' }, { value: '8', label: 'August' },
+  { value: '9', label: 'September' }, { value: '10', label: 'October' },
+  { value: '11', label: 'November' }, { value: '12', label: 'December' },
 ];
 
-type PaymentDraft = { deal_id: string; bd_id: string; amount: string; date: string; status: 'Received' | 'Pending' };
-const emptyDraft = (bdId: string): PaymentDraft => ({ deal_id: '', bd_id: bdId, amount: '', date: '', status: 'Pending' });
+const YEAR_OPTIONS = [-1, 0, 1, 2].map(offset => {
+  const y = String(new Date().getFullYear() + offset);
+  return { value: y, label: y };
+});
 
-const STATUS_OPTIONS = [{ value: 'Received', label: 'Received' }, { value: 'Pending', label: 'Pending' }];
+const PAYMENT_STAGES = ['Proposal Sent', 'Negotiation', 'Closed Won'];
 
-export default function PaymentsPage() {
-  const { user } = useAuthStore();
-  const [payments, setPayments]       = useState<Payment[]>(INITIAL_PAYMENTS);
-  const [bdFilter, setBdFilter]       = useState(user?.role === 'Manager' ? 'All' : (user?.id ?? 'All'));
-  const [statusFilter, setStatusFilter] = useState('All');
+const MONTH_NAMES: Record<number, string> = {
+  1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
+  7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'
+};
 
-  // Add modal
-  const [showAdd, setShowAdd]         = useState(false);
-  const [addDraft, setAddDraft]       = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+// ─── DraftFields defined OUTSIDE parent to prevent cursor-reset on re-render ──
+interface DraftFieldsProps {
+  draft: Draft;
+  setDraft: (d: Draft) => void;
+  deals: any[];
+  existingPayments: Payment[];
+  excludeId?: string;
+}
 
-  // Edit modal
-  const [editing, setEditing]         = useState<Payment | null>(null);
-  const [editDraft, setEditDraft]     = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+function DraftFields({ draft, setDraft, deals, existingPayments, excludeId }: DraftFieldsProps) {
+  const selectedDeal = draft.dealId ? deals.find((d: any) => d.id === draft.dealId) : null;
+  const monthlySub = selectedDeal ? Number(selectedDeal.monthly_subscription ?? 0) : 0;
+  const duration = selectedDeal ? Number(selectedDeal.duration ?? 0) : 0;
+  const totalContract = monthlySub * duration;
 
-  // Delete confirm
-  const [deleting, setDeleting]       = useState<Payment | null>(null);
+  // Payments already made for this deal (excluding current edit)
+  const dealPayments = existingPayments.filter(p => p.deal_id === draft.dealId && p.id !== excludeId);
+  const alreadyPaid = dealPayments.reduce((s, p) => s + Number(p.amount), 0);
 
-  const isManager   = user?.role === 'Manager';
-  const closedDeals = MOCK_DEALS.filter(d => d.stage === 'Closed Won');
-  const bdReps      = MOCK_BDS.filter(b => b.role !== 'Manager');
+  // Months already paid for the selected year
+  const paidMonthsThisYear = new Set(
+    dealPayments
+      .filter(p => p.date?.year === Number(draft.year))
+      .map(p => String(p.date?.month_number))
+  );
 
-  const filtered = payments.filter(p => {
-    if (bdFilter !== 'All' && p.bd_id !== bdFilter) return false;
-    if (statusFilter !== 'All' && p.status !== statusFilter) return false;
-    return true;
-  });
+  // Warn if existing payments were made at a different rate than current subscription
+  const mismatchedPayments = dealPayments.filter(
+    p => monthlySub > 0 && Number(p.amount) % monthlySub !== 0
+  );
+  const hasMismatch = mismatchedPayments.length > 0;
 
-  const totalReceived = filtered.filter(p => p.status === 'Received').reduce((s, p) => s + p.amount, 0);
-  const totalPending  = filtered.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0);
+  const enteredAmount = parseFloat(draft.amount) || 0;
+  const isMultiple = monthlySub > 0 && enteredAmount > 0 && enteredAmount % monthlySub !== 0;
+  const wouldExceed = totalContract > 0 && (alreadyPaid + enteredAmount) > totalContract;
+  const remaining = totalContract - alreadyPaid;
 
-  // ── Add ─────────────────────────────────────────────────────────
-  const handleAdd = () => {
-    if (!addDraft.deal_id || !addDraft.amount || !addDraft.date) return;
-    const p: Payment = {
-      id: `pay-${Date.now()}`,
-      deal_id: addDraft.deal_id,
-      bd_id:   addDraft.bd_id || user?.id || '',
-      amount:  parseFloat(addDraft.amount),
-      date:    addDraft.date,
-      status:  addDraft.status,
-    };
-    setPayments(prev => [p, ...prev]);
-    setShowAdd(false);
-    setAddDraft(emptyDraft(user?.id ?? ''));
-  };
+  const monthOptions = MONTHS.map(m => ({
+    ...m,
+    label: paidMonthsThisYear.has(m.value) ? `${m.label} ✓ (paid)` : m.label,
+    disabled: paidMonthsThisYear.has(m.value),
+  }));
 
-  // ── Edit ─────────────────────────────────────────────────────────
-  const openEdit = (p: Payment) => {
-    setEditing(p);
-    setEditDraft({ deal_id: p.deal_id, bd_id: p.bd_id, amount: String(p.amount), date: p.date, status: p.status });
-  };
-
-  const handleEdit = () => {
-    if (!editing) return;
-    setPayments(prev => prev.map(p =>
-      p.id === editing.id
-        ? { ...p, deal_id: editDraft.deal_id, bd_id: editDraft.bd_id, amount: parseFloat(editDraft.amount), date: editDraft.date, status: editDraft.status }
-        : p
-    ));
-    setEditing(null);
-  };
-
-  // ── Delete ────────────────────────────────────────────────────────
-  const handleDelete = () => {
-    if (!deleting) return;
-    setPayments(prev => prev.filter(p => p.id !== deleting.id));
-    setDeleting(null);
-  };
-
-  const dealForId = (id: string) => MOCK_DEALS.find(d => d.id === id);
-  const bdForId   = (id: string) => MOCK_BDS.find(b => b.id === id);
-
-  const DraftFields = ({ draft, setDraft }: { draft: PaymentDraft; setDraft: (d: PaymentDraft) => void }) => (
+  return (
     <>
       <Select
         label="Deal"
-        value={draft.deal_id}
-        onChange={e => setDraft({ ...draft, deal_id: e.target.value })}
-        options={closedDeals.map(d => ({ value: d.id, label: d.deal_name }))}
-        placeholder="Select closed deal..."
+        value={draft.dealId}
+        onChange={e => setDraft({ ...draft, dealId: e.target.value })}
+        options={deals.map((d: any) => ({
+          value: d.id,
+          label: `${d.deal_name} — ${d.stage?.name ?? d.stage}`,
+        }))}
+        placeholder="Select deal..."
         required
       />
-      {isManager && (
-        <Select
-          label="BD Member"
-          value={draft.bd_id}
-          onChange={e => setDraft({ ...draft, bd_id: e.target.value })}
-          options={bdReps.map(b => ({ value: b.id, label: `${b.first_name} ${b.last_name}` }))}
-          placeholder="Select BD..."
-          required
-        />
+
+      {selectedDeal && (
+        <div className="bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl px-4 py-3 text-xs flex gap-4 flex-wrap">
+          <div><span className="text-[#8b90a8]">Monthly sub</span><div className="font-semibold text-[#1a1d2e] mt-0.5">{formatCurrency(monthlySub)}</div></div>
+          <div><span className="text-[#8b90a8]">Duration</span><div className="font-semibold text-[#1a1d2e] mt-0.5">{duration} mo</div></div>
+          <div><span className="text-[#8b90a8]">Total contract</span><div className="font-semibold text-[#1a1d2e] mt-0.5">{formatCurrency(totalContract)}</div></div>
+          <div>
+            <span className="text-[#8b90a8]">Remaining</span>
+            <div className={`font-semibold mt-0.5 ${remaining <= 0 ? 'text-[#e11d48]' : 'text-[#059669]'}`}>
+              {formatCurrency(remaining)}
+            </div>
+          </div>
+        </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Amount (PHP)"
-          type="number"
-          value={draft.amount}
-          onChange={e => setDraft({ ...draft, amount: e.target.value })}
-          placeholder="85000"
-          required
-        />
-        <Input
-          label="Date"
-          type="date"
-          value={draft.date}
-          onChange={e => setDraft({ ...draft, date: e.target.value })}
-          required
-        />
-      </div>
-      <Select
-        label="Status"
-        value={draft.status}
-        onChange={e => setDraft({ ...draft, status: e.target.value as any })}
-        options={STATUS_OPTIONS}
+
+      <Input
+        label="Amount (PHP)"
+        type="number"
+        value={draft.amount}
+        onChange={e => setDraft({ ...draft, amount: e.target.value })}
+        placeholder={monthlySub ? String(monthlySub) : '27000'}
         required
       />
+
+      {isMultiple && (
+        <div className="text-xs text-[#d97706] bg-[#fffbeb] border border-[#fde68a] rounded-lg px-3 py-2">
+          ⚠️ Amount must be a multiple of ₱{monthlySub.toLocaleString()} (monthly subscription).
+        </div>
+      )}
+      {wouldExceed && (
+        <div className="text-xs text-[#e11d48] bg-[#fff1f2] border border-[#fecdd3] rounded-lg px-3 py-2">
+          ❌ Exceeds total contract of ₱{totalContract.toLocaleString()}. Max remaining: ₱{remaining.toLocaleString()}
+        </div>
+      )}
+
+      {hasMismatch && (
+        <div className="text-xs text-[#7c3aed] bg-[#f5f3ff] border border-[#ddd6fe] rounded-lg px-3 py-2">
+          ⚠️ Some existing payments ({mismatchedPayments.length}) don't match the current monthly subscription of ₱{monthlySub.toLocaleString()}. This may be because the subscription was updated. Those payments are kept as-is.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Select label="Year" value={draft.year} onChange={e => setDraft({ ...draft, year: e.target.value, month: '' })} options={YEAR_OPTIONS} required />
+        <Select label="Month" value={draft.month} onChange={e => setDraft({ ...draft, month: e.target.value })} options={monthOptions} required />
+      </div>
     </>
   );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function PaymentsPage() {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDraft, setAddDraft] = useState<Draft>(emptyDraft());
+  const [deleting, setDeleting] = useState<Payment | null>(null);
+
+  const { data: paymentsData, isLoading } = useQuery({
+    queryKey: ['payments'],
+    queryFn: async () => {
+      const res = await paymentsApi.list();
+      return (res as any).data ?? res;
+    },
+  });
+  const payments: Payment[] = (paymentsData as any)?.payments ?? [];
+
+  const { deals: allDeals } = useDeals({});
+  const eligibleDeals = allDeals.filter((d: any) =>
+    PAYMENT_STAGES.includes(d.stage?.name ?? d.stage)
+  );
+
+  const createMutation = useMutation({
+    mutationFn: async (d: Draft) => {
+      const res = await paymentsApi.create({
+        dealId: d.dealId,
+        amount: parseFloat(d.amount),
+        year: Number(d.year),
+        month: Number(d.month),
+      });
+      return (res as any).data ?? res;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      setShowAdd(false);
+      setAddDraft(emptyDraft());
+    },
+  });
+
+  const canSubmit = (d: Draft, excludeId?: string) => {
+    if (!d.dealId || !d.amount || !d.year || !d.month) return false;
+    const deal = eligibleDeals.find((x: any) => x.id === d.dealId) as any;
+    const monthlySub = deal ? Number(deal.monthly_subscription ?? 0) : 0;
+    const total = monthlySub * Number(deal?.duration ?? 0);
+    const amount = parseFloat(d.amount);
+    if (isNaN(amount) || amount <= 0) return false;
+    if (monthlySub > 0 && amount % monthlySub !== 0) return false;
+    const paid = payments
+      .filter(p => p.deal_id === d.dealId && p.id !== excludeId)
+      .reduce((s, p) => s + Number(p.amount), 0);
+    if (total > 0 && paid + amount > total) return false;
+    // Block if month already has a payment for this deal+year
+    const monthAlreadyPaid = payments.some(p =>
+      p.deal_id === d.dealId &&
+      p.id !== excludeId &&
+      p.date?.year === Number(d.year) &&
+      String(p.date?.month_number) === d.month
+    );
+    if (monthAlreadyPaid) return false;
+    return true;
+  };
+
+  const totalReceived = payments.reduce((s, p) => s + Number(p.amount), 0);
+
+  const dealForId = (id: string) => eligibleDeals.find((d: any) => d.id === id) as any;
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title="Payments"
         subtitle="Monthly subscription tracking"
-        action={{ label: 'Add Payment', onClick: () => { setAddDraft(emptyDraft(user?.id ?? '')); setShowAdd(true); } }}
+        action={{ label: 'Add Payment', onClick: () => { setAddDraft(emptyDraft()); setShowAdd(true); } }}
       />
 
       <div className="flex-1 overflow-y-auto p-6">
-        {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <Card className="p-4 text-center">
             <div className="text-xs text-[#8b90a8] mb-1">Total Received</div>
             <div className="text-2xl font-bold font-display text-[#059669]">{formatCurrency(totalReceived, true)}</div>
           </Card>
           <Card className="p-4 text-center">
-            <div className="text-xs text-[#8b90a8] mb-1">Pending</div>
-            <div className="text-2xl font-bold font-display text-[#d97706]">{formatCurrency(totalPending, true)}</div>
-          </Card>
-          <Card className="p-4 text-center">
             <div className="text-xs text-[#8b90a8] mb-1">Total Entries</div>
-            <div className="text-2xl font-bold font-display text-[#1a1d2e]">{filtered.length}</div>
+            <div className="text-2xl font-bold font-display text-[#1a1d2e]">{payments.length}</div>
           </Card>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          {isManager && (
-            <select
-              value={bdFilter}
-              onChange={e => setBdFilter(e.target.value)}
-              className="h-8 bg-white border border-[#e2e6f0] rounded-lg px-3 text-xs text-[#4a5068] focus:outline-none"
-            >
-              <option value="All">All BD Members</option>
-              {bdReps.map(b => <option key={b.id} value={b.id}>{b.first_name} {b.last_name}</option>)}
-            </select>
-          )}
-          <div className="flex items-center gap-1 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl p-1">
-            {['All', 'Received', 'Pending'].map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 rounded-lg text-xs transition-all ${
-                  statusFilter === s ? 'bg-white text-[#3d5af1] border border-[#c7d0fb] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Log table */}
         <Card className="p-5">
           <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Payment Log</div>
-
-          {/* Header row */}
-          <div className={`grid gap-4 pb-2 mb-1 border-b border-[#e2e6f0] text-[10px] text-[#8b90a8] uppercase tracking-wider ${isManager ? 'grid-cols-13' : 'grid-cols-11'}`}
-            style={{ gridTemplateColumns: isManager ? '3fr 2fr 2fr 2fr 2fr 1fr' : '4fr 2fr 2fr 2fr 1fr' }}>
-            <div>Deal</div>
-            {isManager && <div>BD</div>}
-            <div>Amount</div>
-            <div>Date</div>
-            <div>Status</div>
-            <div />
+          <div className="grid gap-4 pb-2 mb-1 border-b border-[#e2e6f0] text-[10px] text-[#8b90a8] uppercase tracking-wider"
+            style={{ gridTemplateColumns: '4fr 2fr 2fr 1fr' }}>
+            <div>Deal</div><div>Month</div><div>Amount</div><div />
           </div>
 
-          {filtered.length === 0 ? (
-            <div className="text-center py-10 text-sm text-[#8b90a8]">No payments match the current filters</div>
-          ) : (
-            filtered.map(payment => {
-              const deal = dealForId(payment.deal_id);
-              const bd   = bdForId(payment.bd_id);
-              return (
-                <div
-                  key={payment.id}
-                  className="grid gap-4 py-3 border-b border-[#f0f2f8] items-center group"
-                  style={{ gridTemplateColumns: isManager ? '3fr 2fr 2fr 2fr 2fr 1fr' : '4fr 2fr 2fr 2fr 1fr' }}
-                >
-                  <div>
-                    <div className="text-xs font-medium text-[#1a1d2e] truncate">{deal?.deal_name ?? '—'}</div>
-                    <div className="text-[10px] text-[#8b90a8]">{deal ? MOCK_CLIENTS.find(c => c.id === deal.client_id)?.name : ''}</div>
+          {isLoading ? (
+            <div className="text-center py-10 text-sm text-[#8b90a8]">Loading…</div>
+          ) : payments.length === 0 ? (
+            <div className="text-center py-10 text-sm text-[#8b90a8]">No payments logged yet</div>
+          ) : payments.map(payment => {
+            const deal = payment.deal ?? (dealForId(payment.deal_id) as any);
+            const stageName = deal?.stage?.name ?? '';
+            const mn = payment.date?.month_number;
+            const monthLabel = mn ? `${MONTH_NAMES[mn]} ${payment.date?.year}` : '—';
+            return (
+              <div key={payment.id} className="grid gap-4 py-3 border-b border-[#f0f2f8] items-center group"
+                style={{ gridTemplateColumns: '4fr 2fr 2fr 1fr' }}>
+                <div>
+                  <div className="text-xs font-medium text-[#1a1d2e] truncate">
+                    {deal?.deal_name ?? '—'}
                   </div>
-                  {isManager && (
-                    <div className="text-xs text-[#4a5068]">{bd ? `${bd.first_name} ${bd.last_name}` : '—'}</div>
-                  )}
-                  <div className="text-sm font-bold font-display text-[#1a1d2e]">{formatCurrency(payment.amount)}</div>
-                  <div className="text-xs text-[#4a5068]">{formatDate(payment.date)}</div>
-                  <div>
-                    <Badge variant={payment.status === 'Received' ? 'success' : 'warning'} size="sm">{payment.status}</Badge>
-                  </div>
-                  {/* Row actions */}
-                  <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEdit(payment)}
-                      className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#3d5af1] hover:bg-[#eef1fe] transition-all"
-                      title="Edit"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      onClick={() => setDeleting(payment)}
-                      className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#e11d48] hover:bg-[#fff1f2] transition-all"
-                      title="Delete"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                  <div className="text-[10px] text-[#8b90a8]">
+                    {deal?.client?.name ?? ''}
+                    {stageName && <span className="ml-1.5 text-[#a5b4fc]">· {stageName}</span>}
                   </div>
                 </div>
-              );
-            })
-          )}
+                <div className="text-xs text-[#4a5068]">{monthLabel}</div>
+                <div className="text-sm font-bold font-display text-[#1a1d2e]">{formatCurrency(payment.amount)}</div>
+                <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setDeleting(payment)}
+                    className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#e11d48] hover:bg-[#fff1f2] transition-all">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </Card>
       </div>
 
-      {/* ── Add Modal ────────────────────────────────────────────────── */}
       {showAdd && (
-        <EditModal title="Add Payment" onClose={() => setShowAdd(false)} onSave={handleAdd} saveLabel="Add Payment">
-          <DraftFields draft={addDraft} setDraft={setAddDraft} />
-        </EditModal>
-      )}
-
-      {/* ── Edit Modal ────────────────────────────────────────────────── */}
-      {editing && (
-        <EditModal title="Edit Payment" onClose={() => setEditing(null)} onSave={handleEdit}>
-          <DraftFields draft={editDraft} setDraft={setEditDraft} />
-        </EditModal>
-      )}
-
-      {/* ── Delete Confirm ───────────────────────────────────────────── */}
-      {deleting && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm p-6 shadow-xl animate-fade-in">
-            <h2 className="font-bold text-sm font-display text-[#1a1d2e] mb-2">Delete Payment?</h2>
-            <p className="text-xs text-[#4a5068] mb-5">
-              Remove the <strong>{formatCurrency(deleting.amount)}</strong> payment from{' '}
-              <strong>{formatDate(deleting.date)}</strong>? This cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
-              <Button variant="danger"    size="sm" onClick={handleDelete}>Delete</Button>
+        <EditModal title="Add Payment" onClose={() => setShowAdd(false)}
+          onSave={() => { if (canSubmit(addDraft)) createMutation.mutate(addDraft); }}
+          saveLabel={createMutation.isPending ? 'Saving…' : 'Add Payment'}>
+          <DraftFields draft={addDraft} setDraft={setAddDraft} deals={eligibleDeals} existingPayments={payments} />
+          {createMutation.isError && (
+            <div className="text-xs text-[#e11d48] bg-[#fff1f2] border border-[#fecdd3] rounded-lg px-3 py-2">
+              Failed to save. Please try again.
             </div>
-          </Card>
-        </div>
+          )}
+        </EditModal>
+      )}
+
+      {deleting && (
+        <EditModal title="Delete Payment" onClose={() => setDeleting(null)}
+          onSave={() => setDeleting(null)} saveLabel="Delete">
+          <p className="text-sm text-[#4a5068]">
+            Delete payment of <strong>{formatCurrency(deleting.amount)}</strong>?
+          </p>
+        </EditModal>
       )}
     </div>
   );

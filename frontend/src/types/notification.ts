@@ -1,11 +1,11 @@
 export type NotificationType =
-  | 'StageChange'
-  | 'DealStuck'
-  | 'ActionPlanDue'
-  | 'QuotaAlert'
-  | 'FollowUpDue'
-  | 'NewDealAssigned'
-  | 'LostDealFollowUp';
+  | 'STAGE_CHANGE'
+  | 'DEAL_STUCK'
+  | 'ACTION_PLAN_DUE'
+  | 'QUOTA_ALERT'
+  | 'FOLLOW_UP_DUE'
+  | 'NEW_DEAL_ASSIGNED'
+  | 'LOST_DEAL_FOLLOW_UP';
 
 export interface Notification {
   id: string;

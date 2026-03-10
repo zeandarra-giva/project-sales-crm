@@ -1,21 +1,40 @@
-import { useState, useCallback } from 'react';
-import { MOCK_CLIENTS } from '../mockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { clientsApi } from '../api/clients';
 import type { Client } from '../types';
 
-export function useClients() {
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
+export function useClients(params?: Record<string, string>) {
+  const qc = useQueryClient();
 
-  const getById = useCallback((id: string) => clients.find(c => c.id === id), [clients]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['clients', params],
+    queryFn: async () => {
+      const res = await clientsApi.list(params);
+      const body = res.data as unknown as { clients: Client[] };
+      return body.clients ?? (res.data as unknown as Client[]);
+    },
+  });
 
-  const updateClient = useCallback((id: string, patch: Partial<Client>) => {
-    setClients(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  }, []);
+  const addMutation = useMutation({
+    mutationFn: (data: Partial<Client>) => clientsApi.create(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
 
-  const addClient = useCallback((client: Omit<Client, 'id'>) => {
-    const newClient: Client = { ...client, id: `c-${Date.now()}` };
-    setClients(prev => [...prev, newClient]);
-    return newClient;
-  }, []);
+  return {
+    clients: data ?? [],
+    isLoading,
+    error,
+    addClient: addMutation.mutateAsync,
+  };
+}
 
-  return { clients, getById, updateClient, addClient };
+export function useClient(id: string) {
+  return useQuery({
+    queryKey: ['client', id],
+    queryFn: async () => {
+      const res = await clientsApi.getById(id);
+      const body = res.data as any;
+      return (body.client ?? body) as Client;
+    },
+    enabled: !!id,
+  });
 }

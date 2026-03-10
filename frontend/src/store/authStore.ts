@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { BD } from '../types/index';
-import { MOCK_BDS } from '../mockData';
+import apiClient from '../api/client';
 
 interface AuthState {
   user: BD | null;
@@ -9,7 +9,6 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  switchUser: (bdId: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -19,27 +18,30 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
 
-      login: async (email: string, _password: string) => {
-        // Mock login — match by email
-        const user = MOCK_BDS.find((bd) => bd.email === email);
-        if (user) {
-          set({ user, token: 'mock-jwt-token', isAuthenticated: true });
+      login: async (email: string, password: string) => {
+        try {
+          const res = await apiClient.post<{ user: BD; token: string }>('/auth/login', { email, password });
+          const { user, token } = res.data;
+          // Normalize backend enum roles to display strings
+          const roleMap: Record<string, string> = {
+            BD_REP: 'BD Rep',
+            SENIOR_BD_REP: 'Senior BD Rep',
+            SALES_MANAGER: 'Manager',
+          };
+          if (user.role && roleMap[user.role]) {
+            (user as any).role = roleMap[user.role];
+          }
+          set({ user, token, isAuthenticated: true });
           return true;
+        } catch {
+          return false;
         }
-        return false;
       },
 
       logout: () => {
         set({ user: null, token: null, isAuthenticated: false });
       },
-
-      switchUser: (bdId: string) => {
-        const user = MOCK_BDS.find((bd) => bd.id === bdId);
-        if (user) set({ user, isAuthenticated: true, token: 'mock-jwt-token' });
-      },
     }),
-    {
-      name: 'crm-auth',
-    }
+    { name: 'crm-auth' }
   )
 );

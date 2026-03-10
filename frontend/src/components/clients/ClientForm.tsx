@@ -1,9 +1,13 @@
 import { Input, Select } from '../ui/index';
-import { INDUSTRIES } from '../../mockData';
 
+const INDUSTRIES = [
+  'Technology & IT', 'Financial Services', 'Healthcare', 'Retail & E-commerce',
+  'Manufacturing', 'Government', 'Education', 'Real Estate', 'Media & Entertainment',
+  'Telecommunications', 'Food & Beverage', 'Logistics & Supply Chain', 'Other',
+];
+const INDUSTRY_OPTS  = INDUSTRIES.map(i => ({ value: i, label: i }));
 const ACCOUNT_TYPES  = ['Enterprise', 'Corporate', 'SMB', 'Government'].map(v => ({ value: v, label: v }));
 const CLIENT_STATUSES = ['Active', 'Prospect', 'Inactive'].map(v => ({ value: v, label: v }));
-const INDUSTRY_OPTS  = INDUSTRIES.map(i => ({ value: i, label: i }));
 
 export interface ClientFormState {
   name: string;

@@ -1,9 +1,9 @@
 export type DecisionRank =
-  | 'Tier 1 Economic Buyer'
-  | 'Tier 2 Decision Maker'
-  | 'Tier 3 Influencer'
-  | 'Tier 4 End User'
-  | 'Tier 5 Gatekeeper';
+  | 'TIER_1_ECONOMIC_BUYER'
+  | 'TIER_2_DECISION_MAKER'
+  | 'TIER_3_INFLUENCER'
+  | 'TIER_4_END_USER'
+  | 'TIER_5_GATEKEEPER';
 
 export interface Contact {
   id: string;

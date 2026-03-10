@@ -1,5 +1,5 @@
 import { Input, Select } from '../ui/index';
-import { MOCK_CLIENTS } from '../../mockData';
+import { useClients } from '../../hooks/useClients';
 import type { DecisionRank } from '../../types';
 
 const DECISION_RANKS: DecisionRank[] = [
@@ -30,7 +30,8 @@ interface ContactFormProps {
 }
 
 export default function ContactForm({ form, update, hideClientPicker }: ContactFormProps) {
-  const clientOptions = MOCK_CLIENTS.map(c => ({ value: c.id, label: c.name }));
+  const { clients } = useClients();
+  const clientOptions = clients.map(c => ({ value: c.id, label: c.name }));
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">

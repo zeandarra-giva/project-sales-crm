@@ -5,7 +5,9 @@ import {
 } from 'recharts';
 import Header from '../components/layout/Header';
 import { Card, Badge } from '../components/ui/index';
-import { MOCK_DEALS, PIPELINE_BY_STAGE } from '../mockData';
+import { useQuery } from '@tanstack/react-query';
+import { reportsApi } from '../api/reports';
+import { dealsApi } from '../api/deals';
 import { formatCurrency, cn } from '../lib/utils';
 
 const RADIAN = Math.PI / 180;
@@ -59,6 +61,36 @@ const TT = {
 
 export default function ReportsPage() {
   const [tab, setTab] = useState('Pipeline');
+
+  const { data: pipelineReport } = useQuery({
+    queryKey: ['report-pipeline'],
+    queryFn: async () => {
+      const res = await reportsApi.pipeline();
+      return (res.data as any);
+    },
+  });
+
+  const { data: lostDealsData } = useQuery({
+    queryKey: ['deals-lost'],
+    queryFn: async () => {
+      const res = await dealsApi.list({ is_closed: 'true' });
+      const body = res.data as any;
+      const all = body.deals ?? body;
+      return all.filter((d: any) => d.stage === 'Closed Lost' || d.stage?.name === 'Closed Lost');
+    },
+  });
+
+  const pipelineByStage = (pipelineReport?.by_stage ?? []).map((row: any) => ({
+    stage: row.stage_name ?? row.stage_id,
+    total_value: Number(row._sum?.revenue ?? 0),
+    count: row._count?.id ?? 0,
+  }));
+
+  const lostDeals = lostDealsData ?? [];
+  const totalPipeline = pipelineByStage.reduce((s: number, r: any) => s + r.total_value, 0);
+  const totalWeighted = pipelineReport?.total_weighted_value ?? 0;
+  const activeDealCount = pipelineByStage.reduce((s: number, r: any) => s + r.count, 0);
+
   return (
     <div className="flex flex-col h-full">
       <Header title="Reports" subtitle="Analytics and performance insights" action={{ label: 'Export', onClick: () => alert('Export coming soon') }} />
@@ -75,7 +107,7 @@ export default function ReportsPage() {
           {tab === 'Pipeline' && (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-3">
-                {[{ label: 'Total Pipeline', value: formatCurrency(8100000, true) }, { label: 'Weighted Value', value: formatCurrency(3312000, true) }, { label: 'Active Deals', value: '5' }].map(m => (
+                {[{ label: 'Total Pipeline', value: formatCurrency(totalPipeline, true) }, { label: 'Weighted Value', value: formatCurrency(totalWeighted, true) }, { label: 'Active Deals', value: String(activeDealCount) }].map(m => (
                   <Card key={m.label} className="p-4 text-center">
                     <div className="text-xs text-[#8b90a8] mb-1">{m.label}</div>
                     <div className="text-2xl font-bold font-display text-[#1a1d2e]">{m.value}</div>
@@ -86,13 +118,13 @@ export default function ReportsPage() {
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Pipeline Value by Stage</div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={PIPELINE_BY_STAGE} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                    <BarChart data={pipelineByStage} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
                       <XAxis dataKey="stage" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₱${(v / 1000000).toFixed(1)}M`} />
                       <Tooltip {...TT} formatter={(val: number) => [formatCurrency(val), 'Value']} />
                       <Bar dataKey="total_value" radius={[4, 4, 0, 0]}>
-                        {PIPELINE_BY_STAGE.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length] + '40'} stroke={COLORS[i % COLORS.length]} strokeWidth={1} />)}
+                        {pipelineByStage.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length] + '40'} stroke={COLORS[i % COLORS.length]} strokeWidth={1} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -120,7 +152,7 @@ export default function ReportsPage() {
               <Card className="p-5">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Lost Deals Analysis</div>
                 <div className="flex flex-col gap-3">
-                  {MOCK_DEALS.filter(d => d.stage === 'Closed Lost').map(deal => (
+                  {lostDeals.map((deal: any) => (
                     <div key={deal.id} className="p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl">
                       <div className="flex justify-between mb-2">
                         <span className="text-xs font-semibold text-[#1a1d2e]">{deal.deal_name}</span>

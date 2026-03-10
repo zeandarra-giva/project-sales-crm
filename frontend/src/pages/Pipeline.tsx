@@ -6,7 +6,7 @@ import PipelineBoard from '../components/deals/PipelineBoard';
 import StagePill from '../components/deals/StagePill';
 import { Card } from '../components/ui/index';
 import { useAuthStore } from '../store/authStore';
-import { MOCK_DEALS } from '../mockData';
+import { useDeals } from '../hooks/useDeals';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types/index';
 
@@ -20,26 +20,26 @@ export default function PipelinePage() {
   const [sourceFilter, setSourceFilter] = useState('All');
   const [showClosed, setShowClosed] = useState(false);
 
-  const allDeals = user?.role === 'Manager'
-    ? MOCK_DEALS
-    : MOCK_DEALS.filter(d => d.bd_id === user?.id);
+  const params: Record<string, string> = {};
+  if (!showClosed) params.is_closed = 'false';
 
-  const filteredDeals = allDeals.filter(deal => {
-    if (!showClosed && deal.is_closed) return false;
+  const { deals: allDeals, isLoading } = useDeals(params);
+
+  const visibleDeals = allDeals.filter(deal => {
     if (stageFilter !== 'All' && deal.stage !== stageFilter) return false;
     if (sourceFilter !== 'All' && deal.lead_source !== sourceFilter) return false;
     return true;
   });
 
-  const activeDeals = filteredDeals.filter(d => !d.is_closed);
-  const totalPipelineValue = activeDeals.reduce((sum, d) => sum + d.revenue, 0);
-  const weightedValue = activeDeals.reduce((sum, d) => sum + d.revenue * (d.probability_pct || 0) / 100, 0);
+  const activeDeals = visibleDeals.filter(d => !d.is_closed);
+  const totalPipelineValue = activeDeals.reduce((sum, d) => sum + Number(d.revenue ?? 0), 0);
+  const weightedValue = activeDeals.reduce((sum, d) => sum + Number(d.revenue ?? 0) * (d.probability_pct || 0) / 100, 0);
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title="Pipeline"
-        subtitle={`${activeDeals.length} active deals · ${formatCurrency(totalPipelineValue, true)} total`}
+        subtitle={isLoading ? 'Loading…' : `${activeDeals.length} active deals · ${formatCurrency(totalPipelineValue, true)} total`}
         action={{ label: 'New Deal', to: '/deals/new' }}
       />
 
@@ -47,7 +47,6 @@ export default function PipelinePage() {
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-[#e2e6f0] bg-white flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Stage filter pills */}
             <div className="flex items-center gap-1 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl p-1">
               {(['All', 'Inquiry', 'Prospecting', 'Discovery', 'Proposal Sent', 'Negotiation'] as const).map(s => (
                 <button
@@ -91,34 +90,26 @@ export default function PipelinePage() {
               <span>Weighted:</span>
               <span className="text-[#4a5068] font-semibold">{formatCurrency(weightedValue, true)}</span>
             </div>
-            {/* View toggle */}
             <div className="flex items-center bg-[#f4f6fb] border border-[#e2e6f0] rounded-lg p-0.5">
-              <button
-                onClick={() => setView('board')}
-                className={cn('p-1.5 rounded-md transition-all', view === 'board' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}
-              >
+              <button onClick={() => setView('board')} className={cn('p-1.5 rounded-md transition-all', view === 'board' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}>
                 <LayoutGrid size={14} />
               </button>
-              <button
-                onClick={() => setView('list')}
-                className={cn('p-1.5 rounded-md transition-all', view === 'list' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}
-              >
+              <button onClick={() => setView('list')} className={cn('p-1.5 rounded-md transition-all', view === 'list' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}>
                 <List size={14} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Content */}
-        {view === 'board' ? (
-          /* Board: horizontal scroll */
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-[#8b90a8]">Loading deals…</div>
+        ) : view === 'board' ? (
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             <div className="h-full min-w-max p-6">
-              <PipelineBoard deals={filteredDeals} showClosed={showClosed} />
+              <PipelineBoard deals={visibleDeals} showClosed={showClosed} />
             </div>
           </div>
         ) : (
-          /* List: vertical scroll, clickable rows */
           <div className="flex-1 overflow-y-auto p-6">
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] text-[#8b90a8] uppercase tracking-wider">
@@ -128,10 +119,10 @@ export default function PipelinePage() {
                 <div className="col-span-2">BD Owner</div>
                 <div className="col-span-2">Due Date</div>
               </div>
-              {filteredDeals.length === 0 ? (
+              {visibleDeals.length === 0 ? (
                 <div className="text-center py-16 text-sm text-[#8b90a8]">No deals match the current filters</div>
               ) : (
-                filteredDeals.map(deal => (
+                visibleDeals.map(deal => (
                   <Card
                     key={deal.id}
                     className="px-4 py-3 hover:border-[#c7d0fb] hover:shadow-md transition-all cursor-pointer"
@@ -143,10 +134,10 @@ export default function PipelinePage() {
                         <div className="text-xs text-[#8b90a8] truncate">{deal.client?.name}</div>
                       </div>
                       <div className="col-span-2">
-                        <StagePill stage={deal.stage} daysInStage={deal.days_in_stage} size="sm" />
+                        <StagePill stage={deal.stage} daysInStage={deal.days_in_stage ?? (deal as any).days_in_current_stage} size="sm" />
                       </div>
                       <div className="col-span-2">
-                        <div className="text-sm font-bold text-[#1a1d2e]">{formatCurrency(deal.revenue, true)}</div>
+                        <div className="text-sm font-bold text-[#1a1d2e]">{formatCurrency(Number(deal.revenue ?? 0), true)}</div>
                         <div className="text-xs text-[#8b90a8]">{deal.probability_pct}% prob</div>
                       </div>
                       <div className="col-span-2 text-xs text-[#4a5068]">

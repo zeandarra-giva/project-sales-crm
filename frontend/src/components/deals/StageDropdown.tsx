@@ -1,6 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { PIPELINE_STAGES } from '../../mockData';
+import type { PipelineStage } from '../../types/index';
+
+const PIPELINE_STAGES = [
+  { id: '1', name: 'Inquiry' as PipelineStage,       probability: 10, color: '#64748b' },
+  { id: '2', name: 'Prospecting' as PipelineStage,   probability: 20, color: '#3b82f6' },
+  { id: '3', name: 'Discovery' as PipelineStage,     probability: 40, color: '#8b5cf6' },
+  { id: '4', name: 'Proposal Sent' as PipelineStage, probability: 60, color: '#f59e0b' },
+  { id: '5', name: 'Negotiation' as PipelineStage,   probability: 75, color: '#f97316' },
+  { id: '6', name: 'Closed Won' as PipelineStage,    probability: 100, color: '#10b981' },
+  { id: '7', name: 'Closed Lost' as PipelineStage,   probability: 0,  color: '#e11d48' },
+];
 import type { PipelineStage } from '../../types';
 import { cn } from '../../lib/utils';
 

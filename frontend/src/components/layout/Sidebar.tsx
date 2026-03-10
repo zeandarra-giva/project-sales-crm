@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { Avatar } from '../ui/index';
-import { MOCK_NOTIFICATIONS } from '../../mockData';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['BD Rep', 'Senior BD Rep', 'Manager'] },
@@ -23,7 +23,7 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
   const navigate = useNavigate();
-  const unreadCount = MOCK_NOTIFICATIONS.filter(n => !n.is_read).length;
+  const { unreadCount } = useNotifications();
 
   const visibleItems = NAV_ITEMS.filter(item =>
     user?.role ? item.roles.includes(user.role) : false

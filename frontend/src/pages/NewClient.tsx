@@ -1,42 +1,55 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { Input, Select, Textarea, Button, Card } from '../components/ui/index';
-import { INDUSTRIES } from '../mockData';
+import { Input, Select, Button, Card } from '../components/ui/index';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { clientsApi } from '../api/clients';
+import apiClient from '../api/client';
 
 const ACCOUNT_TYPES = [
-  { value: 'Enterprise', label: 'Enterprise' },
-  { value: 'Corporate', label: 'Corporate' },
+  { value: 'ENTERPRISE', label: 'Enterprise' },
+  { value: 'CORPORATE', label: 'Corporate' },
   { value: 'SMB', label: 'SMB' },
-  { value: 'Government', label: 'Government' },
+  { value: 'GOVERNMENT', label: 'Government' },
 ];
 
 const CLIENT_STATUSES = [
-  { value: 'Active', label: 'Active' },
-  { value: 'Prospect', label: 'Prospect' },
-  { value: 'Inactive', label: 'Inactive' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'PROSPECT', label: 'Prospect' },
+  { value: 'INACTIVE', label: 'Inactive' },
 ];
 
 export default function NewClientPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: '',
-    brand: '',
-    account_type: 'Enterprise',
-    status: 'Prospect',
-    industry: '',
-    notes: '',
+    name: '', brand: '', account_type: 'ENTERPRISE', status: 'PROSPECT', industry_id: '',
   });
 
-  const industryOptions = INDUSTRIES.map(i => ({ value: i, label: i }));
+  const { data: industriesData } = useQuery({
+    queryKey: ['industries'],
+    queryFn: async () => {
+      const res = await apiClient.get('/industries');
+      const body = res.data as any;
+      return (body.industries ?? body) as { id: string; name: string }[];
+    },
+  });
+  const industryOptions = (industriesData ?? []).map(i => ({ value: i.id, label: i.name }));
 
-  const update = (field: string, value: string) =>
-    setForm(prev => ({ ...prev, [field]: value }));
+  const update = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => clientsApi.create(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); navigate('/clients'); },
+    onError: (err: any) => alert(err?.response?.data?.error ?? 'Failed to create client'),
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Client created successfully! (mock)');
-    navigate('/clients');
+    const payload: any = { ...form };
+    if (!payload.industry_id) delete payload.industry_id;
+    if (!payload.brand) delete payload.brand;
+    createMutation.mutate(payload);
   };
 
   return (
@@ -87,25 +100,12 @@ export default function NewClientPage() {
               </div>
               <Select
                 label="Industry"
-                value={form.industry}
-                onChange={e => update('industry', e.target.value)}
+                value={form.industry_id}
+                onChange={e => update('industry_id', e.target.value)}
                 options={industryOptions}
                 placeholder="Select industry..."
               />
             </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">
-              Notes
-            </div>
-            <Textarea
-              label="Client Notes"
-              value={form.notes}
-              onChange={e => update('notes', e.target.value)}
-              rows={4}
-              placeholder="Background info, referral source, special considerations..."
-            />
           </Card>
 
           <div className="flex gap-3 justify-end">

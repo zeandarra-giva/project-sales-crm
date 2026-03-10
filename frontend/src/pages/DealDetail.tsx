@@ -1,14 +1,26 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, TrendingUp,
+  AlertTriangle, Edit2, Save, X, ChevronRight, TrendingUp, Trash2, Pencil,
 } from 'lucide-react';
-import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
+import { Card, Button, Badge, Textarea, Input, Avatar, Select } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
-import { MOCK_DEALS, PIPELINE_STAGES } from '../mockData';
+import { useDeal, useDealHistory, useDeals } from '../hooks/useDeals';
+import { dealsApi } from '../api/deals';
 import { formatCurrency, formatDate, getStageColor, cn } from '../lib/utils';
 import type { PipelineStage } from '../types/index';
+
+const PIPELINE_STAGES = [
+  { id: '1', name: 'Inquiry' as PipelineStage, probability: 10, color: '#64748b' },
+  { id: '2', name: 'Prospecting' as PipelineStage, probability: 20, color: '#3b82f6' },
+  { id: '3', name: 'Discovery' as PipelineStage, probability: 40, color: '#8b5cf6' },
+  { id: '4', name: 'Proposal Sent' as PipelineStage, probability: 60, color: '#f59e0b' },
+  { id: '5', name: 'Negotiation' as PipelineStage, probability: 75, color: '#f97316' },
+  { id: '6', name: 'Closed Won' as PipelineStage, probability: 100, color: '#10b981' },
+  { id: '7', name: 'Closed Lost' as PipelineStage, probability: 0, color: '#e11d48' },
+];
 
 const STAGE_CHANGE_CONFIRM = {
   'Closed Won': 'Are you sure you want to mark this deal as Closed Won? This action records the contract as signed.',
@@ -17,32 +29,145 @@ const STAGE_CHANGE_CONFIRM = {
 
 export default function DealDetail() {
   const { id } = useParams();
-  const deal = MOCK_DEALS.find(d => d.id === id) || MOCK_DEALS[1];
-  const [currentStage, setCurrentStage] = useState<PipelineStage>(deal.stage);
-  const [remarks, setRemarks] = useState(deal.remarks);
-  const [actionPlan, setActionPlan] = useState(deal.action_plan);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { data: deal, isLoading, refetch } = useDeal(id!);
+  const { data: historyData } = useDealHistory(id!);
+  const { updateStage, updateDeal, isUpdating } = useDeals();
+
+  const [currentStage, setCurrentStage] = useState<PipelineStage>('Inquiry');
+  const [remarks, setRemarks] = useState('');
+  const [actionPlan, setActionPlan] = useState('');
+  const [stageNotes, setStageNotes] = useState('');
+  const [contractLink, setContractLink] = useState('');
+  const [finalProposedValue, setFinalProposedValue] = useState('');
   const [editing, setEditing] = useState(false);
   const [stageConfirm, setStageConfirm] = useState<PipelineStage | null>(null);
-  const [contractLink, setContractLink] = useState(deal.contract_link || '');
+  const [stageError, setStageError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Edit deal fields
+  const [editDraft, setEditDraft] = useState({
+    deal_name: '', monthly_subscription: '', duration: '', due_date: '', start_date: '',
+    lead_source: '', proposal_link: '',
+  });
+  const [showEditDeal, setShowEditDeal] = useState(false);
+
+  useEffect(() => {
+    if (deal) {
+      setCurrentStage(deal.stage);
+      setRemarks(deal.remarks ?? '');
+      setActionPlan(deal.action_plan ?? '');
+      setContractLink(deal.contract_link ?? '');
+    }
+  }, [deal]);
 
   const handleStageClick = (stage: PipelineStage) => {
     if (stage === currentStage) return;
-    if (stage === 'Closed Won' || stage === 'Closed Lost') {
-      setStageConfirm(stage);
-    } else {
-      setCurrentStage(stage);
+    setStageConfirm(stage);
+    setStageError('');
+  };
+
+  const confirmStageChange = async () => {
+    if (!stageConfirm) return;
+    if (stageConfirm === 'Closed Lost' && !remarks.trim()) {
+      setStageError('Remarks are required before closing as Lost.');
+      return;
+    }
+    if (stageConfirm === 'Closed Won' && !contractLink.trim()) {
+      setStageError('Contract link is required to close as Won.');
+      return;
+    }
+    try {
+      await updateStage({
+        id: id!,
+        stage: stageConfirm,
+        notes: stageNotes || undefined,
+        remarks: stageConfirm === 'Closed Lost' ? remarks : undefined,
+        contractLink: stageConfirm === 'Closed Won' ? contractLink : undefined,
+        finalProposedValue: finalProposedValue ? parseFloat(finalProposedValue) : undefined,
+      });
+      setCurrentStage(stageConfirm);
+      setStageConfirm(null);
+      setStageNotes('');
+      refetch();
+      // Trigger real-time notification refresh
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['notifications'] }), 800);
+    } catch (err: any) {
+      setStageError(err?.response?.data?.error ?? 'Failed to update stage');
     }
   };
 
-  const confirmStageChange = () => {
-    if (!stageConfirm) return;
-    if (stageConfirm === 'Closed Lost' && !remarks.trim()) {
-      alert('Remarks are required before closing as Lost.');
-      return;
-    }
-    setCurrentStage(stageConfirm);
-    setStageConfirm(null);
+  const openEditDeal = () => {
+    setEditDraft({
+      deal_name: deal!.deal_name,
+      monthly_subscription: String(deal!.monthly_subscription),
+      duration: String(deal!.duration),
+      due_date: deal!.due_date ? new Date(deal!.due_date).toISOString().split('T')[0] : '',
+      start_date: deal!.start_date ? new Date(deal!.start_date).toISOString().split('T')[0] : '',
+      lead_source: deal!.lead_source ?? 'OUTBOUND',
+      proposal_link: deal!.proposal_link ?? '',
+    });
+    setShowEditDeal(true);
   };
+
+  const saveEditDeal = async () => {
+    try {
+      const monthly = Number(editDraft.monthly_subscription);
+      const dur = Number(editDraft.duration);
+      await updateDeal({
+        id: id!, data: {
+          deal_name: editDraft.deal_name,
+          monthly_subscription: monthly,
+          duration: dur,
+          revenue: monthly * dur,
+          due_date: editDraft.due_date || undefined,
+          start_date: editDraft.start_date || undefined,
+          lead_source: editDraft.lead_source as any,
+          proposal_link: editDraft.proposal_link || undefined,
+        }
+      });
+      setShowEditDeal(false);
+      refetch();
+    } catch { alert('Failed to update deal'); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await dealsApi.delete(id!);
+      navigate('/pipeline');
+    } catch {
+      alert('Delete failed — DELETE method may not be enabled yet in Motia. You can hard-delete via the database.');
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      await updateDeal({ id: id!, data: { remarks, action_plan: actionPlan, contract_link: contractLink } });
+      setEditing(false);
+      refetch();
+    } catch {
+      alert('Failed to save changes');
+    }
+  };
+
+  if (isLoading || !deal) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-3 h-16 px-6 border-b border-[#e2e6f0] bg-[#f4f6fb] flex-shrink-0">
+          <Link to="/pipeline" className="text-[#8b90a8] hover:text-[#1a1d2e] transition-colors"><ArrowLeft size={16} /></Link>
+          <h1 className="font-bold text-base font-display text-[#1a1d2e]">{isLoading ? 'Loading…' : 'Deal not found'}</h1>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-sm text-[#8b90a8]">
+          {isLoading ? 'Loading deal…' : <Button onClick={() => navigate('/pipeline')}>Back to Pipeline</Button>}
+        </div>
+      </div>
+    );
+  }
 
   const stageIndex = PIPELINE_STAGES.findIndex(s => s.name === currentStage);
   const isClosed = ['Closed Won', 'Closed Lost'].includes(currentStage);
@@ -64,24 +189,35 @@ export default function DealDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={deal.lead_source === 'Inbound' ? 'success' : deal.lead_source === 'Outbound' ? 'info' : 'warning'} size="sm">
+          <Badge variant={deal.lead_source === 'INBOUND' ? 'success' : deal.lead_source === 'OUTBOUND' ? 'info' : 'warning'} size="sm">
             {deal.lead_source}
           </Badge>
           {editing ? (
             <>
-              <Button size="sm" onClick={() => setEditing(false)}>
-                <Save size={14} /> Save
+              <Button size="sm" onClick={handleSave} disabled={isUpdating}>
+                <Save size={14} /> {isUpdating ? 'Saving…' : 'Save'}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 <X size={14} />
               </Button>
             </>
           ) : (
-            !isClosed && (
-              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-                <Edit2 size={14} /> Edit
+            <>
+              {!isClosed && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={openEditDeal}>
+                    <Pencil size={14} /> Edit Deal
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+                    <Edit2 size={14} /> Notes
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(true)}
+                className="text-[#e11d48] hover:bg-[#fff1f2]">
+                <Trash2 size={14} />
               </Button>
-            )
+            </>
           )}
         </div>
       </div>
@@ -148,13 +284,29 @@ export default function DealDetail() {
                   <p className="text-sm text-[#4a5068] mb-4">
                     {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
                   </p>
+                  {stageError && (
+                    <div className="mb-3 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">{stageError}</div>
+                  )}
                   {stageConfirm === 'Closed Lost' && (
-                    <div className="mb-4 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">
-                      Deal remarks must be filled before closing as Lost.
+                    <div className="mb-3 flex flex-col gap-3">
+                      <Textarea
+                        label="Remarks (required — explain why deal was lost)"
+                        value={remarks}
+                        onChange={e => setRemarks(e.target.value)}
+                        rows={3}
+                        placeholder="Budget constraints, competitor won, timing..."
+                      />
+                      <Input
+                        label="Final Proposed Value (optional)"
+                        type="number"
+                        value={finalProposedValue}
+                        onChange={e => setFinalProposedValue(e.target.value)}
+                        placeholder="85000"
+                      />
                     </div>
                   )}
                   {stageConfirm === 'Closed Won' && (
-                    <div className="mb-4">
+                    <div className="mb-3">
                       <Input
                         label="Contract Link (required)"
                         value={contractLink}
@@ -163,14 +315,24 @@ export default function DealDetail() {
                       />
                     </div>
                   )}
+                  <div className="mb-4">
+                    <Textarea
+                      label="Stage transition notes (optional)"
+                      value={stageNotes}
+                      onChange={e => setStageNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Notes about this stage change..."
+                    />
+                  </div>
                   <div className="flex gap-2 justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => setStageConfirm(null)}>Cancel</Button>
+                    <Button variant="secondary" size="sm" onClick={() => { setStageConfirm(null); setStageError(''); }}>Cancel</Button>
                     <Button
                       variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'}
                       size="sm"
                       onClick={confirmStageChange}
+                      disabled={isUpdating}
                     >
-                      Confirm — {stageConfirm}
+                      {isUpdating ? 'Updating…' : `Confirm — ${stageConfirm}`}
                     </Button>
                   </div>
                 </div>
@@ -234,29 +396,32 @@ export default function DealDetail() {
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Stage History</div>
               <div className="flex flex-col gap-0">
-                {[
-                  { stage: 'Inquiry', entered: '2025-11-01', exited: '2025-11-03', days: 2 },
-                  { stage: 'Prospecting', entered: '2025-11-03', exited: '2025-11-10', days: 7 },
-                  { stage: 'Discovery', entered: '2025-11-10', exited: '2025-11-25', days: 15 },
-                  { stage: 'Proposal Sent', entered: '2025-11-25', exited: '2026-01-15', days: 51 },
-                  { stage: deal.stage, entered: '2026-01-15', exited: undefined, days: deal.days_in_stage },
-                ].map((h, i) => (
-                  <div key={i} className="flex gap-4 pb-4 last:pb-0">
-                    <div className="flex flex-col items-center">
-                      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: getStageColor(h.stage as PipelineStage) }} />
-                      {i < 4 && <div className="w-px flex-1 bg-[#f4f6fb] mt-1" />}
-                    </div>
-                    <div className="flex-1 min-w-0 pb-4 last:pb-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[#1a1d2e]">{h.stage}</span>
-                        <span className="text-xs text-[#8b90a8]">{h.days}d</span>
+                {((historyData as any[]) ?? []).map((h: any, i: number) => {
+                  const stageName = h.stage?.name ?? h.stage;
+                  const daysVal = h.days_in_stage ?? h.days ?? '—';
+                  const isLast = i === ((historyData as any[])?.length ?? 0) - 1;
+                  return (
+                    <div key={h.id ?? i} className="flex gap-4 pb-4 last:pb-0">
+                      <div className="flex flex-col items-center">
+                        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: getStageColor(stageName as PipelineStage) }} />
+                        {!isLast && <div className="w-px flex-1 bg-[#f4f6fb] mt-1" />}
                       </div>
-                      <span className="text-[10px] text-[#8b90a8]">
-                        {formatDate(h.entered)}{h.exited ? ` → ${formatDate(h.exited)}` : ' · current'}
-                      </span>
+                      <div className="flex-1 min-w-0 pb-4 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-[#1a1d2e]">{stageName}</span>
+                          <span className="text-xs text-[#8b90a8]">{daysVal}d</span>
+                        </div>
+                        <span className="text-[10px] text-[#8b90a8]">
+                          {h.entered_at ? formatDate(h.entered_at) : ''}
+                          {h.exited_at ? ` → ${formatDate(h.exited_at)}` : ' · current'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                {(!historyData || (historyData as any[]).length === 0) && (
+                  <p className="text-xs text-[#8b90a8] text-center py-4">No history available</p>
+                )}
               </div>
             </Card>
           </div>
@@ -360,6 +525,76 @@ export default function DealDetail() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Deal Modal ─────────────────────────────────────── */}
+      {showEditDeal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-[#e2e6f0] rounded-2xl p-6 max-w-lg w-full shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold font-display text-[#1a1d2e]">Edit Deal</h3>
+              <button onClick={() => setShowEditDeal(false)} className="text-[#8b90a8] hover:text-[#1a1d2e]"><X size={16} /></button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Input label="Deal Name" value={editDraft.deal_name}
+                onChange={e => setEditDraft(p => ({ ...p, deal_name: e.target.value }))} required />
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Monthly Subscription (₱)" type="number" value={editDraft.monthly_subscription}
+                  onChange={e => setEditDraft(p => ({ ...p, monthly_subscription: e.target.value }))} required />
+                <Input label="Duration (months)" type="number" value={editDraft.duration}
+                  onChange={e => setEditDraft(p => ({ ...p, duration: e.target.value }))} required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Expected Close Date" type="date" value={editDraft.due_date}
+                  onChange={e => setEditDraft(p => ({ ...p, due_date: e.target.value }))} />
+                <Input label="Start Date" type="date" value={editDraft.start_date}
+                  onChange={e => setEditDraft(p => ({ ...p, start_date: e.target.value }))} />
+                <Select label="Lead Source" value={editDraft.lead_source}
+                  onChange={e => setEditDraft(p => ({ ...p, lead_source: e.target.value }))}
+                  options={[
+                    { value: 'INBOUND', label: 'Inbound' },
+                    { value: 'OUTBOUND', label: 'Outbound' },
+                    { value: 'REFERRAL', label: 'Referral' },
+                  ]} />
+              </div>
+              <Input label="Proposal Link (optional)" value={editDraft.proposal_link}
+                onChange={e => setEditDraft(p => ({ ...p, proposal_link: e.target.value }))}
+                placeholder="https://..." />
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <Button variant="secondary" size="sm" onClick={() => setShowEditDeal(false)}>Cancel</Button>
+              <Button size="sm" onClick={saveEditDeal} disabled={isUpdating}>
+                {isUpdating ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirm Modal ────────────────────────────────── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-[#e2e6f0] rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-[#fff1f2] flex items-center justify-center flex-shrink-0">
+                <Trash2 size={16} className="text-[#e11d48]" />
+              </div>
+              <div>
+                <h3 className="font-bold font-display text-[#1a1d2e]">Delete Deal</h3>
+                <p className="text-xs text-[#8b90a8]">This cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#4a5068] mb-5">
+              Are you sure you want to delete <span className="font-semibold">"{deal.deal_name}"</span>? All stage history and audit logs will also be removed.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+              <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete Deal'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

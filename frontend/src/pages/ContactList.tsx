@@ -3,61 +3,82 @@ import { Search, Mail, Phone, Star, Pencil, Trash2 } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { Card, Badge, Avatar, Button, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
-import { MOCK_CLIENTS, MOCK_CONTACTS } from '../mockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { contactsApi } from '../api/contacts';
+import { useClients } from '../hooks/useClients';
 import { cn } from '../lib/utils';
 import type { Contact, DecisionRank } from '../types/index';
 
-const RANK_CONFIG: Record<DecisionRank, { color: string }> = {
-  'Tier 1 Economic Buyer': { color: '#d97706' },
-  'Tier 2 Decision Maker': { color: '#3d5af1' },
-  'Tier 3 Influencer':     { color: '#7c3aed' },
-  'Tier 4 End User':       { color: '#059669' },
-  'Tier 5 Gatekeeper':     { color: '#e11d48' },
+const RANK_CONFIG: Record<string, { color: string }> = {
+  'TIER_1_ECONOMIC_BUYER': { color: '#d97706' },
+  'TIER_2_DECISION_MAKER': { color: '#3d5af1' },
+  'TIER_3_INFLUENCER': { color: '#7c3aed' },
+  'TIER_4_END_USER': { color: '#059669' },
+  'TIER_5_GATEKEEPER': { color: '#e11d48' },
 };
 
 const DECISION_RANKS: DecisionRank[] = [
-  'Tier 1 Economic Buyer', 'Tier 2 Decision Maker', 'Tier 3 Influencer',
-  'Tier 4 End User', 'Tier 5 Gatekeeper',
+  'TIER_1_ECONOMIC_BUYER', 'TIER_2_DECISION_MAKER', 'TIER_3_INFLUENCER',
+  'TIER_4_END_USER', 'TIER_5_GATEKEEPER',
 ];
+
+const RANK_LABELS: Record<string, string> = {
+  'TIER_1_ECONOMIC_BUYER': 'Tier 1 – Economic Buyer',
+  'TIER_2_DECISION_MAKER': 'Tier 2 – Decision Maker',
+  'TIER_3_INFLUENCER': 'Tier 3 – Influencer',
+  'TIER_4_END_USER': 'Tier 4 – End User',
+  'TIER_5_GATEKEEPER': 'Tier 5 – Gatekeeper',
+};
 
 const RANKS: (DecisionRank | 'All')[] = ['All', ...DECISION_RANKS];
 
 export default function ContactList() {
-  const [contacts, setContacts] = useState<Contact[]>(MOCK_CONTACTS);
+  const qc = useQueryClient();
+  const { clients } = useClients();
+  const { data: contactsData, isLoading } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: async () => {
+      const res = await contactsApi.list();
+      const body = res.data as any;
+      return body.contacts ?? body;
+    },
+  });
+  const contacts = contactsData ?? [];
   const [search, setSearch] = useState('');
   const [rankFilter, setRankFilter] = useState<DecisionRank | 'All'>('All');
 
-  // Edit state
   const [editing, setEditing] = useState<Contact | null>(null);
-  const [draft, setDraft]     = useState<Partial<Contact>>({});
-
-  // Delete state
+  const [draft, setDraft] = useState<Partial<Contact>>({});
   const [deleting, setDeleting] = useState<Contact | null>(null);
 
-  const filtered = contacts.filter(c => {
+  const filtered = contacts.filter((c: Contact) => {
     const name = `${c.first_name} ${c.last_name}`.toLowerCase();
     if (search && !name.includes(search.toLowerCase()) && !c.email.includes(search.toLowerCase())) return false;
     if (rankFilter !== 'All' && c.decision_rank !== rankFilter) return false;
     return true;
   });
 
-  const openEdit = (contact: Contact) => {
-    setEditing(contact);
-    setDraft({ ...contact });
-  };
+  const openEdit = (contact: Contact) => { setEditing(contact); setDraft({ ...contact }); };
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Contact> }) => contactsApi.update(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contacts'] }); setEditing(null); },
+    onError: () => alert('Failed to save contact'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => contactsApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contacts'] }); setDeleting(null); },
+    onError: () => alert('Failed to delete contact'),
+  });
 
   const saveEdit = () => {
     if (!editing) return;
-    setContacts(prev => prev.map(c => c.id === editing.id ? { ...c, ...draft } : c));
-    setEditing(null);
+    // Strip nested relations — only send scalar/enum fields
+    const { client, id, ...rest } = draft as any;
+    updateMutation.mutate({ id: editing.id, data: rest });
   };
-
-  const confirmDelete = () => {
-    if (!deleting) return;
-    setContacts(prev => prev.filter(c => c.id !== deleting.id));
-    setDeleting(null);
-  };
-
+  const confirmDelete = () => { if (deleting) deleteMutation.mutate(deleting.id); };
   const ud = (field: keyof Contact, val: string | boolean) => setDraft(p => ({ ...p, [field]: val }));
 
   return (
@@ -81,7 +102,7 @@ export default function ContactList() {
             onChange={e => setRankFilter(e.target.value as any)}
             className="h-9 bg-white border border-[#e2e6f0] rounded-xl px-3 text-xs text-[#4a5068] focus:outline-none cursor-pointer"
           >
-            {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+            {RANKS.map(r => <option key={r} value={r}>{r === 'All' ? 'All' : RANK_LABELS[r] ?? r}</option>)}
           </select>
           {(search || rankFilter !== 'All') && (
             <button
@@ -96,7 +117,7 @@ export default function ContactList() {
         {/* Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map(contact => {
-            const client   = MOCK_CLIENTS.find(c => c.id === contact.client_id);
+            const client = clients.find((c: any) => c.id === contact.client_id);
             const rankConf = RANK_CONFIG[contact.decision_rank];
             return (
               <Card key={contact.id} className="p-4 hover:border-[#c7d0fb] transition-all group relative">
@@ -145,7 +166,7 @@ export default function ContactList() {
 
                 <div className="flex items-center justify-between gap-2 border-t border-[#f0f2f8] pt-3">
                   <Badge size="sm" style={{ background: `${rankConf.color}15`, color: rankConf.color, borderColor: `${rankConf.color}30` }}>
-                    {contact.decision_rank.split(' ').slice(0, 2).join(' ')}
+                    {RANK_LABELS[contact.decision_rank]?.split('–')[0].trim() ?? contact.decision_rank}
                   </Badge>
                   {client && <span className="text-[10px] text-[#8b90a8] truncate">{client.name}</span>}
                 </div>
@@ -164,16 +185,16 @@ export default function ContactList() {
         <EditModal title="Edit Contact" onClose={() => setEditing(null)} onSave={saveEdit}>
           <div className="grid grid-cols-2 gap-3">
             <Input label="First Name" value={draft.first_name ?? ''} onChange={e => ud('first_name', e.target.value)} required />
-            <Input label="Last Name"  value={draft.last_name  ?? ''} onChange={e => ud('last_name',  e.target.value)} required />
+            <Input label="Last Name" value={draft.last_name ?? ''} onChange={e => ud('last_name', e.target.value)} required />
           </div>
           <Input label="Email" type="email" value={draft.email ?? ''} onChange={e => ud('email', e.target.value)} required />
-          <Input label="Phone" type="tel"   value={draft.number ?? ''} onChange={e => ud('number', e.target.value)} />
+          <Input label="Phone" type="tel" value={draft.number ?? ''} onChange={e => ud('number', e.target.value)} />
           <Input label="Designation" value={draft.designation ?? ''} onChange={e => ud('designation', e.target.value)} />
           <Select
             label="Decision Rank"
             value={draft.decision_rank ?? ''}
             onChange={e => ud('decision_rank', e.target.value)}
-            options={DECISION_RANKS.map(r => ({ value: r, label: r }))}
+            options={DECISION_RANKS.map(r => ({ value: r, label: RANK_LABELS[r] ?? r }))}
           />
           <div>
             <label className="text-xs font-medium text-[#4a5068] uppercase tracking-wider block mb-1.5">Primary Contact</label>
@@ -201,7 +222,7 @@ export default function ContactList() {
             </p>
             <div className="flex gap-3 justify-end">
               <Button variant="secondary" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
-              <Button variant="danger"    size="sm" onClick={confirmDelete}>Delete</Button>
+              <Button variant="danger" size="sm" onClick={confirmDelete}>Delete</Button>
             </div>
           </Card>
         </div>

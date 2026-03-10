@@ -108,7 +108,9 @@ export function Select({ label, error, options, placeholder, className, ...props
       >
         {placeholder && <option value="">{placeholder}</option>}
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option key={opt.value} value={opt.value} disabled={(opt as any).disabled}>
+            {opt.label}
+          </option>
         ))}
       </select>
       {error && <span className="text-xs text-[#e11d48]">{error}</span>}

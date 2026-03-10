@@ -4,26 +4,52 @@ import { ArrowLeft, Mail, Phone, Building2, Plus, ExternalLink, Pencil, Trash2 }
 import { Card, Badge, Avatar, Button, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
 import StagePill from '../components/deals/StagePill';
-import { MOCK_CLIENTS, MOCK_DEALS, MOCK_CONTACTS, INDUSTRIES } from '../mockData';
+import { useClient } from '../hooks/useClients';
+import { useDeals } from '../hooks/useDeals';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { contactsApi } from '../api/contacts';
+import { clientsApi } from '../api/clients';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { AccountType, Client, Contact, DecisionRank } from '../types/index';
 
 const ACCOUNT_COLORS: Record<AccountType, string> = {
   Enterprise: '#3d5af1', Corporate: '#059669', SMB: '#d97706', Government: '#7c3aed',
 };
-const ACCOUNT_TYPES  = ['Enterprise', 'Corporate', 'SMB', 'Government'];
+const ACCOUNT_TYPES = ['Enterprise', 'Corporate', 'SMB', 'Government'];
 const CLIENT_STATUSES = ['Active', 'Inactive', 'Prospect'];
 const DECISION_RANKS: DecisionRank[] = [
-  'Tier 1 Economic Buyer', 'Tier 2 Decision Maker', 'Tier 3 Influencer', 'Tier 4 End User', 'Tier 5 Gatekeeper',
+  'TIER_1_ECONOMIC_BUYER', 'TIER_2_DECISION_MAKER', 'TIER_3_INFLUENCER', 'TIER_4_END_USER', 'TIER_5_GATEKEEPER',
+];
+const RANK_LABELS: Record<string, string> = {
+  'TIER_1_ECONOMIC_BUYER': 'Tier 1 – Economic Buyer',
+  'TIER_2_DECISION_MAKER': 'Tier 2 – Decision Maker',
+  'TIER_3_INFLUENCER': 'Tier 3 – Influencer',
+  'TIER_4_END_USER': 'Tier 4 – End User',
+  'TIER_5_GATEKEEPER': 'Tier 5 – Gatekeeper',
+};
+const INDUSTRIES = [
+  'Technology & IT', 'Financial Services', 'Healthcare', 'Retail & E-commerce',
+  'Manufacturing', 'Government', 'Education', 'Real Estate', 'Media & Entertainment',
+  'Telecommunications', 'Food & Beverage', 'Logistics & Supply Chain', 'Other',
 ];
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
 
-  // Local mutable state
-  const [client, setClient] = useState<Client | undefined>(() => MOCK_CLIENTS.find(c => c.id === id));
-  const [contacts, setContacts] = useState<Contact[]>(() => MOCK_CONTACTS.filter(c => c.client_id === id));
+  const { data: client, isLoading: clientLoading, refetch: refetchClient } = useClient(id!);
+  const { data: contactsData, refetch: refetchContacts } = useQuery({
+    queryKey: ['contacts', id],
+    queryFn: async () => {
+      const res = await contactsApi.list({ client_id: id! });
+      const body = res.data as any;
+      return (body.contacts ?? body) as Contact[];
+    },
+    enabled: !!id,
+  });
+  const contacts = contactsData ?? [];
+  const { deals: clientDeals } = useDeals({ client_id: id });
 
   // Edit client modal
   const [editClient, setEditClient] = useState(false);
@@ -36,6 +62,14 @@ export default function ClientDetailPage() {
   // Delete contact confirm
   const [deletingContact, setDeletingContact] = useState<Contact | null>(null);
 
+  if (clientLoading) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-4">
+        <div className="text-sm text-[#8b90a8]">Loading client…</div>
+      </div>
+    );
+  }
+
   if (!client) {
     return (
       <div className="flex flex-col h-full items-center justify-center gap-4">
@@ -45,10 +79,10 @@ export default function ClientDetailPage() {
     );
   }
 
-  const clientDeals   = MOCK_DEALS.filter(d => d.client_id === id);
-  const closedRevenue = clientDeals.filter(d => d.stage === 'Closed Won').reduce((s, d) => s + d.revenue, 0);
-  const openPipeline  = clientDeals.filter(d => !d.is_closed).reduce((s, d) => s + d.revenue, 0);
-  const color         = ACCOUNT_COLORS[client.account_type];
+  const getStageName = (s: any) => typeof s === 'object' ? s?.name ?? '' : s ?? '';
+  const closedRevenue = clientDeals.filter(d => getStageName(d.stage) === 'Closed Won').reduce((s, d) => s + Number(d.revenue ?? 0), 0);
+  const openPipeline = clientDeals.filter(d => !d.is_closed).reduce((s, d) => s + Number(d.revenue ?? 0), 0);
+  const color = ACCOUNT_COLORS[client.account_type] ?? '#4f6ef7';
 
   // ── Client edit handlers ──────────────────────────────────────────
   const openEditClient = () => {
@@ -62,9 +96,13 @@ export default function ClientDetailPage() {
     setEditClient(true);
   };
 
-  const saveClient = () => {
-    setClient(prev => prev ? { ...prev, ...clientDraft } : prev);
-    setEditClient(false);
+  const saveClient = async () => {
+    try {
+      const { industry, contacts, deals, referrals, referredBy, contact, id: _id, ...rest } = clientDraft as any;
+      await clientsApi.update(id!, rest);
+      qc.invalidateQueries({ queryKey: ['client', id] });
+      setEditClient(false);
+    } catch { alert('Failed to save client'); }
   };
 
   // ── Contact edit handlers ─────────────────────────────────────────
@@ -73,16 +111,23 @@ export default function ClientDetailPage() {
     setContactDraft({ ...contact });
   };
 
-  const saveContact = () => {
+  const saveContact = async () => {
     if (!editingContact) return;
-    setContacts(prev => prev.map(c => c.id === editingContact.id ? { ...c, ...contactDraft } : c));
-    setEditingContact(null);
+    try {
+      const { client, id: _id, primaryForClients, dealContacts, ...rest } = contactDraft as any;
+      await contactsApi.update(editingContact.id, rest);
+      refetchContacts();
+      setEditingContact(null);
+    } catch { alert('Failed to save contact'); }
   };
 
-  const deleteContact = () => {
+  const deleteContact = async () => {
     if (!deletingContact) return;
-    setContacts(prev => prev.filter(c => c.id !== deletingContact.id));
-    setDeletingContact(null);
+    try {
+      await contactsApi.delete(deletingContact.id);
+      refetchContacts();
+      setDeletingContact(null);
+    } catch { alert('Failed to delete contact'); }
   };
 
   const uc = (field: keyof Client, val: string) => setClientDraft(p => ({ ...p, [field]: val }));
@@ -117,9 +162,9 @@ export default function ClientDetailPage() {
           <div className="grid grid-cols-4 gap-3">
             {[
               { label: 'Closed Revenue', value: formatCurrency(closedRevenue, true), color: '#059669' },
-              { label: 'Open Pipeline',  value: formatCurrency(openPipeline, true),  color: '#3d5af1' },
-              { label: 'Total Deals',    value: String(clientDeals.length),           color: '#1a1d2e' },
-              { label: 'Contacts',       value: String(contacts.length),              color: '#7c3aed' },
+              { label: 'Open Pipeline', value: formatCurrency(openPipeline, true), color: '#3d5af1' },
+              { label: 'Total Deals', value: String(clientDeals.length), color: '#1a1d2e' },
+              { label: 'Contacts', value: String(contacts.length), color: '#7c3aed' },
             ].map(m => (
               <Card key={m.label} className="p-4 text-center">
                 <div className="text-xs text-[#8b90a8] mb-1">{m.label}</div>
@@ -193,7 +238,7 @@ export default function ClientDetailPage() {
                           )}
                         </div>
                       </div>
-                      <Badge variant="neutral" size="sm">{contact.decision_rank.replace('Tier ', 'T')}</Badge>
+                      <Badge variant="neutral" size="sm">{(RANK_LABELS[contact.decision_rank] ?? contact.decision_rank).split('–')[0].trim()}</Badge>
                       {/* Action buttons — visible on hover */}
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
                         <button
@@ -283,7 +328,7 @@ export default function ClientDetailPage() {
         <EditModal title="Edit Contact" onClose={() => setEditingContact(null)} onSave={saveContact}>
           <div className="grid grid-cols-2 gap-3">
             <Input label="First Name" value={contactDraft.first_name ?? ''} onChange={e => ucon('first_name', e.target.value)} required />
-            <Input label="Last Name"  value={contactDraft.last_name  ?? ''} onChange={e => ucon('last_name', e.target.value)}  required />
+            <Input label="Last Name" value={contactDraft.last_name ?? ''} onChange={e => ucon('last_name', e.target.value)} required />
           </div>
           <Input label="Email" type="email" value={contactDraft.email ?? ''} onChange={e => ucon('email', e.target.value)} required />
           <Input label="Phone" type="tel" value={contactDraft.number ?? ''} onChange={e => ucon('number', e.target.value)} />
@@ -292,7 +337,7 @@ export default function ClientDetailPage() {
             label="Decision Rank"
             value={contactDraft.decision_rank ?? editingContact.decision_rank}
             onChange={e => ucon('decision_rank', e.target.value)}
-            options={DECISION_RANKS.map(r => ({ value: r, label: r }))}
+            options={DECISION_RANKS.map(r => ({ value: r, label: RANK_LABELS[r] ?? r }))}
           />
           <div>
             <label className="text-xs font-medium text-[#4a5068] uppercase tracking-wider block mb-1.5">Primary Contact</label>
