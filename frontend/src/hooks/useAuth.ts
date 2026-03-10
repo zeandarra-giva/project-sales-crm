@@ -4,9 +4,8 @@ export function useAuth() {
   const { user, isAuthenticated, login, logout } = useAuthStore();
 
   const isManager = user?.role === 'SALES_MANAGER';
-  const isSeniorBD = false; // Senior BD Rep not in UserRole type
   const isBD = user?.role === 'BD_REP';
   const canViewAll = isManager;
 
-  return { user, isAuthenticated, login, logout, isManager, isSeniorBD, isBD, canViewAll };
+  return { user, isAuthenticated, login, logout, isManager, isBD, canViewAll };
 }
