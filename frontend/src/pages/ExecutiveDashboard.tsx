@@ -85,7 +85,7 @@ export default function ExecutiveDashboard() {
                   </div>
                   <div className="flex items-center justify-between">
                     <StagePill stage={deal.stage} size="sm" />
-                    <span className="text-xs text-[#8b90a8]">{deal.bd?.first_name}</span>
+                    <span className="text-xs text-[#8b90a8]">{deal.bd?.firstName}</span>
                   </div>
                 </div>
               ))}
@@ -122,9 +122,9 @@ export default function ExecutiveDashboard() {
                     </span>
                   </div>
                   <div className="col-span-3 flex items-center gap-2">
-                    <Avatar name={`${entry.bd.first_name} ${entry.bd.last_name}`} size="sm" />
+                    <Avatar name={`${entry.bd.firstName} ${entry.bd.lastName}`} size="sm" />
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[#1a1d2e] truncate">{entry.bd.first_name}</div>
+                      <div className="text-xs font-semibold text-[#1a1d2e] truncate">{entry.bd.firstName}</div>
                       <div className="text-[10px] text-[#8b90a8] truncate">{entry.bd.role}</div>
                     </div>
                   </div>

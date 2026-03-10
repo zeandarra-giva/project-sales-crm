@@ -17,7 +17,7 @@ export function useDashboard(bd?: BD | null) {
     const attainmentPct = quota > 0 ? Math.round((actual / quota) * 100) : 0;
     const variance = actual - quota;
 
-    const bdPerformance = MOCK_BDS.filter(b => b.role !== 'Manager').map(b => {
+    const bdPerformance = MOCK_BDS.filter(b => b.role !== 'SALES_MANAGER').map(b => {
       const bDeals = MOCK_DEALS.filter(d => d.bd_id === b.id);
       const bClosed = bDeals.filter(d => d.stage === 'Closed Won');
       const bOpen = bDeals.filter(d => !d.is_closed);

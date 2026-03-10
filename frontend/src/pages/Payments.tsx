@@ -30,24 +30,24 @@ const STATUS_OPTIONS = [{ value: 'Received', label: 'Received' }, { value: 'Pend
 
 export default function PaymentsPage() {
   const { user } = useAuthStore();
-  const [payments, setPayments]       = useState<Payment[]>(INITIAL_PAYMENTS);
-  const [bdFilter, setBdFilter]       = useState(user?.role === 'Manager' ? 'All' : (user?.id ?? 'All'));
+  const [payments, setPayments] = useState<Payment[]>(INITIAL_PAYMENTS);
+  const [bdFilter, setBdFilter] = useState(user?.role === 'SALES_MANAGER' ? 'All' : (user?.id ?? 'All'));
   const [statusFilter, setStatusFilter] = useState('All');
 
   // Add modal
-  const [showAdd, setShowAdd]         = useState(false);
-  const [addDraft, setAddDraft]       = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDraft, setAddDraft] = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
 
   // Edit modal
-  const [editing, setEditing]         = useState<Payment | null>(null);
-  const [editDraft, setEditDraft]     = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const [editDraft, setEditDraft] = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
 
   // Delete confirm
-  const [deleting, setDeleting]       = useState<Payment | null>(null);
+  const [deleting, setDeleting] = useState<Payment | null>(null);
 
-  const isManager   = user?.role === 'Manager';
+  const isManager = user?.role === 'SALES_MANAGER';
   const closedDeals = MOCK_DEALS.filter(d => d.stage === 'Closed Won');
-  const bdReps      = MOCK_BDS.filter(b => b.role !== 'Manager');
+  const bdReps = MOCK_BDS.filter(b => b.role !== 'SALES_MANAGER');
 
   const filtered = payments.filter(p => {
     if (bdFilter !== 'All' && p.bd_id !== bdFilter) return false;
@@ -56,7 +56,7 @@ export default function PaymentsPage() {
   });
 
   const totalReceived = filtered.filter(p => p.status === 'Received').reduce((s, p) => s + p.amount, 0);
-  const totalPending  = filtered.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0);
+  const totalPending = filtered.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0);
 
   // ── Add ─────────────────────────────────────────────────────────
   const handleAdd = () => {
@@ -64,10 +64,10 @@ export default function PaymentsPage() {
     const p: Payment = {
       id: `pay-${Date.now()}`,
       deal_id: addDraft.deal_id,
-      bd_id:   addDraft.bd_id || user?.id || '',
-      amount:  parseFloat(addDraft.amount),
-      date:    addDraft.date,
-      status:  addDraft.status,
+      bd_id: addDraft.bd_id || user?.id || '',
+      amount: parseFloat(addDraft.amount),
+      date: addDraft.date,
+      status: addDraft.status,
     };
     setPayments(prev => [p, ...prev]);
     setShowAdd(false);
@@ -98,7 +98,7 @@ export default function PaymentsPage() {
   };
 
   const dealForId = (id: string) => MOCK_DEALS.find(d => d.id === id);
-  const bdForId   = (id: string) => MOCK_BDS.find(b => b.id === id);
+  const bdForId = (id: string) => MOCK_BDS.find(b => b.id === id);
 
   const DraftFields = ({ draft, setDraft }: { draft: PaymentDraft; setDraft: (d: PaymentDraft) => void }) => (
     <>
@@ -115,7 +115,7 @@ export default function PaymentsPage() {
           label="BD Member"
           value={draft.bd_id}
           onChange={e => setDraft({ ...draft, bd_id: e.target.value })}
-          options={bdReps.map(b => ({ value: b.id, label: `${b.first_name} ${b.last_name}` }))}
+          options={bdReps.map(b => ({ value: b.id, label: `${b.firstName} ${b.lastName}` }))}
           placeholder="Select BD..."
           required
         />
@@ -181,7 +181,7 @@ export default function PaymentsPage() {
               className="h-8 bg-white border border-[#e2e6f0] rounded-lg px-3 text-xs text-[#4a5068] focus:outline-none"
             >
               <option value="All">All BD Members</option>
-              {bdReps.map(b => <option key={b.id} value={b.id}>{b.first_name} {b.last_name}</option>)}
+              {bdReps.map(b => <option key={b.id} value={b.id}>{b.firstName} {b.lastName}</option>)}
             </select>
           )}
           <div className="flex items-center gap-1 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl p-1">
@@ -189,9 +189,8 @@ export default function PaymentsPage() {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 rounded-lg text-xs transition-all ${
-                  statusFilter === s ? 'bg-white text-[#3d5af1] border border-[#c7d0fb] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]'
-                }`}
+                className={`px-3 py-1 rounded-lg text-xs transition-all ${statusFilter === s ? 'bg-white text-[#3d5af1] border border-[#c7d0fb] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]'
+                  }`}
               >
                 {s}
               </button>
@@ -219,7 +218,7 @@ export default function PaymentsPage() {
           ) : (
             filtered.map(payment => {
               const deal = dealForId(payment.deal_id);
-              const bd   = bdForId(payment.bd_id);
+              const bd = bdForId(payment.bd_id);
               return (
                 <div
                   key={payment.id}
@@ -231,7 +230,7 @@ export default function PaymentsPage() {
                     <div className="text-[10px] text-[#8b90a8]">{deal ? MOCK_CLIENTS.find(c => c.id === deal.client_id)?.name : ''}</div>
                   </div>
                   {isManager && (
-                    <div className="text-xs text-[#4a5068]">{bd ? `${bd.first_name} ${bd.last_name}` : '—'}</div>
+                    <div className="text-xs text-[#4a5068]">{bd ? `${bd.firstName} ${bd.lastName}` : '—'}</div>
                   )}
                   <div className="text-sm font-bold font-display text-[#1a1d2e]">{formatCurrency(payment.amount)}</div>
                   <div className="text-xs text-[#4a5068]">{formatDate(payment.date)}</div>
@@ -287,7 +286,7 @@ export default function PaymentsPage() {
             </p>
             <div className="flex gap-3 justify-end">
               <Button variant="secondary" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
-              <Button variant="danger"    size="sm" onClick={handleDelete}>Delete</Button>
+              <Button variant="danger" size="sm" onClick={handleDelete}>Delete</Button>
             </div>
           </Card>
         </div>

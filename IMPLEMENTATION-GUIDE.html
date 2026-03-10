@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales CRM — Step-by-Step CRUD Implementation Guide</title>
+<style>
+  :root {
+    --bg: #0c0d12; --surface: #14151c; --surface2: #1a1c25; --border: #22242e;
+    --text: #e1e4ea; --text2: #8b8fa3; --text3: #5a5e72;
+    --blue: #3b82f6; --blue-dim: #1e3a5f; --green: #22c55e; --green-dim: #14331a;
+    --amber: #f59e0b; --amber-dim: #3d2e0a; --rose: #f43f5e; --rose-dim: #3d1520;
+    --purple: #a855f7; --purple-dim: #2d1b4e; --teal: #14b8a6; --teal-dim: #0d3331;
+    --cyan: #22d3ee; --cyan-dim: #0c3644;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; font-size: 14px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  h1 { font-size: 26px; font-weight: 700; color: #fff; }
+  .subtitle { color: var(--text2); font-size: 14px; margin: 4px 0 40px; }
+
+  /* NAV TABS */
+  .nav { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 32px; overflow-x: auto; }
+  .nav button { background: none; border: none; padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s; }
+  .nav button:hover { color: var(--text2); }
+  .nav button.on { color: var(--blue); border-bottom-color: var(--blue); }
+  .panel { display: none; } .panel.on { display: block; }
+
+  /* SECTION HEADERS */
+  .sh { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+  /* CALLOUT */
+  .co { padding: 16px 20px; border-radius: 10px; margin-bottom: 24px; font-size: 13px; line-height: 1.7; }
+  .co strong { color: #fff; }
+  .co-b { background: #0f1d2e; border: 1px solid var(--blue-dim); color: #93c5fd; }
+  .co-g { background: #0f1f14; border: 1px solid var(--green-dim); color: #86efac; }
+  .co-a { background: #1f1a0e; border: 1px solid #5c4a1e; color: #fcd34d; }
+  .co-p { background: #1a1228; border: 1px solid var(--purple-dim); color: #d8b4fe; }
+
+  /* CARD */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .card-sub { font-size: 12px; color: var(--text3); margin-bottom: 16px; }
+
+  /* STEP CARDS */
+  .step { display: flex; gap: 16px; margin-bottom: 0; padding: 20px 0; position: relative; }
+  .step + .step { border-top: 1px solid var(--border); }
+  .sn { min-width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .step-body { flex: 1; }
+  .step-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .step-desc { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
+
+  /* CODE BLOCK */
+  .code-wrap { position: relative; margin: 10px 0; }
+  .code-label { position: absolute; top: 8px; right: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); }
+  pre { background: #0a0b0f; border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6; color: #c4c8d4; }
+  pre .kw { color: #c084fc; } /* keywords */
+  pre .fn { color: #60a5fa; } /* functions */
+  pre .str { color: #4ade80; } /* strings */
+  pre .cm { color: #3f4354; font-style: italic; } /* comments */
+  pre .tp { color: #f59e0b; } /* types */
+  pre .num { color: #fb923c; } /* numbers */
+
+  /* FILE TAG */
+  .ft { display: inline-block; margin-top: 4px; padding: 2px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text3); }
+
+  /* DIAGRAM BOX */
+  .diag { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; margin-bottom: 24px; overflow-x: auto; }
+  .diag-title { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 20px; text-align: center; }
+
+  /* FLOW ROW */
+  .frow { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .fbox { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; text-align: center; min-width: 100px; white-space: nowrap; }
+  .farr { color: var(--text3); font-size: 16px; min-width: 24px; text-align: center; }
+  .farr-down { display: block; text-align: center; color: var(--text3); font-size: 16px; margin: 6px 0; }
+  .fb-page { background: #1e293b; border: 1px solid #334155; color: #93c5fd; }
+  .fb-hook { background: var(--purple-dim); border: 1px solid #3b2d5c; color: #c4b5fd; }
+  .fb-api { background: #1c1917; border: 1px solid #44403c; color: #fbbf24; }
+  .fb-axios { background: var(--teal-dim); border: 1px solid #2d4a47; color: #5eead4; }
+  .fb-step { background: #1a1625; border: 1px solid #3b2d5c; color: #d8b4fe; }
+  .fb-prisma { background: var(--green-dim); border: 1px solid #2d5c2d; color: #86efac; }
+  .fb-db { background: #171923; border: 1px solid #2d3a5c; color: #93c5fd; }
+  .fb-zod { background: var(--rose-dim); border: 1px solid #5c2d3a; color: #fda4af; }
+  .fb-store { background: var(--amber-dim); border: 1px solid #5c4a1e; color: #fdba74; }
+  .fb-cache { background: var(--cyan-dim); border: 1px solid #1a5c6a; color: #67e8f9; }
+
+  /* GRID */
+  .g2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  @media (max-width: 700px) { .g2 { grid-template-columns: 1fr; } }
+
+  /* BADGE */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .b-get { background: var(--teal-dim); color: #5eead4; }
+  .b-post { background: var(--green-dim); color: #4ade80; }
+  .b-patch { background: var(--amber-dim); color: #fbbf24; }
+  .b-del { background: var(--rose-dim); color: #fb7185; }
+  .b-done { background: var(--green-dim); color: #4ade80; }
+  .b-todo { background: var(--rose-dim); color: #fb7185; }
+
+  /* CHECKLIST */
+  .cl { list-style: none; padding: 0; }
+  .cl li { padding: 8px 0; font-size: 13px; color: var(--text2); display: flex; align-items: start; gap: 8px; }
+  .cl li + li { border-top: 1px solid #1a1c22; }
+  .cl .ck { min-width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid #1a1c22; color: var(--text2); }
+  td:first-child { color: var(--text); font-weight: 500; }
+
+  /* LAYER DIAGRAM */
+  .layer-diag { display: flex; flex-direction: column; gap: 0; }
+  .layer { display: flex; align-items: stretch; border: 1px solid var(--border); margin-bottom: -1px; }
+  .layer:first-child { border-radius: 10px 10px 0 0; }
+  .layer:last-child { border-radius: 0 0 10px 10px; }
+  .layer-label { min-width: 90px; padding: 14px 12px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-right: 1px solid var(--border); }
+  .layer-body { flex: 1; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .ll-browser { background: #111827; color: #60a5fa; }
+  .ll-network { background: #131210; color: #fbbf24; }
+  .ll-server { background: #110f18; color: #c084fc; }
+  .ll-db { background: #0f1610; color: #4ade80; }
+
+  /* WORKFLOW NUMBERING */
+  .wf-num { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; margin-right: 6px; }
+
+  /* SECTION SPACING */
+  .sec { margin-bottom: 48px; }
+
+  /* INLINE CODE */
+  code { background: var(--surface2); padding: 1px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  .mb { margin-bottom: 16px; }
+  .mt { margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Step-by-Step CRUD Implementation Guide</h1>
+<p class="subtitle">From authentication → Client CRUD → Contact CRUD → Deal CRUD. Each step builds on the last.</p>
+
+<div class="nav">
+  <button class="on" onclick="tab(this,'p-overview')">Overview</button>
+  <button onclick="tab(this,'p-how')">How CRUD Works</button>
+  <button onclick="tab(this,'p-client')">Phase 1: Client</button>
+  <button onclick="tab(this,'p-contact')">Phase 2: Contact</button>
+  <button onclick="tab(this,'p-deal')">Phase 3: Deal</button>
+  <button onclick="tab(this,'p-workflow')">Complete Workflows</button>
+  <button onclick="tab(this,'p-checklist')">Master Checklist</button>
+</div>
+
+<!-- ============================================================ -->
+<!-- OVERVIEW -->
+<!-- ============================================================ -->
+<div id="p-overview" class="panel on">
+
+<div class="sec">
+  <div class="sh">Where You Are Now</div>
+  <div class="co co-b">
+    <strong>What's done:</strong> You've got your PostgreSQL schema (18 tables), authentication (JWT login + route guards), seed data, and two deal endpoints (list + create). The frontend pages exist but most still use <code>mockData.ts</code> instead of real API calls.<br><br>
+    <strong>What's next:</strong> Build CRUD for Clients → Contacts → Deals, in that order. Each phase follows the exact same pattern — you're just changing the model name, fields, and URL path.
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">The Build Order — Why This Sequence</div>
+  <div class="diag">
+    <div class="diag-title">Build Dependency Chain</div>
+    <div class="frow">
+      <div class="fbox fb-page" style="min-width:160px"><strong>Phase 1</strong><br>Client CRUD</div>
+      <div class="farr">→</div>
+      <div class="fbox fb-hook" style="min-width:160px"><strong>Phase 2</strong><br>Contact CRUD</div>
+      <div class="farr">→</div>
+      <div class="fbox fb-api" style="min-width:160px"><strong>Phase 3</strong><br>Deal CRUD (complete)</div>
+    </div>
+    <div style="text-align:center; margin-top:12px; font-size:12px; color:var(--text3)">
+      Contacts belong to Clients → Deals reference both Clients and Contacts<br>
+      Build the independent entity first, then the ones that depend on it
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="card-title" style="color:#93c5fd">Phase 1: Client CRUD</div>
+      <div class="card-sub">Standalone entity — no dependencies</div>
+      <div style="font-size:13px; color:var(--text2)">
+        Clients are companies. They don't depend on any other entity you need to build, so they're the perfect starting point. You'll create 4 backend endpoints + wire up the existing frontend pages.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#c4b5fd">Phase 2: Contact CRUD</div>
+      <div class="card-sub">Depends on Client (contact belongs to a client)</div>
+      <div style="font-size:13px; color:var(--text2)">
+        Contacts are people at client companies. Each contact has a <code>clientId</code> FK. You need working clients first so the "select client" dropdown has real data.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#fbbf24">Phase 3: Deal CRUD (complete)</div>
+      <div class="card-sub">Depends on Client + Contact + PipelineStage</div>
+      <div style="font-size:13px; color:var(--text2)">
+        Deals reference clients, contacts (via DealContact), stages, and the BD rep. You already have list + create — you'll add detail, update, and stage transitions with audit logging.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Your Existing Pattern — The Template For Everything</div>
+  <div class="co co-g">
+    <strong>Key insight:</strong> You already have a working example of every layer. Your <code>login.step.ts</code> and <code>list.step.ts</code> show the exact Motia step handler pattern. Your <code>api/client.ts</code> shows the Axios setup. Your <code>authStore.ts</code> shows Zustand. You're not learning anything new — you're <strong>repeating a pattern you already have</strong>.
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- HOW CRUD WORKS -->
+<!-- ============================================================ -->
+<div id="p-how" class="panel">
+
+<div class="sec">
+  <div class="sh">The Anatomy of a CRUD Operation</div>
+  <div class="co co-b">
+    <strong>Every single CRUD operation</strong> in your app passes through the same 5 layers. Whether it's creating a client, listing contacts, or updating a deal — the data follows this exact path. Once you understand this, you understand everything.
+  </div>
+
+  <div class="diag">
+    <div class="diag-title">The 5 Layers — Every Request Passes Through All of Them</div>
+    <div class="layer-diag">
+      <div class="layer">
+        <div class="layer-label ll-browser">Browser</div>
+        <div class="layer-body">
+          <div class="fbox fb-page">Page</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-hook">Hook</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-api">API fn</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-axios">Axios</div>
+          <span style="font-size:11px;color:var(--text3);margin-left:8px">React renders → hook manages data → API fn shapes the call → Axios sends it</span>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-label ll-network">HTTP</div>
+        <div class="layer-body">
+          <span style="font-size:12px;color:var(--text2)">JSON body + <code>Authorization: Bearer &lt;jwt&gt;</code> header → Vite proxy forwards <code>/api/*</code> → <code>localhost:3111</code></span>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-label ll-server">Server</div>
+        <div class="layer-body">
+          <div class="fbox fb-step">Step Handler</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-zod">Zod Validate</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-step">authenticate()</div>
+          <div class="farr">→</div>
+          <div class="fbox fb-prisma">Prisma Query</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-label ll-db">Database</div>
+        <div class="layer-body">
+          <div class="fbox fb-db" style="min-width:200px">PostgreSQL — prisma.client / prisma.contact / prisma.deal</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Detailed Diagram — CREATE Operation (POST)</div>
+  <div class="diag">
+    <div class="diag-title">What Happens When a User Submits a Form</div>
+
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-page" style="min-width:200px">
+        <strong>1. Page Component</strong><br>
+        <span style="font-size:11px;opacity:.7">NewClient.tsx / NewDeal.tsx</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ user fills form + clicks submit</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-page" style="min-width:200px">
+        <strong>2. Form Component</strong><br>
+        <span style="font-size:11px;opacity:.7">ClientForm.tsx validates fields</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ calls onSubmit(formData)</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-hook" style="min-width:200px">
+        <strong>3. useMutation Hook</strong><br>
+        <span style="font-size:11px;opacity:.7">TanStack Query wraps the call</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ calls mutationFn(data)</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-api" style="min-width:200px">
+        <strong>4. API Function</strong><br>
+        <span style="font-size:11px;opacity:.7">clientsApi.create(data)</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ apiClient.post('/api/clients', data)</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-axios" style="min-width:200px">
+        <strong>5. Axios Interceptor</strong><br>
+        <span style="font-size:11px;opacity:.7">Attaches JWT token to header</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ HTTP POST with JSON body + Bearer token</div>
+    <div style="text-align:center;padding:8px;border:1px dashed var(--border);border-radius:8px;margin:0 auto 12px;max-width:300px;font-size:11px;color:var(--text3)">── network boundary ──</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-step" style="min-width:200px">
+        <strong>6. Motia Step Handler</strong><br>
+        <span style="font-size:11px;opacity:.7">create.step.ts receives request</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ Zod validates req.body against schema</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-zod" style="min-width:200px">
+        <strong>7. Zod Validation</strong><br>
+        <span style="font-size:11px;opacity:.7">Rejects if invalid → 400 error</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ authenticate(req) verifies JWT</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-step" style="min-width:200px">
+        <strong>8. Auth Middleware</strong><br>
+        <span style="font-size:11px;opacity:.7">Decodes JWT → fetches BD from DB</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ prisma.client.create({ data })</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-prisma" style="min-width:200px">
+        <strong>9. Prisma ORM</strong><br>
+        <span style="font-size:11px;opacity:.7">Generates SQL INSERT</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ SQL → PostgreSQL → returns new row</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-db" style="min-width:200px">
+        <strong>10. PostgreSQL</strong><br>
+        <span style="font-size:11px;opacity:.7">Inserts row, returns with ID</span>
+      </div>
+    </div>
+    <div class="farr-down">↑ response flows back up through every layer</div>
+    <div class="frow">
+      <div class="fbox fb-cache" style="min-width:280px">
+        <strong>11. React Query Cache Invalidation</strong><br>
+        <span style="font-size:11px;opacity:.7">onSuccess → invalidateQueries(['clients'])<br>→ auto-refetches list → UI updates</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Detailed Diagram — READ / LIST Operation (GET)</div>
+  <div class="diag">
+    <div class="diag-title">What Happens When a User Opens a List Page</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-page"><strong>Page mounts</strong><br><span style="font-size:11px;opacity:.7">ClientList.tsx</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-hook"><strong>useQuery fires</strong><br><span style="font-size:11px;opacity:.7">queryKey: ['clients']</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-cache"><strong>Cache check</strong><br><span style="font-size:11px;opacity:.7">Stale? → fetch</span></div>
+    </div>
+    <div class="farr-down">↓ cache miss or stale</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-api"><strong>API function</strong><br><span style="font-size:11px;opacity:.7">clientsApi.list()</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-axios"><strong>Axios + JWT</strong></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-step"><strong>Step handler</strong><br><span style="font-size:11px;opacity:.7">authenticate → query</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-prisma"><strong>Prisma</strong><br><span style="font-size:11px;opacity:.7">findMany + include</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-db"><strong>PG</strong></div>
+    </div>
+    <div class="farr-down">↓ returns JSON array</div>
+    <div class="frow">
+      <div class="fbox fb-cache"><strong>Cache stores</strong><br><span style="font-size:11px;opacity:.7">queryKey: ['clients']</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-page"><strong>Component re-renders</strong><br><span style="font-size:11px;opacity:.7">Maps data → renders list</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Detailed Diagram — UPDATE Operation (PATCH)</div>
+  <div class="diag">
+    <div class="diag-title">What Happens When a User Edits a Record</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-page"><strong>Detail page</strong><br><span style="font-size:11px;opacity:.7">ClientDetail.tsx</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-page"><strong>Edit modal opens</strong><br><span style="font-size:11px;opacity:.7">Pre-filled with current data</span></div>
+    </div>
+    <div class="farr-down">↓ user changes fields + clicks save</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-hook"><strong>useMutation</strong><br><span style="font-size:11px;opacity:.7">mutationFn: update</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-api"><strong>clientsApi.update</strong><br><span style="font-size:11px;opacity:.7">(id, changedFields)</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-axios"><strong>PATCH + JWT</strong></div>
+    </div>
+    <div class="farr-down">↓</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-step"><strong>update.step.ts</strong><br><span style="font-size:11px;opacity:.7">auth → validate → prisma.client.update</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-prisma"><strong>Prisma</strong><br><span style="font-size:11px;opacity:.7">UPDATE ... SET ... WHERE id = ?</span></div>
+    </div>
+    <div class="farr-down">↓ returns updated record</div>
+    <div class="frow">
+      <div class="fbox fb-cache"><strong>Cache invalidation</strong><br><span style="font-size:11px;opacity:.7">['clients'] + ['client', id]</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-page"><strong>UI updates</strong><br><span style="font-size:11px;opacity:.7">Both list and detail refresh</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Detailed Diagram — Deal Stage Transition (Special PATCH)</div>
+  <div class="diag">
+    <div class="diag-title">Moving a Deal from One Pipeline Stage to Another</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-page"><strong>Pipeline Board</strong><br><span style="font-size:11px;opacity:.7">User picks new stage from dropdown</span></div>
+      <div class="farr">→</div>
+      <div class="fbox fb-hook"><strong>useMutation</strong><br><span style="font-size:11px;opacity:.7">updateDealStage(id, newStageId)</span></div>
+    </div>
+    <div class="farr-down">↓ PATCH /api/deals/:id/stage</div>
+    <div class="frow" style="margin-bottom:4px">
+      <div class="fbox fb-step" style="min-width:250px">
+        <strong>stage.step.ts — Backend Does 3 Things:</strong>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:8px 0 16px">
+      <div class="fbox fb-prisma" style="min-width:170px">
+        <strong>1. Close old audit log</strong><br>
+        <span style="font-size:11px;opacity:.7">Set exitedAt + daysInStage<br>on current DealAuditLog</span>
+      </div>
+      <div class="fbox fb-prisma" style="min-width:170px">
+        <strong>2. Create new audit log</strong><br>
+        <span style="font-size:11px;opacity:.7">New DealAuditLog row<br>enteredAt = now()</span>
+      </div>
+      <div class="fbox fb-prisma" style="min-width:170px">
+        <strong>3. Update the deal</strong><br>
+        <span style="font-size:11px;opacity:.7">Set stageId + lastStageUpdateAt<br>If Closed: set isClosed + closedDate</span>
+      </div>
+    </div>
+    <div class="farr-down">↓ returns updated deal with new stage</div>
+    <div class="frow">
+      <div class="fbox fb-cache"><strong>Invalidate ['deals']</strong><br><span style="font-size:11px;opacity:.7">Pipeline board re-renders<br>Deal card moves to new column</span></div>
+    </div>
+  </div>
+  <div class="co co-a">
+    <strong>Why this matters:</strong> Stage transitions aren't just an update — they create an audit trail. Every time a deal moves stages, a <code>DealAuditLog</code> records when it entered, when it left, and how many days it spent there. This is what powers the "stuck deals" alerts and pipeline velocity metrics later.
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh">Mapping: What You Create in Each Layer</div>
+  <div class="co co-p">
+    <strong>For every CRUD entity, you create files in exactly these 4 places.</strong> The frontend pages and components already exist — you just need to wire them to real data.
+  </div>
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>File You Create</th><th>What It Does</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Backend Step</td>
+        <td><code>steps/api/{entity}/list.step.ts</code></td>
+        <td>Handles GET — authenticate, query Prisma with includes, return JSON</td>
+      </tr>
+      <tr>
+        <td>Backend Step</td>
+        <td><code>steps/api/{entity}/create.step.ts</code></td>
+        <td>Handles POST — authenticate, Zod validate body, prisma.create, return 201</td>
+      </tr>
+      <tr>
+        <td>Backend Step</td>
+        <td><code>steps/api/{entity}/detail.step.ts</code></td>
+        <td>Handles GET /:id — authenticate, findUnique with includes, return single record</td>
+      </tr>
+      <tr>
+        <td>Backend Step</td>
+        <td><code>steps/api/{entity}/update.step.ts</code></td>
+        <td>Handles PATCH /:id — authenticate, Zod validate, prisma.update, return updated</td>
+      </tr>
+      <tr>
+        <td>Frontend API</td>
+        <td><code>frontend/src/api/{entity}.ts</code></td>
+        <td>Already exists — verify URLs match your step paths (add <code>/api</code> prefix)</td>
+      </tr>
+      <tr>
+        <td>Frontend Hook</td>
+        <td><code>frontend/src/hooks/use{Entity}.ts</code></td>
+        <td>Replace useState(MOCK_DATA) with useQuery/useMutation from React Query</td>
+      </tr>
+      <tr>
+        <td>Frontend Pages</td>
+        <td><em>Already exist</em></td>
+        <td>Just need to import the updated hook instead of mock data</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PHASE 1: CLIENT -->
+<!-- ============================================================ -->
+<div id="p-client" class="panel">
+
+<div class="sec">
+  <div class="sh">Phase 1: Client CRUD — Step by Step</div>
+  <div class="co co-b">
+    <strong>Goal:</strong> Create 4 backend endpoints for clients, then update the frontend to use real API calls instead of mock data. Your frontend pages (<code>ClientList</code>, <code>ClientDetail</code>, <code>NewClient</code>) and form component (<code>ClientForm</code>) already exist.
+  </div>
+</div>
+
+<!-- STEP 1.1 -->
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 1.1 — Create <code>steps/api/clients/list.step.ts</code></div>
+    <div class="card-sub">GET /api/clients — Returns all clients with their industry and primary contact</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--blue-dim);color:#60a5fa">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#60a5fa">What this file does</div>
+        <div class="step-desc">
+          When the frontend calls <code>GET /api/clients</code>, this step handler runs. It authenticates the request (verifies the JWT), then queries PostgreSQL through Prisma to get all clients with their related industry and contacts. It returns the list as JSON.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--purple-dim);color:#c084fc">2</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#c084fc">The pattern — copy from your existing <code>deals/list.step.ts</code></div>
+        <div class="step-desc">
+          Your deal list step is the exact template. The only differences are: the Prisma model (<code>prisma.client</code> instead of <code>prisma.deal</code>), the <code>include</code> fields, and the URL path.
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">steps/api/clients/list.step.ts</div>
+          <pre>
+<span class="kw">import</span> { StepConfig, Handlers } <span class="kw">from</span> <span class="str">'motia'</span>
+<span class="kw">import</span> { authenticate } <span class="kw">from</span> <span class="str">'../../../lib/auth'</span>
+<span class="kw">import</span> { prisma } <span class="kw">from</span> <span class="str">'../../../lib/db'</span>
+
+<span class="kw">export const</span> config = {
+  name: <span class="str">'ListClients'</span>,
+  description: <span class="str">'Get list of all clients'</span>,
+  triggers: [
+    { type: <span class="str">'http'</span>, method: <span class="str">'GET'</span>, path: <span class="str">'/api/clients'</span> },
+  ],
+  enqueues: [],
+  flows: [<span class="str">'sales-pipeline'</span>],
+} <span class="kw">as const satisfies</span> <span class="tp">StepConfig</span>
+
+<span class="kw">export const</span> handler: <span class="tp">Handlers</span>&lt;<span class="kw">typeof</span> config&gt; = <span class="kw">async</span> (req, { logger }) =&gt; {
+  <span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">authenticate</span>(req)
+  logger.<span class="fn">info</span>(<span class="str">'Listing clients'</span>, { userId: user.id })
+
+  <span class="kw">const</span> clients = <span class="kw">await</span> prisma.client.<span class="fn">findMany</span>({
+    include: {
+      industry: <span class="kw">true</span>,                         <span class="cm">// join the industry name</span>
+      contacts: <span class="kw">true</span>,                         <span class="cm">// all contacts for this client</span>
+      contact: <span class="kw">true</span>,                          <span class="cm">// the primary contact</span>
+      _count: { select: { deals: <span class="kw">true</span> } },   <span class="cm">// how many deals</span>
+    },
+    orderBy: { name: <span class="str">'asc'</span> },
+  })
+
+  <span class="kw">return</span> { status: <span class="num">200</span>, body: clients }
+}</pre>
+        </div>
+        <div class="co co-g mt">
+          <strong>What's happening line by line:</strong><br>
+          • <code>config.triggers</code> — tells Motia "when someone hits GET /api/clients, run this handler"<br>
+          • <code>authenticate(req)</code> — extracts JWT from header, verifies it, returns the logged-in BD user<br>
+          • <code>prisma.client.findMany</code> — generates SQL: <code>SELECT * FROM client LEFT JOIN industry...</code><br>
+          • <code>include</code> — tells Prisma to also fetch related tables (like SQL JOINs)<br>
+          • <code>_count: { select: { deals: true } }</code> — adds a <code>_count.deals</code> field so the UI can show "5 deals"
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 1.2 -->
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 1.2 — Create <code>steps/api/clients/detail.step.ts</code></div>
+    <div class="card-sub">GET /api/clients/:id — Returns a single client with all relations</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--blue-dim);color:#60a5fa">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#60a5fa">What this file does</div>
+        <div class="step-desc">
+          When the frontend navigates to <code>/clients/abc-123</code>, the ClientDetail page calls <code>GET /api/clients/abc-123</code>. This step fetches that single client with all their contacts, deals, and industry info.
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">steps/api/clients/detail.step.ts</div>
+          <pre>
+<span class="kw">import</span> { StepConfig, Handlers } <span class="kw">from</span> <span class="str">'motia'</span>
+<span class="kw">import</span> { authenticate } <span class="kw">from</span> <span class="str">'../../../lib/auth'</span>
+<span class="kw">import</span> { prisma } <span class="kw">from</span> <span class="str">'../../../lib/db'</span>
+
+<span class="kw">export const</span> config = {
+  name: <span class="str">'GetClientDetail'</span>,
+  description: <span class="str">'Get a single client by ID'</span>,
+  triggers: [
+    { type: <span class="str">'http'</span>, method: <span class="str">'GET'</span>, path: <span class="str">'/api/clients/:id'</span> },
+  ],
+  enqueues: [],
+  flows: [<span class="str">'sales-pipeline'</span>],
+} <span class="kw">as const satisfies</span> <span class="tp">StepConfig</span>
+
+<span class="kw">export const</span> handler: <span class="tp">Handlers</span>&lt;<span class="kw">typeof</span> config&gt; = <span class="kw">async</span> (req, { logger }) =&gt; {
+  <span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">authenticate</span>(req)
+  <span class="kw">const</span> { id } = req.pathParams      <span class="cm">// Motia extracts :id from the URL</span>
+
+  <span class="kw">const</span> client = <span class="kw">await</span> prisma.client.<span class="fn">findUnique</span>({
+    where: { id },
+    include: {
+      industry: <span class="kw">true</span>,
+      contact: <span class="kw">true</span>,                          <span class="cm">// primary contact</span>
+      contacts: <span class="kw">true</span>,                         <span class="cm">// all contacts</span>
+      deals: {                                  <span class="cm">// all deals for this client</span>
+        include: {
+          stage: <span class="kw">true</span>,
+          bd: { select: { id: <span class="kw">true</span>, firstName: <span class="kw">true</span>, lastName: <span class="kw">true</span> } },
+        },
+      },
+      referredBy: <span class="kw">true</span>,                      <span class="cm">// who referred this client</span>
+    },
+  })
+
+  <span class="kw">if</span> (!client) {
+    <span class="kw">return</span> { status: <span class="num">404</span>, body: { error: <span class="str">'Client not found'</span> } }
+  }
+
+  <span class="kw">return</span> { status: <span class="num">200</span>, body: client }
+}</pre>
+        </div>
+        <div class="co co-g mt">
+          <strong>Key difference from list:</strong> <code>findUnique</code> returns one record (or null). We check for null and return 404. The <code>include</code> is richer — on a detail page, you want everything (deals, all contacts, referral info). On the list page, you want less to keep the payload small.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 1.3 -->
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 1.3 — Create <code>steps/api/clients/create.step.ts</code></div>
+    <div class="card-sub">POST /api/clients — Creates a new client company</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--green-dim);color:#4ade80">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#4ade80">What this file does</div>
+        <div class="step-desc">
+          When a user fills out the <code>ClientForm</code> and clicks submit, the frontend POSTs to this endpoint. Zod validates the body (so bad data gets rejected with clear error messages). Then Prisma inserts the row.
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">steps/api/clients/create.step.ts</div>
+          <pre>
+<span class="kw">import</span> { StepConfig, Handlers } <span class="kw">from</span> <span class="str">'motia'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="str">'zod'</span>
+<span class="kw">import</span> { authenticate } <span class="kw">from</span> <span class="str">'../../../lib/auth'</span>
+<span class="kw">import</span> { prisma } <span class="kw">from</span> <span class="str">'../../../lib/db'</span>
+
+<span class="kw">export const</span> config = {
+  name: <span class="str">'CreateClient'</span>,
+  description: <span class="str">'Create a new client'</span>,
+  triggers: [{
+    type: <span class="str">'http'</span>,
+    method: <span class="str">'POST'</span>,
+    path: <span class="str">'/api/clients'</span>,
+    bodySchema: z.<span class="fn">object</span>({                     <span class="cm">// Zod validates BEFORE handler runs</span>
+      name:        z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>),           <span class="cm">// required</span>
+      brand:       z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+      accountType: z.<span class="fn">enum</span>([<span class="str">'ENTERPRISE'</span>, <span class="str">'CORPORATE'</span>, <span class="str">'SMB'</span>, <span class="str">'GOVERNMENT'</span>]),
+      status:      z.<span class="fn">enum</span>([<span class="str">'ACTIVE'</span>, <span class="str">'INACTIVE'</span>, <span class="str">'PROSPECT'</span>]).<span class="fn">default</span>(<span class="str">'PROSPECT'</span>),
+      industryId:  z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+      referralId:  z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+    }),
+  }],
+  enqueues: [],
+  flows: [<span class="str">'sales-pipeline'</span>],
+} <span class="kw">as const satisfies</span> <span class="tp">StepConfig</span>
+
+<span class="kw">export const</span> handler: <span class="tp">Handlers</span>&lt;<span class="kw">typeof</span> config&gt; = <span class="kw">async</span> (req, { logger }) =&gt; {
+  <span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">authenticate</span>(req)
+  <span class="kw">const</span> { name, brand, accountType, status, industryId, referralId } = req.body
+
+  <span class="kw">const</span> client = <span class="kw">await</span> prisma.client.<span class="fn">create</span>({
+    data: { name, brand, accountType, status, industryId, referralId },
+    include: { industry: <span class="kw">true</span>, contacts: <span class="kw">true</span> },
+  })
+
+  logger.<span class="fn">info</span>(<span class="str">'Client created'</span>, { clientId: client.id, by: user.id })
+  <span class="kw">return</span> { status: <span class="num">201</span>, body: client }
+}</pre>
+        </div>
+        <div class="co co-a mt">
+          <strong>About Zod validation:</strong> The <code>bodySchema</code> in the trigger config means Motia automatically validates the request body <em>before</em> your handler runs. If someone sends <code>{ name: "" }</code>, they get a 400 error with details like "name must be at least 1 character". You never have to write manual validation in the handler.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 1.4 -->
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 1.4 — Create <code>steps/api/clients/update.step.ts</code></div>
+    <div class="card-sub">PATCH /api/clients/:id — Update an existing client</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--amber-dim);color:#fbbf24">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#fbbf24">What this file does</div>
+        <div class="step-desc">
+          PATCH means "partial update" — the frontend only sends the fields that changed. If the user only changes the status, the body is just <code>{ status: "ACTIVE" }</code>. All fields are optional in the Zod schema.
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">steps/api/clients/update.step.ts</div>
+          <pre>
+<span class="kw">import</span> { StepConfig, Handlers } <span class="kw">from</span> <span class="str">'motia'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="str">'zod'</span>
+<span class="kw">import</span> { authenticate } <span class="kw">from</span> <span class="str">'../../../lib/auth'</span>
+<span class="kw">import</span> { prisma } <span class="kw">from</span> <span class="str">'../../../lib/db'</span>
+
+<span class="kw">export const</span> config = {
+  name: <span class="str">'UpdateClient'</span>,
+  description: <span class="str">'Update an existing client'</span>,
+  triggers: [{
+    type: <span class="str">'http'</span>,
+    method: <span class="str">'PATCH'</span>,
+    path: <span class="str">'/api/clients/:id'</span>,
+    bodySchema: z.<span class="fn">object</span>({
+      name:        z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>).<span class="fn">optional</span>(),   <span class="cm">// all optional for partial update</span>
+      brand:       z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+      accountType: z.<span class="fn">enum</span>([<span class="str">'ENTERPRISE'</span>, <span class="str">'CORPORATE'</span>, <span class="str">'SMB'</span>, <span class="str">'GOVERNMENT'</span>]).<span class="fn">optional</span>(),
+      status:      z.<span class="fn">enum</span>([<span class="str">'ACTIVE'</span>, <span class="str">'INACTIVE'</span>, <span class="str">'PROSPECT'</span>]).<span class="fn">optional</span>(),
+      industryId:  z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+      contactId:   z.<span class="fn">string</span>().<span class="fn">optional</span>(),          <span class="cm">// set primary contact</span>
+    }),
+  }],
+  enqueues: [],
+  flows: [<span class="str">'sales-pipeline'</span>],
+} <span class="kw">as const satisfies</span> <span class="tp">StepConfig</span>
+
+<span class="kw">export const</span> handler: <span class="tp">Handlers</span>&lt;<span class="kw">typeof</span> config&gt; = <span class="kw">async</span> (req, { logger }) =&gt; {
+  <span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">authenticate</span>(req)
+  <span class="kw">const</span> { id } = req.pathParams
+
+  <span class="kw">const</span> existing = <span class="kw">await</span> prisma.client.<span class="fn">findUnique</span>({ where: { id } })
+  <span class="kw">if</span> (!existing) {
+    <span class="kw">return</span> { status: <span class="num">404</span>, body: { error: <span class="str">'Client not found'</span> } }
+  }
+
+  <span class="kw">const</span> updated = <span class="kw">await</span> prisma.client.<span class="fn">update</span>({
+    where: { id },
+    data: req.body,                           <span class="cm">// Zod already validated — safe to spread</span>
+    include: { industry: <span class="kw">true</span>, contacts: <span class="kw">true</span>, contact: <span class="kw">true</span> },
+  })
+
+  logger.<span class="fn">info</span>(<span class="str">'Client updated'</span>, { clientId: id, by: user.id })
+  <span class="kw">return</span> { status: <span class="num">200</span>, body: updated }
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 1.5 -->
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 1.5 — Wire Up the Frontend</div>
+    <div class="card-sub">Update API URLs + replace mock data hook with React Query</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--teal-dim);color:#5eead4">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#5eead4">Fix API URLs in <code>frontend/src/api/clients.ts</code></div>
+        <div class="step-desc">
+          Your existing <code>clientsApi</code> file has the right structure but the URLs don't have the <code>/api</code> prefix that your step handlers use. Update them:
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">frontend/src/api/clients.ts — Update URLs</div>
+          <pre>
+<span class="cm">// BEFORE (current):</span>
+list: (params?) =&gt; apiClient.<span class="fn">get</span>(<span class="str">'/clients'</span>, { params })
+
+<span class="cm">// AFTER (match your step handler paths):</span>
+list: (params?) =&gt; apiClient.<span class="fn">get</span>(<span class="str">'/api/clients'</span>, { params })
+getById: (id) =&gt; apiClient.<span class="fn">get</span>(<span class="str">`/api/clients/${id}`</span>)
+create: (data) =&gt; apiClient.<span class="fn">post</span>(<span class="str">'/api/clients'</span>, data)
+update: (id, data) =&gt; apiClient.<span class="fn">patch</span>(<span class="str">`/api/clients/${id}`</span>, data)</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--teal-dim);color:#5eead4">2</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#5eead4">Replace mock hook with React Query in <code>useClients.ts</code></div>
+        <div class="step-desc">
+          Your current hook uses <code>useState(MOCK_CLIENTS)</code>. Replace it with <code>useQuery</code> so it fetches real data from your new endpoints:
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">frontend/src/hooks/useClients.ts — Rewrite</div>
+          <pre>
+<span class="kw">import</span> { useQuery, useMutation, useQueryClient } <span class="kw">from</span> <span class="str">'@tanstack/react-query'</span>
+<span class="kw">import</span> { clientsApi } <span class="kw">from</span> <span class="str">'../api/clients'</span>
+
+<span class="kw">export function</span> <span class="fn">useClients</span>() {
+  <span class="kw">return</span> <span class="fn">useQuery</span>({
+    queryKey: [<span class="str">'clients'</span>],
+    queryFn: <span class="kw">async</span> () =&gt; {
+      <span class="kw">const</span> res = <span class="kw">await</span> clientsApi.<span class="fn">list</span>()
+      <span class="kw">return</span> res.data
+    },
+  })
+}
+
+<span class="kw">export function</span> <span class="fn">useClient</span>(id: <span class="tp">string</span>) {
+  <span class="kw">return</span> <span class="fn">useQuery</span>({
+    queryKey: [<span class="str">'client'</span>, id],
+    queryFn: <span class="kw">async</span> () =&gt; {
+      <span class="kw">const</span> res = <span class="kw">await</span> clientsApi.<span class="fn">getById</span>(id)
+      <span class="kw">return</span> res.data
+    },
+    enabled: !!id,          <span class="cm">// don't fetch if no ID yet</span>
+  })
+}
+
+<span class="kw">export function</span> <span class="fn">useCreateClient</span>() {
+  <span class="kw">const</span> qc = <span class="fn">useQueryClient</span>()
+  <span class="kw">return</span> <span class="fn">useMutation</span>({
+    mutationFn: <span class="kw">async</span> (data: <span class="tp">any</span>) =&gt; {
+      <span class="kw">const</span> res = <span class="kw">await</span> clientsApi.<span class="fn">create</span>(data)
+      <span class="kw">return</span> res.data
+    },
+    onSuccess: () =&gt; {
+      qc.<span class="fn">invalidateQueries</span>({ queryKey: [<span class="str">'clients'</span>] })  <span class="cm">// refresh the list</span>
+    },
+  })
+}
+
+<span class="kw">export function</span> <span class="fn">useUpdateClient</span>() {
+  <span class="kw">const</span> qc = <span class="fn">useQueryClient</span>()
+  <span class="kw">return</span> <span class="fn">useMutation</span>({
+    mutationFn: <span class="kw">async</span> ({ id, data }: { id: <span class="tp">string</span>; data: <span class="tp">any</span> }) =&gt; {
+      <span class="kw">const</span> res = <span class="kw">await</span> clientsApi.<span class="fn">update</span>(id, data)
+      <span class="kw">return</span> res.data
+    },
+    onSuccess: (_, { id }) =&gt; {
+      qc.<span class="fn">invalidateQueries</span>({ queryKey: [<span class="str">'clients'</span>] })
+      qc.<span class="fn">invalidateQueries</span>({ queryKey: [<span class="str">'client'</span>, id] })
+    },
+  })
+}</pre>
+        </div>
+        <div class="co co-g mt">
+          <strong>What changed:</strong> Instead of <code>useState(MOCK_CLIENTS)</code>, we now use <code>useQuery</code> which calls your real API. The magic of React Query: after you create or update a client, <code>invalidateQueries</code> tells React Query "the clients list is stale" → it automatically refetches → the UI updates. You don't have to manually manage state.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--teal-dim);color:#5eead4">3</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#5eead4">Update pages to use the new hooks</div>
+        <div class="step-desc">
+          In your pages, swap the old hook for the new one. The component code barely changes:
+        </div>
+        <div class="code-wrap">
+          <pre>
+<span class="cm">// In ClientList.tsx — BEFORE:</span>
+<span class="kw">const</span> { clients } = <span class="fn">useClients</span>()
+
+<span class="cm">// AFTER:</span>
+<span class="kw">const</span> { data: clients, isLoading, error } = <span class="fn">useClients</span>()
+<span class="cm">// Add loading/error states in JSX:</span>
+<span class="kw">if</span> (isLoading) <span class="kw">return</span> &lt;div&gt;Loading...&lt;/div&gt;
+<span class="kw">if</span> (error) <span class="kw">return</span> &lt;div&gt;Error loading clients&lt;/div&gt;</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- PHASE 2: CONTACT -->
+<!-- ============================================================ -->
+<div id="p-contact" class="panel">
+
+<div class="sec">
+  <div class="sh">Phase 2: Contact CRUD — Step by Step</div>
+  <div class="co co-p">
+    <strong>This is almost identical to Client CRUD.</strong> The only new concept: contacts belong to a client (<code>clientId</code> foreign key). So when creating a contact, you must specify which client they belong to. Your <code>ContactForm</code> component already has a client selector.
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 2.1–2.4 — Backend Steps (same pattern)</div>
+    <div class="card-sub">Create 4 files in steps/api/contacts/</div>
+
+    <div class="g2 mt">
+      <div class="card" style="margin:0">
+        <div class="card-title" style="font-size:14px"><span class="badge b-get">GET</span> list.step.ts</div>
+        <div class="code-wrap">
+          <pre style="font-size:11px">
+<span class="cm">// Key Prisma query:</span>
+prisma.contact.<span class="fn">findMany</span>({
+  where: req.query?.clientId
+    ? { clientId: req.query.clientId }
+    : {},
+  include: {
+    client: { select: {
+      id: <span class="kw">true</span>, name: <span class="kw">true</span>,
+      accountType: <span class="kw">true</span>
+    }},
+  },
+  orderBy: { firstName: <span class="str">'asc'</span> },
+})</pre>
+        </div>
+        <div style="font-size:12px;color:var(--text2)">
+          <strong>Filter trick:</strong> If <code>?clientId=xyz</code> is in the URL, only return contacts for that client. This lets the ClientDetail page show just that client's contacts.
+        </div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-title" style="font-size:14px"><span class="badge b-get">GET</span> detail.step.ts</div>
+        <div class="code-wrap">
+          <pre style="font-size:11px">
+<span class="cm">// Key Prisma query:</span>
+prisma.contact.<span class="fn">findUnique</span>({
+  where: { id },
+  include: {
+    client: <span class="kw">true</span>,
+    dealContacts: {
+      include: {
+        deal: {
+          include: { stage: <span class="kw">true</span> }
+        }
+      }
+    },
+  },
+})</pre>
+        </div>
+        <div style="font-size:12px;color:var(--text2)">
+          Includes deals this contact is involved in (via the DealContact junction table).
+        </div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-title" style="font-size:14px"><span class="badge b-post">POST</span> create.step.ts</div>
+        <div class="code-wrap">
+          <pre style="font-size:11px">
+<span class="cm">// Zod bodySchema:</span>
+z.<span class="fn">object</span>({
+  firstName:    z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>),
+  lastName:     z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>),
+  email:        z.<span class="fn">string</span>().<span class="fn">email</span>(),
+  number:       z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+  designation:  z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+  decisionRank: z.<span class="fn">enum</span>([
+    <span class="str">'TIER_1_ECONOMIC_BUYER'</span>,
+    <span class="str">'TIER_2_DECISION_MAKER'</span>,
+    <span class="str">'TIER_3_INFLUENCER'</span>,
+    <span class="str">'TIER_4_END_USER'</span>,
+    <span class="str">'TIER_5_GATEKEEPER'</span>,
+  ]),
+  isPrimary: z.<span class="fn">boolean</span>().<span class="fn">default</span>(<span class="kw">false</span>),
+  clientId:  z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>),  <span class="cm">// required!</span>
+})</pre>
+        </div>
+        <div style="font-size:12px;color:var(--text2)">
+          <strong>clientId is required</strong> — every contact must belong to a company. The enum values must match your Prisma schema exactly (TIER_1_ECONOMIC_BUYER, not "Tier 1 Economic Buyer").
+        </div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-title" style="font-size:14px"><span class="badge b-patch">PATCH</span> update.step.ts</div>
+        <div class="code-wrap">
+          <pre style="font-size:11px">
+<span class="cm">// Same pattern as client update.</span>
+<span class="cm">// All fields optional in Zod schema.</span>
+<span class="cm">// Find by ID, check exists, update.</span>
+prisma.contact.<span class="fn">update</span>({
+  where: { id },
+  data: req.body,
+  include: { client: <span class="kw">true</span> },
+})</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 2.5 — Wire Up Frontend</div>
+    <div class="card-sub">Same process as Client — fix URLs, create React Query hooks</div>
+    <div class="step">
+      <div class="sn" style="background:var(--teal-dim);color:#5eead4">1</div>
+      <div class="step-body">
+        <div class="step-desc">
+          Fix URLs in <code>api/contacts.ts</code> (add <code>/api</code> prefix). Then create <code>useContacts()</code>, <code>useContact(id)</code>, <code>useCreateContact()</code>, <code>useUpdateContact()</code> hooks — identical pattern to the client hooks, just with <code>contactsApi</code> and <code>queryKey: ['contacts']</code>.
+        </div>
+        <div class="co co-a mt">
+          <strong>Extra for contacts:</strong> Add a <code>clientId</code> parameter to <code>useContacts(clientId?)</code> so ClientDetail can fetch just that client's contacts: <code>queryKey: ['contacts', { clientId }]</code> and pass <code>{ clientId }</code> as params to the API.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- PHASE 3: DEAL -->
+<!-- ============================================================ -->
+<div id="p-deal" class="panel">
+
+<div class="sec">
+  <div class="sh">Phase 3: Complete Deal CRUD</div>
+  <div class="co co-a">
+    <strong>You already have:</strong> <code>list.step.ts</code> (GET /api/deals) and <code>create.step.ts</code> (POST /api/deals).<br>
+    <strong>You need to add:</strong> detail (GET /:id), update (PATCH /:id), and <strong>stage transition</strong> (PATCH /:id/stage) — which is the most important one because it powers the pipeline board and creates the audit trail.
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 3.1 — <code>steps/api/deals/detail.step.ts</code></div>
+    <div class="card-sub">GET /api/deals/:id — Full deal with audit history, contacts, and projections</div>
+    <div class="code-wrap">
+      <pre>
+<span class="cm">// Key Prisma query — richest include in the app:</span>
+prisma.deal.<span class="fn">findUnique</span>({
+  where: { id },
+  include: {
+    client: <span class="kw">true</span>,
+    stage: <span class="kw">true</span>,
+    bd: { select: { id: <span class="kw">true</span>, firstName: <span class="kw">true</span>, lastName: <span class="kw">true</span>, email: <span class="kw">true</span> }},
+    service: <span class="kw">true</span>,
+    bundle: { include: { services: <span class="kw">true</span> }},
+    auditLogs: {                              <span class="cm">// stage transition history</span>
+      include: { stage: <span class="kw">true</span>, changedBy: { select: { firstName: <span class="kw">true</span>, lastName: <span class="kw">true</span> }}},
+      orderBy: { enteredAt: <span class="str">'desc'</span> },
+    },
+    dealContacts: {                           <span class="cm">// contacts involved in this deal</span>
+      include: { contact: <span class="kw">true</span> },
+    },
+    projection: <span class="kw">true</span>,                        <span class="cm">// forecast data</span>
+  },
+})</pre>
+    </div>
+    <div class="co co-g mt">
+      <strong>Why so many includes:</strong> The deal detail page is the richest page in the app. It shows the deal info, the client, the BD rep, all contacts involved, the full stage-change history (audit logs), service/bundle details, and projections. Prisma handles all the JOINs for you — you just declare what you want.
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 3.2 — <code>steps/api/deals/update.step.ts</code></div>
+    <div class="card-sub">PATCH /api/deals/:id — Update deal fields (not stage — that's separate)</div>
+    <div class="step">
+      <div class="sn" style="background:var(--amber-dim);color:#fbbf24">!</div>
+      <div class="step-body">
+        <div class="step-desc">
+          Same pattern as client update. Zod schema with all optional fields (dealName, remarks, actionPlan, dueDate, proposalLink, etc.). Stage changes are handled by a separate endpoint because they need audit logging.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#f59e0b">Step 3.3 — <code>steps/api/deals/stage.step.ts</code> ⭐ Most Important</div>
+    <div class="card-sub">PATCH /api/deals/:id/stage — Move a deal through the pipeline + audit log</div>
+
+    <div class="step">
+      <div class="sn" style="background:var(--amber-dim);color:#fbbf24">1</div>
+      <div class="step-body">
+        <div class="step-title" style="color:#fbbf24">Why this is special</div>
+        <div class="step-desc">
+          A stage change isn't just an update — it needs to: close the previous audit log entry, create a new one, update the deal's stage, and handle special cases (Closed Won/Lost sets <code>isClosed</code> and <code>closedDate</code>). This is a <strong>transaction</strong> — all of it succeeds or none of it does.
+        </div>
+        <div class="code-wrap">
+          <div class="code-label">steps/api/deals/stage.step.ts</div>
+          <pre>
+<span class="kw">import</span> { StepConfig, Handlers } <span class="kw">from</span> <span class="str">'motia'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="str">'zod'</span>
+<span class="kw">import</span> { authenticate } <span class="kw">from</span> <span class="str">'../../../lib/auth'</span>
+<span class="kw">import</span> { prisma } <span class="kw">from</span> <span class="str">'../../../lib/db'</span>
+
+<span class="kw">export const</span> config = {
+  name: <span class="str">'UpdateDealStage'</span>,
+  description: <span class="str">'Move a deal to a new pipeline stage'</span>,
+  triggers: [{
+    type: <span class="str">'http'</span>,
+    method: <span class="str">'PATCH'</span>,
+    path: <span class="str">'/api/deals/:id/stage'</span>,
+    bodySchema: z.<span class="fn">object</span>({
+      stageId: z.<span class="fn">string</span>().<span class="fn">min</span>(<span class="num">1</span>),
+      notes:   z.<span class="fn">string</span>().<span class="fn">optional</span>(),   <span class="cm">// reason for moving</span>
+    }),
+  }],
+  enqueues: [],
+  flows: [<span class="str">'sales-pipeline'</span>],
+} <span class="kw">as const satisfies</span> <span class="tp">StepConfig</span>
+
+<span class="kw">export const</span> handler: <span class="tp">Handlers</span>&lt;<span class="kw">typeof</span> config&gt; = <span class="kw">async</span> (req, { logger }) =&gt; {
+  <span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">authenticate</span>(req)
+  <span class="kw">const</span> { id } = req.pathParams
+  <span class="kw">const</span> { stageId, notes } = req.body
+
+  <span class="cm">// Use a transaction — all or nothing</span>
+  <span class="kw">const</span> result = <span class="kw">await</span> prisma.<span class="fn">$transaction</span>(<span class="kw">async</span> (tx) =&gt; {
+    <span class="kw">const</span> deal = <span class="kw">await</span> tx.deal.<span class="fn">findUnique</span>({
+      where: { id },
+      include: { stage: <span class="kw">true</span> },
+    })
+    <span class="kw">if</span> (!deal) <span class="kw">throw new</span> Error(<span class="str">'Deal not found'</span>)
+
+    <span class="kw">const</span> newStage = <span class="kw">await</span> tx.pipelineStage.<span class="fn">findUnique</span>({
+      where: { id: stageId },
+    })
+    <span class="kw">if</span> (!newStage) <span class="kw">throw new</span> Error(<span class="str">'Stage not found'</span>)
+
+    <span class="kw">const</span> now = <span class="kw">new</span> Date()
+
+    <span class="cm">// 1. Close the current audit log entry</span>
+    <span class="kw">const</span> currentLog = <span class="kw">await</span> tx.dealAuditLog.<span class="fn">findFirst</span>({
+      where: { dealId: id, exitedAt: <span class="kw">null</span> },
+    })
+    <span class="kw">if</span> (currentLog) {
+      <span class="kw">const</span> days = Math.<span class="fn">floor</span>(
+        (now.<span class="fn">getTime</span>() - currentLog.enteredAt.<span class="fn">getTime</span>()) / (<span class="num">86400000</span>)
+      )
+      <span class="kw">await</span> tx.dealAuditLog.<span class="fn">update</span>({
+        where: { id: currentLog.id },
+        data: { exitedAt: now, daysInStage: days },
+      })
+    }
+
+    <span class="cm">// 2. Create new audit log entry</span>
+    <span class="kw">await</span> tx.dealAuditLog.<span class="fn">create</span>({
+      data: {
+        dealId: id, stageId, enteredAt: now,
+        changedById: user.id, notes,
+      },
+    })
+
+    <span class="cm">// 3. Update the deal itself</span>
+    <span class="kw">const</span> isClosed = [<span class="str">'Closed Won'</span>, <span class="str">'Closed Lost'</span>].<span class="fn">includes</span>(newStage.name)
+    <span class="kw">const</span> updated = <span class="kw">await</span> tx.deal.<span class="fn">update</span>({
+      where: { id },
+      data: {
+        stageId,
+        lastStageUpdateAt: now,
+        ...(isClosed &amp;&amp; { isClosed: <span class="kw">true</span>, closedDate: now }),
+      },
+      include: {
+        client: <span class="kw">true</span>, stage: <span class="kw">true</span>,
+        bd: { select: { id: <span class="kw">true</span>, firstName: <span class="kw">true</span>, lastName: <span class="kw">true</span> }},
+      },
+    })
+
+    <span class="kw">return</span> updated
+  })
+
+  <span class="kw">return</span> { status: <span class="num">200</span>, body: result }
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title">Step 3.4 — Wire Up Frontend Deals</div>
+    <div class="card-sub">Replace mock useDeals hook + add stage transition mutation</div>
+    <div class="step">
+      <div class="sn" style="background:var(--teal-dim);color:#5eead4">1</div>
+      <div class="step-body">
+        <div class="step-desc">
+          Replace your <code>useDeals</code> hook with React Query hooks (same pattern as clients). Add a <code>useUpdateDealStage</code> mutation that calls <code>PATCH /api/deals/:id/stage</code>. The Pipeline board's <code>StageDropdown</code> component calls this mutation when a user picks a new stage.
+        </div>
+        <div class="code-wrap">
+          <pre>
+<span class="cm">// The key mutation for the pipeline board:</span>
+<span class="kw">export function</span> <span class="fn">useUpdateDealStage</span>() {
+  <span class="kw">const</span> qc = <span class="fn">useQueryClient</span>()
+  <span class="kw">return</span> <span class="fn">useMutation</span>({
+    mutationFn: ({ id, stageId, notes }) =&gt;
+      apiClient.<span class="fn">patch</span>(<span class="str">`/api/deals/${id}/stage`</span>, { stageId, notes }),
+    onSuccess: () =&gt; {
+      qc.<span class="fn">invalidateQueries</span>({ queryKey: [<span class="str">'deals'</span>] })   <span class="cm">// refresh pipeline board</span>
+    },
+  })
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- COMPLETE WORKFLOWS -->
+<!-- ============================================================ -->
+<div id="p-workflow" class="panel">
+
+<div class="sec">
+  <div class="sh">Complete Workflow List — Every User Action and What Triggers</div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#93c5fd">Authentication Workflows</div>
+    <table>
+      <thead><tr><th>#</th><th>User Action</th><th>Frontend</th><th>API Call</th><th>Backend</th></tr></thead>
+      <tbody>
+        <tr><td>A1</td><td>Login</td><td>Login.tsx → authStore.login()</td><td>POST /api/auth/login</td><td>Verify bcrypt → sign JWT → return token + user</td></tr>
+        <tr><td>A2</td><td>Page refresh</td><td>AuthGuard → authStore.fetchUser()</td><td>GET /api/auth/me</td><td>Verify JWT → return user or 401</td></tr>
+        <tr><td>A3</td><td>Logout</td><td>authStore.logout() → clear token</td><td>—</td><td>— (stateless JWT, just delete client-side)</td></tr>
+        <tr><td>A4</td><td>Token expired</td><td>Axios 401 interceptor → logout</td><td>Any call → 401</td><td>jwt.verify() throws → 401</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#93c5fd">Client Workflows</div>
+    <table>
+      <thead><tr><th>#</th><th>User Action</th><th>Frontend</th><th>API Call</th><th>Backend</th></tr></thead>
+      <tbody>
+        <tr><td>C1</td><td>View client list</td><td>ClientList → useClients()</td><td>GET /api/clients</td><td>findMany + include industry, contacts, deal count</td></tr>
+        <tr><td>C2</td><td>View client detail</td><td>ClientDetail → useClient(id)</td><td>GET /api/clients/:id</td><td>findUnique + include deals, contacts, referral</td></tr>
+        <tr><td>C3</td><td>Create new client</td><td>NewClient → ClientForm → useCreateClient()</td><td>POST /api/clients</td><td>Zod validate → prisma.create → return 201</td></tr>
+        <tr><td>C4</td><td>Edit client</td><td>ClientDetail → EditModal → useUpdateClient()</td><td>PATCH /api/clients/:id</td><td>Find → update → return updated</td></tr>
+        <tr><td>C5</td><td>Filter by status</td><td>ClientList passes ?status=ACTIVE</td><td>GET /api/clients?status=ACTIVE</td><td>Add where clause from query params</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#c4b5fd">Contact Workflows</div>
+    <table>
+      <thead><tr><th>#</th><th>User Action</th><th>Frontend</th><th>API Call</th><th>Backend</th></tr></thead>
+      <tbody>
+        <tr><td>T1</td><td>View all contacts</td><td>ContactList → useContacts()</td><td>GET /api/contacts</td><td>findMany + include client</td></tr>
+        <tr><td>T2</td><td>View client's contacts</td><td>ClientDetail → useContacts(clientId)</td><td>GET /api/contacts?clientId=x</td><td>findMany where clientId + include client</td></tr>
+        <tr><td>T3</td><td>Create contact</td><td>NewContact → ContactForm → useCreateContact()</td><td>POST /api/contacts</td><td>Zod validate (clientId required) → create</td></tr>
+        <tr><td>T4</td><td>Edit contact</td><td>Contact row → EditModal → useUpdateContact()</td><td>PATCH /api/contacts/:id</td><td>Find → update → return</td></tr>
+        <tr><td>T5</td><td>View contact detail</td><td>Contact row click → detail view</td><td>GET /api/contacts/:id</td><td>findUnique + include deals via dealContacts</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#fbbf24">Deal Workflows</div>
+    <table>
+      <thead><tr><th>#</th><th>User Action</th><th>Frontend</th><th>API Call</th><th>Backend</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>View pipeline board</td><td>Pipeline → useDeals()</td><td>GET /api/deals</td><td>findMany (role-filtered) + compute days_in_stage</td></tr>
+        <tr><td>D2</td><td>View deal detail</td><td>DealDetail → useDeal(id)</td><td>GET /api/deals/:id</td><td>findUnique + audit logs + contacts + projection</td></tr>
+        <tr><td>D3</td><td>Create new deal</td><td>NewDeal → DealForm → useCreateDeal()</td><td>POST /api/deals</td><td>Auto-assign Inquiry stage → create → 201</td></tr>
+        <tr><td>D4</td><td>Edit deal info</td><td>DealDetail → EditModal → useUpdateDeal()</td><td>PATCH /api/deals/:id</td><td>Partial update on remarks, action plan, dates</td></tr>
+        <tr><td style="color:#fbbf24"><strong>D5</strong></td><td><strong>Move deal to new stage</strong></td><td>StageDropdown → useUpdateDealStage()</td><td>PATCH /api/deals/:id/stage</td><td>Transaction: close old audit → new audit → update deal → handle closed</td></tr>
+        <tr><td>D6</td><td>View stage history</td><td>DealDetail → DealHistory</td><td>Part of GET /api/deals/:id</td><td>auditLogs included in detail response</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#5eead4">Cache Invalidation Workflows</div>
+    <div class="card-sub">What gets refreshed after each mutation</div>
+    <table>
+      <thead><tr><th>After This Mutation</th><th>Invalidate These Query Keys</th><th>What Refreshes</th></tr></thead>
+      <tbody>
+        <tr><td>Create client</td><td><code>['clients']</code></td><td>Client list page</td></tr>
+        <tr><td>Update client</td><td><code>['clients']</code>, <code>['client', id]</code></td><td>List + detail page</td></tr>
+        <tr><td>Create contact</td><td><code>['contacts']</code>, <code>['contacts', {clientId}]</code></td><td>Contact list + client detail</td></tr>
+        <tr><td>Update contact</td><td><code>['contacts']</code>, <code>['contact', id]</code></td><td>List + detail</td></tr>
+        <tr><td>Create deal</td><td><code>['deals']</code></td><td>Pipeline board</td></tr>
+        <tr><td>Update deal</td><td><code>['deals']</code>, <code>['deal', id]</code></td><td>Pipeline + deal detail</td></tr>
+        <tr><td>Change deal stage</td><td><code>['deals']</code>, <code>['deal', id]</code></td><td>Pipeline board (card moves columns) + detail (new audit entry)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- MASTER CHECKLIST -->
+<!-- ============================================================ -->
+<div id="p-checklist" class="panel">
+
+<div class="sec">
+  <div class="sh">Master Implementation Checklist</div>
+  <div class="co co-b">
+    Print this or keep it open. Check off each item as you complete it. <strong>Total: 22 tasks across 3 phases.</strong>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#93c5fd">Phase 1 — Client CRUD</div>
+    <ul class="cl">
+      <li><div class="ck">☐</div><div><strong>1.1</strong> Create <code>steps/api/clients/list.step.ts</code> — GET /api/clients</div></li>
+      <li><div class="ck">☐</div><div><strong>1.2</strong> Create <code>steps/api/clients/detail.step.ts</code> — GET /api/clients/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>1.3</strong> Create <code>steps/api/clients/create.step.ts</code> — POST /api/clients</div></li>
+      <li><div class="ck">☐</div><div><strong>1.4</strong> Create <code>steps/api/clients/update.step.ts</code> — PATCH /api/clients/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>1.5</strong> Fix URLs in <code>frontend/src/api/clients.ts</code> (add /api prefix)</div></li>
+      <li><div class="ck">☐</div><div><strong>1.6</strong> Rewrite <code>frontend/src/hooks/useClients.ts</code> with React Query</div></li>
+      <li><div class="ck">☐</div><div><strong>1.7</strong> Update ClientList.tsx to use new hook (add loading/error states)</div></li>
+      <li><div class="ck">☐</div><div><strong>1.8</strong> Update ClientDetail.tsx to use new hook</div></li>
+      <li><div class="ck">☐</div><div><strong>1.9</strong> Test: create a client, see it in the list, view detail, edit it</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#c4b5fd">Phase 2 — Contact CRUD</div>
+    <ul class="cl">
+      <li><div class="ck">☐</div><div><strong>2.1</strong> Create <code>steps/api/contacts/list.step.ts</code> — GET /api/contacts (with ?clientId filter)</div></li>
+      <li><div class="ck">☐</div><div><strong>2.2</strong> Create <code>steps/api/contacts/detail.step.ts</code> — GET /api/contacts/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>2.3</strong> Create <code>steps/api/contacts/create.step.ts</code> — POST /api/contacts</div></li>
+      <li><div class="ck">☐</div><div><strong>2.4</strong> Create <code>steps/api/contacts/update.step.ts</code> — PATCH /api/contacts/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>2.5</strong> Fix URLs in <code>frontend/src/api/contacts.ts</code></div></li>
+      <li><div class="ck">☐</div><div><strong>2.6</strong> Create React Query hooks in <code>useContacts.ts</code></div></li>
+      <li><div class="ck">☐</div><div><strong>2.7</strong> Update ContactList + NewContact pages</div></li>
+      <li><div class="ck">☐</div><div><strong>2.8</strong> Test: create contact for a client, see it in list and client detail</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="card">
+    <div class="card-title" style="color:#fbbf24">Phase 3 — Deal CRUD (Complete)</div>
+    <ul class="cl">
+      <li><div class="ck">☐</div><div><strong>3.1</strong> Create <code>steps/api/deals/detail.step.ts</code> — GET /api/deals/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>3.2</strong> Create <code>steps/api/deals/update.step.ts</code> — PATCH /api/deals/:id</div></li>
+      <li><div class="ck">☐</div><div><strong>3.3</strong> Create <code>steps/api/deals/stage.step.ts</code> — PATCH /api/deals/:id/stage (with audit log)</div></li>
+      <li><div class="ck">☐</div><div><strong>3.4</strong> Rewrite <code>useDeals.ts</code> with React Query (replace mock data)</div></li>
+      <li><div class="ck">☐</div><div><strong>3.5</strong> Wire up Pipeline page to real API + stage transition mutation</div></li>
+      <li><div class="ck">☐</div><div><strong>3.6</strong> Test full pipeline: create deal → moves through stages → closes → audit log shows history</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="co co-g">
+    <strong>After all 3 phases are done:</strong> You can safely delete (or ignore) <code>frontend/src/mockData.ts</code>. Every page will be using real data from your PostgreSQL database through the full stack.
+  </div>
+</div>
+
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+function tab(btn, id) {
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById(id).classList.add('on');
+}
+</script>
+</body>
+</html>

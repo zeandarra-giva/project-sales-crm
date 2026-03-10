@@ -71,8 +71,8 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
           <div className="flex items-center gap-3">
             {deal.bd && (
               <div className="flex items-center gap-1.5">
-                <Avatar name={`${deal.bd.first_name} ${deal.bd.last_name}`} size="sm" />
-                {!compact && <span className="text-xs text-[#4a5068]">{deal.bd.first_name}</span>}
+                <Avatar name={`${deal.bd.firstName} ${deal.bd.lastName}`} size="sm" />
+                {!compact && <span className="text-xs text-[#4a5068]">{deal.bd.firstName}</span>}
               </div>
             )}
             {deal.due_date && !compact && (
