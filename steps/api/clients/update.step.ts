@@ -2,7 +2,7 @@ import type { StepConfig, Handlers } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
-import { Prisma, type ClientStatus, type AccountType } from '@prisma/client' // <-- Added Prisma here
+import { Prisma, type ClientStatus, type AccountType } from '@prisma/client'
 
 export const config = {
     name: 'UpdateClient',
@@ -70,7 +70,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
             return {
                 status: 400,
-                body: { error: 'Invalid industryId or contactId provided. Record not found.' }
+                body: { error: 'Record not found or related ID is invalid' }
             }
         }
 

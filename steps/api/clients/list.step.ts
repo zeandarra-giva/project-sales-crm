@@ -37,10 +37,10 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         return { status: 200, body: clients }
 
     } catch (error: any) {
-        logger.warn('Failed to list clients', { error: error.message })
-        return {
-            status: error.message === 'Not authenticated' ? 401 : 500,
-            body: { error: error.message },
+        if (error.name === 'AuthError') {
+            return { status: 401, body: { error: error.message } }
         }
+        logger.error('Failed to list clients', { error })
+        return { status: 500, body: { error: 'Internal server error' } }
     }
 }

@@ -2,6 +2,7 @@ import type { StepConfig, Handlers } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
+import { Prisma } from '@prisma/client'
 
 export const config = {
     name: 'CreateClient',
@@ -41,12 +42,16 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
 
     } catch (error: any) {
         // 4. Catch and handle errors cleanly
-        logger.error('Failed to create client', { error: error.message })
-
-        return {
-            // Check for our custom AuthError to return 401, otherwise return 500
-            status: error.name === 'AuthError' ? 401 : 500,
-            body: { error: error.message || 'Internal Server Error' },
+        if (error.name === 'AuthError') {                // ← Refactor 2
+            return { status: 401, body: { error: error.message } }
         }
+        if (                                             // ← Refactor 4
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2025'
+        ) {
+            return { status: 400, body: { error: 'Related record not found (check industryId, referralId)' } }
+        }
+        logger.error('Failed to create client', { error })
+        return { status: 500, body: { error: 'Internal server error' } }
     }
 }

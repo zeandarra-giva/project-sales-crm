@@ -257,7 +257,7 @@ var handler3 = async (req, { logger }) => {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return {
         status: 400,
-        body: { error: "Invalid industryId or contactId provided. Record not found." }
+        body: { error: "Record not found or related ID is invalid" }
       };
     }
     return {
@@ -302,11 +302,11 @@ var handler4 = async (req, { logger }) => {
     });
     return { status: 200, body: clients };
   } catch (error) {
-    logger.warn("Failed to list clients", { error: error.message });
-    return {
-      status: error.message === "Not authenticated" ? 401 : 500,
-      body: { error: error.message }
-    };
+    if (error.name === "AuthError") {
+      return { status: 401, body: { error: error.message } };
+    }
+    logger.error("Failed to list clients", { error });
+    return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
@@ -358,6 +358,7 @@ var handler5 = async (req, { logger }) => {
 
 // steps/api/clients/create.step.ts
 import { z as z3 } from "zod";
+import { Prisma as Prisma2 } from "@prisma/client";
 var config6 = {
   name: "CreateClient",
   description: "Create a new client",
@@ -390,12 +391,17 @@ var handler6 = async (req, { logger }) => {
     logger.info("Client created", { clientId: client.id, by: user.id });
     return { status: 201, body: client };
   } catch (error) {
-    logger.error("Failed to create client", { error: error.message });
-    return {
-      // Check for our custom AuthError to return 401, otherwise return 500
-      status: error.name === "AuthError" ? 401 : 500,
-      body: { error: error.message || "Internal Server Error" }
-    };
+    if (error.name === "AuthError") {
+      return { status: 401, body: { error: error.message } };
+    }
+    if (
+      // ← Refactor 4
+      error instanceof Prisma2.PrismaClientKnownRequestError && error.code === "P2025"
+    ) {
+      return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
+    }
+    logger.error("Failed to create client", { error });
+    return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
@@ -504,6 +510,7 @@ initIII();
 var motia = new Motia();
 motia.addStep(config, "./steps/api/deals/list.step.ts", handler, "./steps/api/deals/list.step.ts");
 motia.addStep(config2, "./steps/api/deals/create.step.ts", handler2, "./steps/api/deals/create.step.ts");
+motia.addStep(void 0, "./steps/api/contacts/list.step.ts", void 0, "./steps/api/contacts/list.step.ts");
 motia.addStep(config3, "./steps/api/clients/update.step.ts", handler3, "./steps/api/clients/update.step.ts");
 motia.addStep(config4, "./steps/api/clients/list.step.ts", handler4, "./steps/api/clients/list.step.ts");
 motia.addStep(config5, "./steps/api/clients/detail.step.ts", handler5, "./steps/api/clients/detail.step.ts");

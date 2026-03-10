@@ -1,21 +1,51 @@
-import { useState, useCallback } from 'react';
-import { MOCK_CLIENTS } from '../mockData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { clientsApi } from '../api/clients'
 import type { Client } from '../types';
 
 export function useClients() {
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
+  return useQuery({
+    queryKey: ['clients'],
+    queryFn: async () => {
+      const res = await clientsApi.list()
+      return res.data
+    },
+  })
+}
 
-  const getById = useCallback((id: string) => clients.find(c => c.id === id), [clients]);
+export function useClient(id: string) {
+  return useQuery({
+    queryKey: ['client', id],
+    queryFn: async () => {
+      const res = await clientsApi.getById(id)
+      return res.data
+    },
+    enabled: !!id,                               // don't fetch if no ID yet
+  })
+}
 
-  const updateClient = useCallback((id: string, patch: Partial<Client>) => {
-    setClients(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  }, []);
+export function useCreateClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await clientsApi.create(data)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clients'] })
+    },
+  })
+}
 
-  const addClient = useCallback((client: Omit<Client, 'id'>) => {
-    const newClient: Client = { ...client, id: `c-${Date.now()}` };
-    setClients(prev => [...prev, newClient]);
-    return newClient;
-  }, []);
-
-  return { clients, getById, updateClient, addClient };
+export function useUpdateClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string, data: any }) => {
+      const res = await clientsApi.update(id, data)
+      return res.data
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['clients'] })
+      qc.invalidateQueries({ queryKey: ['client', id] })
+    },
+  })
 }
