@@ -1,9 +1,22 @@
 import jwt from 'jsonwebtoken'
 import { prisma } from './db'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-to-a-32-char-random-string'
+// const JWT_SECRET = process.env.JWT_SECRET || 'change-me-to-a-32-char-random-string'
+const ENV_JWT_SECRET = process.env.JWT_SECRET
+if (!ENV_JWT_SECRET && process.env.NODE_ENV == 'production') {
+    throw new Error('JWT_SECRET environment variable must be set in production')
+}
+const JWT_SECRET = ENV_JWT_SECRET || 'change-me-to-a-32-char-random-string'
 const JWT_EXPIRE_MINUTES = parseInt(process.env.JWT_EXPIRE_MINUTES || '1440', 10) // 24 hours in minutes
 const JWT_EXPIRE_SECONDS = JWT_EXPIRE_MINUTES * 60
+
+// 1. Define our custom error class for authentication failures
+export class AuthError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'AuthError' // This acts as our sentinel value
+    }
+}
 
 // What we store inside the JWT token
 interface TokenPayload {
@@ -21,7 +34,12 @@ export function signToken(payload: TokenPayload): string {
 
 // Verify a JWT token and return the payload
 export function verifyToken(token: string): TokenPayload {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload
+    try {
+        return jwt.verify(token, JWT_SECRET) as TokenPayload
+    } catch (error: any) {
+        // 2. Catch native JWT errors (expired, malformed) and standardize them
+        throw new AuthError(error.message || 'Invalid token')
+    }
 }
 
 // Extract token from "Bearer <token>" header, verify it,
@@ -31,14 +49,14 @@ export async function authenticate(req: any) {
     const authHeader = req.headers?.authorization || req.headers?.Authorization
 
     if (!authHeader) {
-        throw new Error('No authorization header')
+        throw new AuthError('No authorization header')
     }
 
     // Header format: "Bearer eyJhbGciOi..."
     const token = authHeader.replace('Bearer ', '')
 
     if (!token) {
-        throw new Error('No token provided')
+        throw new AuthError('No token provided')
     }
 
     // Verify the token — throws if expired or invalid
@@ -50,11 +68,11 @@ export async function authenticate(req: any) {
     })
 
     if (!bd) {
-        throw new Error('User not found')
+        throw new AuthError('User not found')
     }
 
     if (!bd.isActive) {
-        throw new Error('Account is deactivated')
+        throw new AuthError('Account is deactivated')
     }
 
     // Return the user without the password
