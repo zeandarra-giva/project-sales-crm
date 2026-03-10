@@ -1,0 +1,34 @@
+modules:
+  - class: modules::stream::StreamModule
+    config:
+      port: 3112
+      host: 0.0.0.0
+      adapter:
+        class: modules::stream::adapters::KvStore
+        config:
+          base_path: .motia/streams
+
+  - class: modules::state::StateModule
+    config:
+      adapter:
+        class: modules::state::adapters::KvStore
+        config:
+          base_path: .motia/state
+
+  - class: modules::cron::CronModule
+
+  - class: modules::queue::QueueModule
+
+  - class: modules::api::RestApiModule
+    config:
+      port: 3111
+      host: 0.0.0.0
+
+  - class: modules::shell::ExecModule
+    config:
+      watch:
+        - "steps/**/*.step.ts"
+        - "lib/**/*.ts"
+      exec:
+        - npx motia dev
+        - node dist/index-dev.js
