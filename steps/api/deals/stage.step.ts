@@ -5,10 +5,10 @@ import { prisma } from '../../../lib/prisma.js'
 import { getProbability, isClosedStage, getStageByName } from '../../../lib/pipeline.js'
 
 const bodySchema = z.object({
-  stageName:           z.string().min(1),          // e.g. "Negotiation", "Closed Won"
-  notes:               z.string().optional(),
-  finalProposedValue:  z.number().optional(),
-  contractLink:        z.string().optional(),
+  stageName: z.string().min(1),          // e.g. "Negotiation", "Closed Won"
+  notes: z.string().optional(),
+  finalProposedValue: z.number().optional(),
+  contractLink: z.string().optional(),
 })
 
 export const config = {
@@ -30,9 +30,9 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
 
   const [deal, newStage] = await Promise.all([
     prisma.deal.findUnique({
-      where:   { id },
+      where: { id },
       include: {
-        stage:     true,
+        stage: true,
         auditLogs: { where: { exitedAt: null }, orderBy: { enteredAt: 'desc' }, take: 1 },
       },
     }),
@@ -49,6 +49,20 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
 
   const isClosed = isClosedStage(stageName)
 
+  // Require contract dates from Proposal Sent onward — enforced server-side as the true gate
+  const stagesRequiringDates = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost']
+  if (stagesRequiringDates.includes(stageName)) {
+    const missing: string[] = []
+    if (!deal.startDate) missing.push('Contract Start Date')
+    if (!deal.dueDate) missing.push('Expected Close Date')
+    if (missing.length > 0) {
+      return {
+        status: 422,
+        body: { error: `Please fill in ${missing.join(' and ')} on the deal before moving to "${stageName}".` },
+      }
+    }
+  }
+
   if (stageName === 'Closed Lost') {
     if (!deal.remarks?.trim()) {
       return { status: 422, body: { error: 'Remarks are required before closing a deal as Lost' } }
@@ -58,7 +72,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
     }
   }
 
-  const now         = new Date()
+  const now = new Date()
   const probability = getProbability(stageName)
 
   const updatedDeal = await prisma.$transaction(async (tx) => {
@@ -67,27 +81,27 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
       const daysInStage = Math.floor((now.getTime() - currentLog.enteredAt.getTime()) / 86400000)
       await tx.dealAuditLog.update({
         where: { id: currentLog.id },
-        data:  { exitedAt: now, daysInStage },
+        data: { exitedAt: now, daysInStage },
       })
     }
 
     await tx.dealAuditLog.create({
       data: {
-        dealId:     id,
-        stageId:    newStage.id,
+        dealId: id,
+        stageId: newStage.id,
         changedById: user!.id,
-        enteredAt:  now,
-        notes:      notes ?? null,
+        enteredAt: now,
+        notes: notes ?? null,
       },
     })
 
     const dealUpdate: Record<string, unknown> = {
-      stageId:          newStage.id,
+      stageId: newStage.id,
       lastStageUpdateAt: now,
       isClosed,
     }
     if (isClosed) {
-      dealUpdate.closedDate     = now
+      dealUpdate.closedDate = now
       dealUpdate.salesCycleDays = Math.floor((now.getTime() - (deal.startDate ?? now).getTime()) / 86400000)
     }
     if (stageName === 'Closed Lost' && finalProposedValue !== undefined) {
@@ -103,28 +117,32 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
       where: { dealId: id },
       data: {
         probabilityPct: probability,
-        weightedValue:  Number(updated.revenue ?? 0) * (probability / 100),
+        weightedValue: Number(updated.revenue ?? 0) * (probability / 100),
       },
     })
 
     return updated
   })
 
-  await enqueue({ topic: 'deal.stage.changed', data: {
-    deal_id:   id,
-    bd_id:     deal.bdId,
-    deal_name: deal.dealName,
-    old_stage: deal.stage.name,
-    new_stage: stageName,
-  }})
+  await enqueue({
+    topic: 'deal.stage.changed', data: {
+      deal_id: id,
+      bd_id: deal.bdId,
+      deal_name: deal.dealName,
+      old_stage: deal.stage.name,
+      new_stage: stageName,
+    }
+  })
 
   if (stageName === 'Closed Won') {
     await enqueue({ topic: 'deal.closed.won', data: { deal_id: id, bd_id: deal.bdId } })
   }
   if (stageName === 'Closed Lost') {
-    await enqueue({ topic: 'deal.closed.lost', data: {
-      deal_id: id, bd_id: deal.bdId, deal_name: deal.dealName, closing_notes: notes,
-    }})
+    await enqueue({
+      topic: 'deal.closed.lost', data: {
+        deal_id: id, bd_id: deal.bdId, deal_name: deal.dealName, closing_notes: notes,
+      }
+    })
   }
 
   logger.info('Deal stage changed', { dealId: id, from: deal.stage.name, to: stageName })

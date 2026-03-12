@@ -31,7 +31,8 @@ export default function NewDealPage() {
     contract_link: '',
     remarks: '',
     action_plan: '',
-    due_date: '',
+    start_date: '',
+    computed_due_date: '', // display only — auto-calculated from start_date + duration
     action_plan_due_date: '',
   });
 
@@ -96,7 +97,8 @@ export default function NewDealPage() {
       contract_link: form.contract_link || undefined,
       remarks: form.remarks || undefined,
       action_plan: form.action_plan || undefined,
-      due_date: form.due_date || undefined,
+      start_date: form.start_date || undefined,
+      // due_date is auto-computed server-side from start_date + duration
       action_plan_due_date: form.action_plan_due_date || undefined,
     });
   };
@@ -163,7 +165,19 @@ export default function NewDealPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Monthly Subscription (PHP)" type="number" value={form.monthly_subscription} onChange={e => update('monthly_subscription', e.target.value)} placeholder="85000" required />
-                <Input label="Duration (months)" type="number" value={form.duration} onChange={e => update('duration', e.target.value)} placeholder="12" required />
+                <Input label="Duration (months)" type="number" value={form.duration}
+                  onChange={e => {
+                    const dur = parseInt(e.target.value) || 0;
+                    let computed = form.computed_due_date;
+                    if (form.start_date && dur > 0) {
+                      const d = new Date(form.start_date);
+                      d.setMonth(d.getMonth() + dur);
+                      d.setDate(d.getDate() - 1);
+                      computed = d.toISOString().split('T')[0];
+                    }
+                    setForm(prev => ({ ...prev, duration: e.target.value, computed_due_date: computed }));
+                  }}
+                  placeholder="12" required />
               </div>
 
               {contractValue > 0 && (
@@ -176,7 +190,30 @@ export default function NewDealPage() {
               <Select label="Lead Source" value={form.lead_source} onChange={e => update('lead_source', e.target.value)} options={LEAD_SOURCES} required />
 
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Expected Close Date" type="date" value={form.due_date} onChange={e => update('due_date', e.target.value)} required />
+                <Input
+                  label="Contract Start Date"
+                  type="date"
+                  value={form.start_date}
+                  onChange={e => {
+                    const start = e.target.value;
+                    const dur = parseInt(form.duration) || 0;
+                    let computed = '';
+                    if (start && dur > 0) {
+                      const d = new Date(start);
+                      d.setMonth(d.getMonth() + dur);
+                      d.setDate(d.getDate() - 1);
+                      computed = d.toISOString().split('T')[0];
+                    }
+                    setForm(prev => ({ ...prev, start_date: start, computed_due_date: computed }));
+                  }}
+                />
+                <Input
+                  label="Contract End Date (auto-calculated)"
+                  type="date"
+                  value={form.computed_due_date}
+                  disabled
+                  placeholder="Set start date to calculate"
+                />
                 <Input label="Action Plan Due Date" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} />
               </div>
             </div>

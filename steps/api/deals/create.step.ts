@@ -15,6 +15,7 @@ const bodySchema = z.object({
   remarks: z.string().optional(),
   actionPlan: z.string().optional(),
   dueDate: z.string().optional(),
+  startDate: z.string().optional(),
   actionPlanDueDate: z.string().optional(),
   initialMeetingDate: z.string().optional(),
 })
@@ -40,6 +41,21 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
   const revenue = body.monthlySubscription * body.duration
   const probability = getProbability(STAGE.INQUIRY)
 
+  // Compute startDate (null if not provided — required before Proposal Sent)
+  const startDate = body.startDate ? new Date(body.startDate) : null
+
+  // Compute dueDate: use explicit value, or auto-calculate from startDate + duration
+  let dueDate: Date | null = null
+  if (body.dueDate) {
+    dueDate = new Date(body.dueDate)
+  } else if (startDate && body.duration) {
+    // Last day of the final month: startDate + duration months - 1 day
+    const d = new Date(startDate)
+    d.setMonth(d.getMonth() + body.duration)
+    d.setDate(d.getDate() - 1)
+    dueDate = d
+  }
+
   const deal = await prisma.$transaction(async (tx) => {
     const deal = await tx.deal.create({
       data: {
@@ -55,8 +71,8 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
         bundleId: body.bundleId,
         remarks: body.remarks,
         actionPlan: body.actionPlan,
-        startDate: new Date(),
-        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+        startDate,
+        dueDate,
         actionPlanDueDate: body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : undefined,
         initialMeetingDate: body.initialMeetingDate ? new Date(body.initialMeetingDate) : undefined,
       },

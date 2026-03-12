@@ -49,7 +49,7 @@ export default function DealDetail() {
 
   // Edit deal fields
   const [editDraft, setEditDraft] = useState({
-    deal_name: '', monthly_subscription: '', duration: '', due_date: '', start_date: '',
+    deal_name: '', monthly_subscription: '', duration: '', start_date: '',
     lead_source: '', proposal_link: '',
   });
   const [showEditDeal, setShowEditDeal] = useState(false);
@@ -65,12 +65,53 @@ export default function DealDetail() {
 
   const handleStageClick = (stage: PipelineStage) => {
     if (stage === currentStage) return;
-    setStageConfirm(stage);
+
+    // ── Guard 1: only allow advancing ONE stage at a time (no skipping) ──
+    const ORDERED_STAGES: PipelineStage[] = ['Inquiry', 'Prospecting', 'Discovery', 'Proposal Sent', 'Negotiation', 'Closed Won'];
+    const currentIdx = ORDERED_STAGES.indexOf(currentStage);
+    const targetIdx = ORDERED_STAGES.indexOf(stage);
+    // Allow going backwards (e.g. re-clicking current) or to Closed Lost from anywhere
+    if (stage !== 'Closed Lost' && targetIdx > currentIdx + 1) {
+      setStageError(`You can only advance one stage at a time. Move to ${ORDERED_STAGES[currentIdx + 1]} first.`);
+      return;
+    }
+
+    // ── Guard 2: require contract dates before Proposal Sent and beyond ──
+    const stagesRequiringDates: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+    if (stagesRequiringDates.includes(stage)) {
+      const rawDeal = deal as any;
+      const hasStart = !!(rawDeal?.start_date || rawDeal?.startDate);
+      const hasDue = !!(rawDeal?.due_date || rawDeal?.dueDate);
+      if (!hasStart || !hasDue) {
+        const missing = [!hasStart && 'Contract Start Date', !hasDue && 'Contract End Date'].filter(Boolean).join(' and ');
+        setStageError(`Please fill in ${missing} before moving to ${stage}. Use the ✏ Edit button.`);
+        return;
+      }
+    }
+
     setStageError('');
+    setStageConfirm(stage);
   };
 
   const confirmStageChange = async () => {
     if (!stageConfirm) return;
+
+    // ── HARD GATE: require contract dates before Proposal Sent and beyond ──
+    const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+    if (STAGES_NEED_DATES.includes(stageConfirm)) {
+      const d = deal as any;
+      // Check every possible key name — snake_case (after axios interceptor) and camelCase (raw)
+      const startVal = d?.start_date ?? d?.startDate ?? null;
+      const dueVal = d?.due_date ?? d?.dueDate ?? null;
+      const missingList: string[] = [];
+      if (!startVal) missingList.push('Contract Start Date');
+      if (!dueVal) missingList.push('Contract End Date');
+      if (missingList.length > 0) {
+        setStageError(`⚠ Required: ${missingList.join(' and ')} — close this and click ✏ Edit Deal to add them.`);
+        return; // hard stop — do not proceed
+      }
+    }
+
     if (stageConfirm === 'Closed Lost' && !remarks.trim()) {
       setStageError('Remarks are required before closing as Lost.');
       return;
@@ -87,15 +128,21 @@ export default function DealDetail() {
         remarks: stageConfirm === 'Closed Lost' ? remarks : undefined,
         contractLink: stageConfirm === 'Closed Won' ? contractLink : undefined,
         finalProposedValue: finalProposedValue ? parseFloat(finalProposedValue) : undefined,
+        deal, // passed so the mutation can enforce the date guard
       });
       setCurrentStage(stageConfirm);
       setStageConfirm(null);
       setStageNotes('');
       refetch();
       // Trigger real-time notification refresh
-      setTimeout(() => qc.invalidateQueries({ queryKey: ['notifications'] }), 800);
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['notifications'] });
+        qc.invalidateQueries({ queryKey: ['deal-history', id] });
+      }, 800);
     } catch (err: any) {
-      setStageError(err?.response?.data?.error ?? 'Failed to update stage');
+      // err.message = our thrown Error from the mutation guard
+      // err.response.data.error = axios 4xx from backend
+      setStageError(err?.message ?? err?.response?.data?.error ?? 'Failed to update stage');
     }
   };
 
@@ -104,7 +151,6 @@ export default function DealDetail() {
       deal_name: deal!.deal_name,
       monthly_subscription: String(deal!.monthly_subscription),
       duration: String(deal!.duration),
-      due_date: deal!.due_date ? new Date(deal!.due_date).toISOString().split('T')[0] : '',
       start_date: deal!.start_date ? new Date(deal!.start_date).toISOString().split('T')[0] : '',
       lead_source: deal!.lead_source ?? 'OUTBOUND',
       proposal_link: deal!.proposal_link ?? '',
@@ -122,8 +168,8 @@ export default function DealDetail() {
           monthly_subscription: monthly,
           duration: dur,
           revenue: monthly * dur,
-          due_date: editDraft.due_date || undefined,
           start_date: editDraft.start_date || undefined,
+          // due_date is auto-recomputed server-side from start_date + duration
           lead_source: editDraft.lead_source as any,
           proposal_link: editDraft.proposal_link || undefined,
         }
@@ -261,7 +307,7 @@ export default function DealDetail() {
               {!isClosed && (
                 <div className="mt-3 pt-3 border-t border-[#e2e6f0] flex items-center justify-between">
                   <button
-                    onClick={() => setStageConfirm('Closed Lost')}
+                    onClick={() => handleStageClick('Closed Lost')}
                     className="text-xs text-[#e11d48] hover:text-[#c81d3e] transition-colors"
                   >
                     Mark as Closed Lost
@@ -272,97 +318,121 @@ export default function DealDetail() {
                   </span>
                 </div>
               )}
-            </Card>
 
-            {/* Stage confirm modal */}
-            {stageConfirm && (
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full">
-                  <h3 className="font-bold font-display text-[#1a1d2e] mb-2">
-                    Move to {stageConfirm}?
-                  </h3>
-                  <p className="text-sm text-[#4a5068] mb-4">
-                    {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
-                  </p>
-                  {stageError && (
-                    <div className="mb-3 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">{stageError}</div>
-                  )}
-                  {stageConfirm === 'Closed Lost' && (
-                    <div className="mb-3 flex flex-col gap-3">
-                      <Textarea
-                        label="Remarks (required — explain why deal was lost)"
-                        value={remarks}
-                        onChange={e => setRemarks(e.target.value)}
-                        rows={3}
-                        placeholder="Budget constraints, competitor won, timing..."
-                      />
-                      <Input
-                        label="Final Proposed Value (optional)"
-                        type="number"
-                        value={finalProposedValue}
-                        onChange={e => setFinalProposedValue(e.target.value)}
-                        placeholder="85000"
-                      />
-                    </div>
-                  )}
-                  {stageConfirm === 'Closed Won' && (
-                    <div className="mb-3">
-                      <Input
-                        label="Contract Link (required)"
-                        value={contractLink}
-                        onChange={e => setContractLink(e.target.value)}
-                        placeholder="https://..."
-                      />
-                    </div>
-                  )}
-                  <div className="mb-4">
-                    <Textarea
-                      label="Stage transition notes (optional)"
-                      value={stageNotes}
-                      onChange={e => setStageNotes(e.target.value)}
-                      rows={2}
-                      placeholder="Notes about this stage change..."
-                    />
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => { setStageConfirm(null); setStageError(''); }}>Cancel</Button>
-                    <Button
-                      variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'}
-                      size="sm"
-                      onClick={confirmStageChange}
-                      disabled={isUpdating}
-                    >
-                      {isUpdating ? 'Updating…' : `Confirm — ${stageConfirm}`}
-                    </Button>
-                  </div>
+              {/* Inline stage error — shown when dates are missing and user tries to advance */}
+              {stageError && !stageConfirm && (
+                <div className="mt-3 p-2.5 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">
+                  {stageError}
                 </div>
-              </div>
-            )}
-
-            {/* Remarks */}
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText size={14} className="text-[#3d5af1]" />
-                <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Remarks</span>
-                {!remarks.trim() && !isClosed && (
-                  <Badge variant="danger" size="sm">Required for Closed Lost</Badge>
-                )}
-              </div>
-              {editing ? (
-                <Textarea
-                  value={remarks}
-                  onChange={e => setRemarks(e.target.value)}
-                  rows={4}
-                  placeholder="Add deal notes, client context, and progress updates..."
-                />
-              ) : (
-                <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
-                </p>
               )}
             </Card>
 
-            {/* Action plan */}
+            {/* Stage confirm modal */}
+            {stageConfirm && (() => {
+              const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+              const d = deal as any;
+              const startVal = d?.start_date ?? d?.startDate ?? null;
+              const dueVal = d?.due_date ?? d?.dueDate ?? null;
+              const modalMissing: string[] = [];
+              if (STAGES_NEED_DATES.includes(stageConfirm)) {
+                if (!startVal) modalMissing.push('Contract Start Date');
+                if (!dueVal) modalMissing.push('Contract End Date');
+              }
+              return (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                  <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full">
+                    <h3 className="font-bold font-display text-[#1a1d2e] mb-2">
+                      Move to {stageConfirm}?
+                    </h3>
+                    <p className="text-sm text-[#4a5068] mb-4">
+                      {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
+                    </p>
+                    {modalMissing.length > 0 && (
+                      <div className="mb-3 p-3 bg-[#fffbeb] border border-[#fde68a] rounded-xl text-xs text-[#92400e]">
+                        ⚠ <strong>Missing required fields:</strong> {modalMissing.join(' and ')}.<br />
+                        <span className="mt-1 block">Close this and click <strong>✏ Edit Deal</strong> to add contract dates before proceeding.</span>
+                      </div>
+                    )}
+                    {stageError && (
+                      <div className="mb-3 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">{stageError}</div>
+                    )}
+                    {stageConfirm === 'Closed Lost' && (
+                      <div className="mb-3 flex flex-col gap-3">
+                        <Textarea
+                          label="Remarks (required — explain why deal was lost)"
+                          value={remarks}
+                          onChange={e => setRemarks(e.target.value)}
+                          rows={3}
+                          placeholder="Budget constraints, competitor won, timing..."
+                        />
+                        <Input
+                          label="Final Proposed Value (optional)"
+                          type="number"
+                          value={finalProposedValue}
+                          onChange={e => setFinalProposedValue(e.target.value)}
+                          placeholder="85000"
+                        />
+                      </div>
+                    )}
+                    {stageConfirm === 'Closed Won' && (
+                      <div className="mb-3">
+                        <Input
+                          label="Contract Link (required)"
+                          value={contractLink}
+                          onChange={e => setContractLink(e.target.value)}
+                          placeholder="https://..."
+                        />
+                      </div>
+                    )}
+                    <div className="mb-4">
+                      <Textarea
+                        label="Stage transition notes (optional)"
+                        value={stageNotes}
+                        onChange={e => setStageNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Notes about this stage change..."
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="secondary" size="sm" onClick={() => { setStageConfirm(null); setStageError(''); }}>Cancel</Button>
+                      <Button
+                        variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'}
+                        size="sm"
+                        onClick={confirmStageChange}
+                        disabled={isUpdating || modalMissing.length > 0}
+                      >
+                        {isUpdating ? 'Updating…' : modalMissing.length > 0 ? 'Add dates first' : `Confirm — ${stageConfirm}`}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Remarks */
+              <Card className="p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText size={14} className="text-[#3d5af1]" />
+                  <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Remarks</span>
+                  {!remarks.trim() && !isClosed && (
+                    <Badge variant="danger" size="sm">Required for Closed Lost</Badge>
+                  )}
+                </div>
+                {editing ? (
+                  <Textarea
+                    value={remarks}
+                    onChange={e => setRemarks(e.target.value)}
+                    rows={4}
+                    placeholder="Add deal notes, client context, and progress updates..."
+                  />
+                ) : (
+                  <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
+                    {remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
+                  </p>
+                )}
+              </Card>
+            }
+            { /* Action plan */}
             <Card className="p-5">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
@@ -395,34 +465,55 @@ export default function DealDetail() {
             {/* Stage history */}
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Stage History</div>
-              <div className="flex flex-col gap-0">
-                {((historyData as any[]) ?? []).map((h: any, i: number) => {
-                  const stageName = h.stage?.name ?? h.stage;
-                  const daysVal = h.days_in_stage ?? h.days ?? '—';
-                  const isLast = i === ((historyData as any[])?.length ?? 0) - 1;
-                  return (
-                    <div key={h.id ?? i} className="flex gap-4 pb-4 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: getStageColor(stageName as PipelineStage) }} />
-                        {!isLast && <div className="w-px flex-1 bg-[#f4f6fb] mt-1" />}
-                      </div>
-                      <div className="flex-1 min-w-0 pb-4 last:pb-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-[#1a1d2e]">{stageName}</span>
-                          <span className="text-xs text-[#8b90a8]">{daysVal}d</span>
+              {(!historyData || (historyData as any[]).length === 0) ? (
+                <p className="text-xs text-[#8b90a8] text-center py-4">No history available</p>
+              ) : (
+                <div className="flex flex-col">
+                  {((historyData as any[]) ?? []).map((h: any, i: number) => {
+                    const stageName = h.stage_name ?? h.stage?.name ?? h.stage ?? '—';
+                    const isLast = i === ((historyData as any[])?.length ?? 0) - 1;
+                    const isCurrent = !h.exited_at;
+                    const daysVal = h.days_in_stage != null ? `${h.days_in_stage}d` : isCurrent ? 'ongoing' : '—';
+                    const stageColor = getStageColor(stageName as PipelineStage);
+                    return (
+                      <div key={h.id ?? i} className="flex gap-3">
+                        {/* Timeline spine */}
+                        <div className="flex flex-col items-center flex-shrink-0 w-6">
+                          <div className="w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm mt-1 flex-shrink-0"
+                            style={{ background: isCurrent ? stageColor : '#c8cfe8' }} />
+                          {!isLast && <div className="w-px flex-1 bg-[#e2e6f0] my-1" />}
                         </div>
-                        <span className="text-[10px] text-[#8b90a8]">
-                          {h.entered_at ? formatDate(h.entered_at) : ''}
-                          {h.exited_at ? ` → ${formatDate(h.exited_at)}` : ' · current'}
-                        </span>
+                        {/* Content */}
+                        <div className={`flex-1 min-w-0 ${isLast ? 'pb-0' : 'pb-4'}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-[#1a1d2e]">{stageName}</span>
+                                {isCurrent && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#eef1fe] text-[#3d5af1] border border-[#c7d0fb]">
+                                    CURRENT
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-[#8b90a8] mt-0.5">
+                                {h.entered_at ? formatDate(h.entered_at) : ''}
+                                {h.exited_at ? ` → ${formatDate(h.exited_at)}` : ''}
+                                {h.changed_by && <span className="ml-1">· {h.changed_by}</span>}
+                              </div>
+                              {h.notes && (
+                                <div className="mt-1 text-[10px] text-[#4a5068] italic bg-[#f4f6fb] rounded px-2 py-1 border-l-2 border-[#c7d0fb]">
+                                  "{h.notes}"
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-[#8b90a8] flex-shrink-0 font-medium">{daysVal}</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                {(!historyData || (historyData as any[]).length === 0) && (
-                  <p className="text-xs text-[#8b90a8] text-center py-4">No history available</p>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           </div>
 
@@ -458,21 +549,31 @@ export default function DealDetail() {
 
             {/* Key dates */}
             <Card className="p-5">
-              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Key Dates</div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Key Dates</div>
+                {!deal.start_date && !isClosed && (
+                  <Badge variant="warning" size="sm">⚠ Start date required for Proposal Sent</Badge>
+                )}
+              </div>
+              {!deal.start_date && !isClosed && (
+                <div className="mb-3 p-2.5 bg-[#fffbeb] border border-[#fde68a] rounded-xl text-xs text-[#92400e]">
+                  Add a <strong>Contract Start Date</strong> before advancing to Proposal Sent or beyond — the Contract End Date will be calculated automatically. Use the ✏ Edit button above.
+                </div>
+              )}
               <div className="flex flex-col gap-2.5">
                 {[
-                  { label: 'Deal Created', date: deal.start_date, icon: <Calendar size={12} /> },
-                  { label: 'Expected Close', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
+                  { label: 'Contract Start', date: deal.start_date, icon: <Calendar size={12} />, missing: !deal.start_date },
+                  { label: 'Contract End', date: deal.due_date, icon: <Calendar size={12} />, highlight: true, missing: !deal.due_date },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
                   deal.action_plan_due_date && { label: 'Action Plan Due', date: deal.action_plan_due_date, icon: <Clock size={12} />, warning: new Date(deal.action_plan_due_date) < new Date() },
                 ].filter(Boolean).map((item: any, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
-                    <div className={cn('flex items-center gap-1.5', item.warning ? 'text-[#e11d48]' : 'text-[#8b90a8]')}>
+                    <div className={cn('flex items-center gap-1.5', item.warning ? 'text-[#e11d48]' : item.missing ? 'text-[#d97706]' : 'text-[#8b90a8]')}>
                       {item.icon}
                       <span className="text-xs">{item.label}</span>
                     </div>
-                    <span className={cn('text-xs font-medium', item.highlight ? 'text-[#1a1d2e]' : 'text-[#4a5068]')}>
-                      {formatDate(item.date)}
+                    <span className={cn('text-xs font-medium', item.missing ? 'text-[#d97706] italic' : item.highlight ? 'text-[#1a1d2e]' : 'text-[#4a5068]')}>
+                      {item.missing ? 'Not set' : formatDate(item.date)}
                     </span>
                   </div>
                 ))}
@@ -544,10 +645,23 @@ export default function DealDetail() {
                   onChange={e => setEditDraft(p => ({ ...p, duration: e.target.value }))} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Expected Close Date" type="date" value={editDraft.due_date}
-                  onChange={e => setEditDraft(p => ({ ...p, due_date: e.target.value }))} />
-                <Input label="Start Date" type="date" value={editDraft.start_date}
+                <Input label="Contract Start Date" type="date" value={editDraft.start_date}
                   onChange={e => setEditDraft(p => ({ ...p, start_date: e.target.value }))} />
+                <Input
+                  label="Contract End Date (auto-calculated)"
+                  type="date"
+                  value={(() => {
+                    const start = editDraft.start_date;
+                    const dur = parseInt(editDraft.duration) || 0;
+                    if (!start || !dur) return '';
+                    const d = new Date(start);
+                    d.setMonth(d.getMonth() + dur);
+                    d.setDate(d.getDate() - 1);
+                    return d.toISOString().split('T')[0];
+                  })()}
+                  disabled
+                  placeholder="Set start date to calculate"
+                />
                 <Select label="Lead Source" value={editDraft.lead_source}
                   onChange={e => setEditDraft(p => ({ ...p, lead_source: e.target.value }))}
                   options={[

@@ -122,14 +122,59 @@ var handler2 = async (event, { logger }) => {
 import { NotificationTrigger as NotificationTrigger4 } from "@prisma/client";
 var config3 = {
   name: "OnDealStageChanged",
-  description: "Event: fires STAGE_CHANGE notification when a deal moves to a new stage",
+  description: "Event: fires STAGE_CHANGE notification and auto-generates payments on Proposal Sent",
   triggers: [{ type: "queue", topic: "deal.stage.changed" }],
   enqueues: [],
   flows: ["notifications"]
 };
+var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+async function generatePayments(deal_id, logger) {
+  const deal = await prisma.deal.findUnique({
+    where: { id: deal_id },
+    select: { startDate: true, dueDate: true, duration: true, monthlySubscription: true }
+  });
+  if (!deal?.startDate || !deal?.monthlySubscription) {
+    logger.warn("Skipping payment generation \u2014 deal missing startDate or monthlySubscription", { deal_id });
+    return;
+  }
+  const months = deal.duration > 0 ? deal.duration : 1;
+  await prisma.payment.deleteMany({ where: { dealId: deal_id } });
+  for (let i = 0; i < months; i++) {
+    const d = new Date(deal.startDate);
+    d.setMonth(d.getMonth() + i);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const quarter = Math.ceil(month / 3);
+    const dateId = `${year}-${String(month).padStart(2, "0")}`;
+    await prisma.dateDimension.upsert({
+      where: { id: dateId },
+      update: {},
+      create: {
+        id: dateId,
+        timestamp: new Date(year, month - 1, 1),
+        year,
+        month,
+        monthNumber: month,
+        day: 1,
+        dayOfWeek: DAY_NAMES[new Date(year, month - 1, 1).getDay()],
+        quarter,
+        isQuarterEnd: month % 3 === 0
+      }
+    });
+    await prisma.payment.create({
+      data: {
+        dealId: deal_id,
+        amount: deal.monthlySubscription,
+        // expected amount — BD can edit actual received
+        dateId
+      }
+    });
+  }
+  logger.info("Auto-generated monthly payments", { deal_id, months });
+}
 var handler3 = async (event, { logger }) => {
   const { deal_id, bd_id, deal_name, old_stage, new_stage } = event;
-  const emoji = new_stage === "Closed Won" ? "\u{1F389}" : new_stage === "Closed Lost" ? "\u274C" : new_stage === "Negotiation" ? "\u{1F91D}" : "\u{1F504}";
+  const emoji = new_stage === "Closed Won" ? "\u{1F389}" : new_stage === "Closed Lost" ? "\u274C" : new_stage === "Negotiation" ? "\u{1F91D}" : new_stage === "Proposal Sent" ? "\u{1F4C4}" : "\u{1F504}";
   await createNotification({
     bdId: bd_id,
     type: "STAGE_CHANGE",
@@ -137,15 +182,20 @@ var handler3 = async (event, { logger }) => {
     dealId: deal_id,
     content: `${emoji} "${deal_name}" moved from ${old_stage} \u2192 ${new_stage}.`
   });
+  if (new_stage === "Proposal Sent") {
+    await generatePayments(deal_id, logger);
+  }
   if (new_stage === "Closed Won" || new_stage === "Closed Lost") {
-    const managers = await prisma.bD.findMany({
-      where: { role: "SALES_MANAGER", isActive: true },
-      select: { id: true }
-    });
-    const deal = await prisma.deal.findUnique({
-      where: { id: deal_id },
-      include: { client: { select: { name: true } }, bd: { select: { firstName: true, lastName: true } } }
-    });
+    const [managers, deal] = await Promise.all([
+      prisma.bD.findMany({ where: { role: "SALES_MANAGER", isActive: true }, select: { id: true } }),
+      prisma.deal.findUnique({
+        where: { id: deal_id },
+        include: {
+          client: { select: { name: true } },
+          bd: { select: { firstName: true, lastName: true } }
+        }
+      })
+    ]);
     const bdName = deal?.bd ? `${deal.bd.firstName} ${deal.bd.lastName}` : "BD";
     const revenue = deal?.revenue ? ` \u2014 \u20B1${Number(deal.revenue).toLocaleString()}` : "";
     for (const mgr of managers) {
@@ -166,50 +216,58 @@ var handler3 = async (event, { logger }) => {
 import { NotificationTrigger as NotificationTrigger5 } from "@prisma/client";
 var config4 = {
   name: "OnDealCreated",
-  description: "Event: notifies BD when a manager creates a deal and assigns it to them",
+  description: "Event: notifies BD when a deal is created (self or assigned by manager)",
   triggers: [{ type: "queue", topic: "deal.created" }],
   enqueues: [],
   flows: ["notifications"]
 };
 var handler4 = async (event, { logger }) => {
   const { deal_id, bd_id, deal_name, created_by_id } = event;
-  if (created_by_id === bd_id) return;
-  const [creator, deal] = await Promise.all([
-    prisma.bD.findUnique({ where: { id: created_by_id }, select: { firstName: true, lastName: true } }),
-    prisma.deal.findUnique({ where: { id: deal_id }, include: { client: { select: { name: true } }, service: { select: { name: true } } } })
-  ]);
-  const creatorName = creator ? `${creator.firstName} ${creator.lastName}` : "Manager";
+  const deal = await prisma.deal.findUnique({
+    where: { id: deal_id },
+    include: {
+      client: { select: { name: true } },
+      service: { select: { name: true } }
+    }
+  });
   const service = deal?.service?.name ?? "Bundle deal";
   const revenue = deal?.revenue ? `\u20B1${Number(deal.revenue).toLocaleString()}` : "TBD";
-  await createNotification({
-    bdId: bd_id,
-    type: "NEW_DEAL_ASSIGNED",
-    triggeredBy: NotificationTrigger5.STAGE_CHANGE,
-    dealId: deal_id,
-    content: `\u{1F4CB} ${creatorName} assigned you a new deal: "${deal_name}" (${deal?.client?.name}) \u2014 ${service}, ${revenue}.`
-  });
+  const clientName = deal?.client?.name ?? "";
+  if (created_by_id === bd_id) {
+    await createNotification({
+      bdId: bd_id,
+      type: "NEW_DEAL_ASSIGNED",
+      triggeredBy: NotificationTrigger5.STAGE_CHANGE,
+      dealId: deal_id,
+      content: `\u{1F4CB} Deal created: "${deal_name}" (${clientName}) \u2014 ${service}, ${revenue}. Move it forward when ready!`
+    });
+  } else {
+    const creator = await prisma.bD.findUnique({
+      where: { id: created_by_id },
+      select: { firstName: true, lastName: true }
+    });
+    const creatorName = creator ? `${creator.firstName} ${creator.lastName}` : "Manager";
+    await createNotification({
+      bdId: bd_id,
+      type: "NEW_DEAL_ASSIGNED",
+      triggeredBy: NotificationTrigger5.STAGE_CHANGE,
+      dealId: deal_id,
+      content: `\u{1F4CB} ${creatorName} assigned you a new deal: "${deal_name}" (${clientName}) \u2014 ${service}, ${revenue}.`
+    });
+  }
   logger.info("OnDealCreated notification sent", { deal_id, bd_id });
 };
 
 // steps/events/onDealClosedWon.step.ts
 var config5 = {
   name: "OnDealClosedWon",
-  description: "Event: auto-generates Payment records for the full contract duration on Closed Won",
+  description: "Event: payments are already generated at Proposal Sent \u2014 nothing to do here",
   triggers: [{ type: "queue", topic: "deal.closed.won" }],
   enqueues: [],
   flows: ["payments"]
 };
-var handler5 = async (event, { logger }) => {
-  const { deal_id } = event;
-  const deal = await prisma.deal.findUnique({ where: { id: deal_id } });
-  if (!deal) return;
-  const payments = Array.from({ length: deal.duration }, (_, i) => ({
-    amount: Number(deal.monthlySubscription),
-    dealId: deal_id
-    // dateId is nullable — will be null until DateDimension is populated for future months
-  }));
-  await prisma.payment.createMany({ data: payments });
-  logger.info("OnDealClosedWon: payments generated", { deal_id, months: deal.duration });
+var handler5 = async (_event, { logger }) => {
+  logger.info("OnDealClosedWon: payments already exist from Proposal Sent, skipping regeneration");
 };
 
 // steps/events/onDealClosedLost.step.ts
@@ -1173,15 +1231,62 @@ var handler21 = async (req, { logger }) => {
   return { status: 200, body: { stages: withProbability } };
 };
 
-// steps/api/payments/list.step.ts
+// steps/api/payments/update.step.ts
+import { z } from "zod";
+var bodySchema = z.object({
+  amount: z.number().min(0)
+  // 0 = nothing received this month
+});
 var config22 = {
+  name: "UpdatePayment",
+  description: "Update the received amount for a payment month. Month/date is fixed \u2014 only amount can change.",
+  triggers: [{ type: "http", path: "/api/payments/:id", method: "PATCH", bodySchema }],
+  enqueues: [],
+  flows: ["payments"]
+};
+var handler22 = async (req, { logger }) => {
+  const { error, status, user } = await authenticate(req);
+  if (error) return { status, body: { error } };
+  const { id } = req.pathParams;
+  const { amount } = req.body;
+  const existing = await prisma.payment.findUnique({
+    where: { id },
+    include: {
+      deal: {
+        select: {
+          bdId: true,
+          revenue: true,
+          monthlySubscription: true,
+          duration: true
+        }
+      }
+    }
+  });
+  if (!existing) return { status: 404, body: { error: "Payment not found" } };
+  if (!requireManager(user.role) && existing.deal.bdId !== user.id) {
+    return { status: 403, body: { error: "Forbidden" } };
+  }
+  const payment = await prisma.payment.update({
+    where: { id },
+    data: { amount },
+    include: {
+      date: true,
+      deal: { select: { id: true, dealName: true, client: { select: { name: true } } } }
+    }
+  });
+  logger.info("Payment amount updated", { paymentId: id, amount });
+  return { status: 200, body: { payment } };
+};
+
+// steps/api/payments/list.step.ts
+var config23 = {
   name: "GetPayments",
   description: "List payment records",
   triggers: [{ type: "http", path: "/api/payments", method: "GET" }],
   enqueues: [],
   flows: ["payments"]
 };
-var handler22 = async (req, { logger }) => {
+var handler23 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -1212,23 +1317,48 @@ var handler22 = async (req, { logger }) => {
   return { status: 200, body: { payments, totalReceived } };
 };
 
-// steps/api/payments/create.step.ts
-import { z } from "zod";
-var bodySchema = z.object({
-  dealId: z.string().uuid(),
-  amount: z.number().positive(),
-  year: z.coerce.number().int(),
-  month: z.coerce.number().int().min(1).max(12)
-});
-var config23 = {
-  name: "CreatePayment",
-  description: "Log a monthly payment against a deal \u2014 auto-creates a DateDimension record",
-  triggers: [{ type: "http", path: "/api/payments", method: "POST", bodySchema }],
+// steps/api/payments/delete.step.ts
+var config24 = {
+  name: "DeletePayment",
+  description: "Delete a payment record",
+  triggers: [{ type: "http", path: "/api/payments/:id", method: "DELETE" }],
   enqueues: [],
   flows: ["payments"]
 };
-var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-var handler23 = async (req, { logger }) => {
+var handler24 = async (req, { logger }) => {
+  const { error, status, user } = await authenticate(req);
+  if (error) return { status, body: { error } };
+  const { id } = req.pathParams;
+  const existing = await prisma.payment.findUnique({
+    where: { id },
+    include: { deal: true }
+  });
+  if (!existing) return { status: 404, body: { error: "Payment not found" } };
+  if (!requireManager(user.role) && existing.deal.bdId !== user.id) {
+    return { status: 403, body: { error: "Forbidden" } };
+  }
+  await prisma.payment.delete({ where: { id } });
+  logger.info("Payment deleted", { paymentId: id });
+  return { status: 200, body: { message: "Payment deleted" } };
+};
+
+// steps/api/payments/create.step.ts
+import { z as z2 } from "zod";
+var bodySchema2 = z2.object({
+  dealId: z2.string().uuid(),
+  amount: z2.number().positive(),
+  year: z2.coerce.number().int(),
+  month: z2.coerce.number().int().min(1).max(12)
+});
+var config25 = {
+  name: "CreatePayment",
+  description: "Log a monthly payment against a deal \u2014 auto-creates a DateDimension record",
+  triggers: [{ type: "http", path: "/api/payments", method: "POST", bodySchema: bodySchema2 }],
+  enqueues: [],
+  flows: ["payments"]
+};
+var DAY_NAMES2 = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+var handler25 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { dealId, amount, year, month } = req.body;
@@ -1249,7 +1379,7 @@ var handler23 = async (req, { logger }) => {
       month,
       monthNumber: month,
       day: 1,
-      dayOfWeek: DAY_NAMES[ts.getDay()],
+      dayOfWeek: DAY_NAMES2[ts.getDay()],
       quarter,
       isQuarterEnd: month % 3 === 0
     }
@@ -1266,14 +1396,14 @@ var handler23 = async (req, { logger }) => {
 };
 
 // steps/api/notifications/markRead.step.ts
-var config24 = {
+var config26 = {
   name: "MarkNotificationRead",
   description: "Mark a single notification as read",
   triggers: [{ type: "http", path: "/api/notifications/:id/read", method: "PATCH" }],
   enqueues: [],
   flows: ["notifications"]
 };
-var handler24 = async (req, { logger }) => {
+var handler26 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1286,14 +1416,14 @@ var handler24 = async (req, { logger }) => {
 };
 
 // steps/api/notifications/markAllRead.step.ts
-var config25 = {
+var config27 = {
   name: "MarkAllNotificationsRead",
   description: "Mark all notifications as read for the current user",
   triggers: [{ type: "http", path: "/api/notifications/read-all", method: "PATCH" }],
   enqueues: [],
   flows: ["notifications"]
 };
-var handler25 = async (req, { logger }) => {
+var handler27 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { count } = await prisma.notification.updateMany({
@@ -1305,14 +1435,14 @@ var handler25 = async (req, { logger }) => {
 };
 
 // steps/api/notifications/list.step.ts
-var config26 = {
+var config28 = {
   name: "GetNotifications",
   description: "Get notifications for the authenticated BD member",
   triggers: [{ type: "http", path: "/api/notifications", method: "GET" }],
   enqueues: [],
   flows: ["notifications"]
 };
-var handler26 = async (req, { logger }) => {
+var handler28 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -1331,14 +1461,14 @@ var handler26 = async (req, { logger }) => {
 };
 
 // steps/api/industries/Industries.step.ts
-var config27 = {
+var config29 = {
   name: "IndustriesList",
   description: "List all industries",
   triggers: [{ type: "http", path: "/api/industries", method: "GET" }],
   enqueues: [],
   flows: ["services"]
 };
-var handler27 = async (req, { logger }) => {
+var handler29 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const industries = await prisma.industry.findMany({ orderBy: { name: "asc" } });
@@ -1346,31 +1476,32 @@ var handler27 = async (req, { logger }) => {
 };
 
 // steps/api/deals/update.step.ts
-import { z as z2 } from "zod";
-var bodySchema2 = z2.object({
-  dealName: z2.string().max(255).optional(),
-  remarks: z2.string().optional(),
-  actionPlan: z2.string().optional(),
-  actionPlanDueDate: z2.string().nullable().optional(),
-  dueDate: z2.string().nullable().optional(),
-  startDate: z2.string().nullable().optional(),
-  proposalLink: z2.url().nullable().optional(),
-  contractLink: z2.url().nullable().optional(),
-  finalProposedValue: z2.number().nullable().optional(),
-  monthlySubscription: z2.number().positive().optional(),
-  duration: z2.number().int().positive().optional(),
-  lastFollowUpAt: z2.string().optional()
+import { z as z3 } from "zod";
+var bodySchema3 = z3.object({
+  dealName: z3.string().max(255).optional(),
+  remarks: z3.string().optional(),
+  actionPlan: z3.string().optional(),
+  actionPlanDueDate: z3.string().nullable().optional(),
+  startDate: z3.string().nullable().optional(),
+  // dueDate is NOT accepted from client — always auto-computed from startDate + duration
+  proposalLink: z3.url().nullable().optional(),
+  contractLink: z3.url().nullable().optional(),
+  finalProposedValue: z3.number().nullable().optional(),
+  monthlySubscription: z3.number().positive().optional(),
+  duration: z3.number().int().positive().optional(),
+  lastFollowUpAt: z3.string().optional(),
+  leadSource: z3.enum(["INBOUND", "OUTBOUND", "REFERRAL"]).optional()
 });
-var config28 = {
+var config30 = {
   name: "UpdateDeal",
   description: "Update deal fields \u2014 excludes stage changes (use the stage endpoint)",
   triggers: [
-    { type: "http", path: "/api/deals/:id", method: "PATCH", bodySchema: bodySchema2 }
+    { type: "http", path: "/api/deals/:id", method: "PATCH", bodySchema: bodySchema3 }
   ],
   enqueues: ["deal.updated"],
   flows: ["deals"]
 };
-var handler28 = async (req, { logger, enqueue }) => {
+var handler30 = async (req, { logger, enqueue }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1384,16 +1515,30 @@ var handler28 = async (req, { logger, enqueue }) => {
   if (body.dealName !== void 0) data.dealName = body.dealName;
   if (body.remarks !== void 0) data.remarks = body.remarks;
   if (body.actionPlan !== void 0) data.actionPlan = body.actionPlan;
-  if (body.actionPlanDueDate !== void 0) data.actionPlanDueDate = body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : null;
-  if (body.dueDate !== void 0) data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
-  if (body.startDate !== void 0) data.startDate = body.startDate ? new Date(body.startDate) : null;
   if (body.proposalLink !== void 0) data.proposalLink = body.proposalLink;
   if (body.contractLink !== void 0) data.contractLink = body.contractLink;
   if (body.finalProposedValue !== void 0) data.finalProposedValue = body.finalProposedValue;
   if (body.lastFollowUpAt !== void 0) data.lastFollowUpAt = new Date(body.lastFollowUpAt);
+  if (body.leadSource !== void 0) data.leadSource = body.leadSource;
+  if (body.actionPlanDueDate !== void 0) {
+    data.actionPlanDueDate = body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : null;
+  }
+  const newStartDate = body.startDate !== void 0 ? body.startDate ? new Date(body.startDate) : null : existing.startDate;
+  const newDuration = body.duration ?? existing.duration;
+  if (body.startDate !== void 0) data.startDate = newStartDate;
+  if (body.startDate !== void 0 || body.duration !== void 0) {
+    if (newStartDate && newDuration) {
+      const d = new Date(newStartDate);
+      d.setMonth(d.getMonth() + newDuration);
+      d.setDate(d.getDate() - 1);
+      data.dueDate = d;
+    } else {
+      data.dueDate = null;
+    }
+  }
   if (body.monthlySubscription !== void 0 || body.duration !== void 0) {
     const sub = body.monthlySubscription ?? Number(existing.monthlySubscription);
-    const dur = body.duration ?? existing.duration;
+    const dur = newDuration;
     const revenue = sub * dur;
     data.monthlySubscription = sub;
     data.duration = dur;
@@ -1419,24 +1564,24 @@ var handler28 = async (req, { logger, enqueue }) => {
 };
 
 // steps/api/deals/stage.step.ts
-import { z as z3 } from "zod";
-var bodySchema3 = z3.object({
-  stageName: z3.string().min(1),
+import { z as z4 } from "zod";
+var bodySchema4 = z4.object({
+  stageName: z4.string().min(1),
   // e.g. "Negotiation", "Closed Won"
-  notes: z3.string().optional(),
-  finalProposedValue: z3.number().optional(),
-  contractLink: z3.string().optional()
+  notes: z4.string().optional(),
+  finalProposedValue: z4.number().optional(),
+  contractLink: z4.string().optional()
 });
-var config29 = {
+var config31 = {
   name: "ChangeDealStage",
   description: "Move a deal to a new pipeline stage \u2014 closes current audit log, opens new one, updates projection",
   triggers: [
-    { type: "http", path: "/api/deals/:id/stage", method: "PATCH", bodySchema: bodySchema3 }
+    { type: "http", path: "/api/deals/:id/stage", method: "PATCH", bodySchema: bodySchema4 }
   ],
   enqueues: ["deal.stage.changed", "deal.closed.won", "deal.closed.lost"],
   flows: ["deals", "notifications"]
 };
-var handler29 = async (req, { logger, enqueue }) => {
+var handler31 = async (req, { logger, enqueue }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1459,6 +1604,18 @@ var handler29 = async (req, { logger, enqueue }) => {
     return { status: 400, body: { error: `Deal is already in stage: ${stageName}` } };
   }
   const isClosed = isClosedStage(stageName);
+  const stagesRequiringDates = ["Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"];
+  if (stagesRequiringDates.includes(stageName)) {
+    const missing = [];
+    if (!deal.startDate) missing.push("Contract Start Date");
+    if (!deal.dueDate) missing.push("Expected Close Date");
+    if (missing.length > 0) {
+      return {
+        status: 422,
+        body: { error: `Please fill in ${missing.join(" and ")} on the deal before moving to "${stageName}".` }
+      };
+    }
+  }
   if (stageName === "Closed Lost") {
     if (!deal.remarks?.trim()) {
       return { status: 422, body: { error: "Remarks are required before closing a deal as Lost" } };
@@ -1512,37 +1669,43 @@ var handler29 = async (req, { logger, enqueue }) => {
     });
     return updated;
   });
-  await enqueue({ topic: "deal.stage.changed", data: {
-    deal_id: id,
-    bd_id: deal.bdId,
-    deal_name: deal.dealName,
-    old_stage: deal.stage.name,
-    new_stage: stageName
-  } });
+  await enqueue({
+    topic: "deal.stage.changed",
+    data: {
+      deal_id: id,
+      bd_id: deal.bdId,
+      deal_name: deal.dealName,
+      old_stage: deal.stage.name,
+      new_stage: stageName
+    }
+  });
   if (stageName === "Closed Won") {
     await enqueue({ topic: "deal.closed.won", data: { deal_id: id, bd_id: deal.bdId } });
   }
   if (stageName === "Closed Lost") {
-    await enqueue({ topic: "deal.closed.lost", data: {
-      deal_id: id,
-      bd_id: deal.bdId,
-      deal_name: deal.dealName,
-      closing_notes: notes
-    } });
+    await enqueue({
+      topic: "deal.closed.lost",
+      data: {
+        deal_id: id,
+        bd_id: deal.bdId,
+        deal_name: deal.dealName,
+        closing_notes: notes
+      }
+    });
   }
   logger.info("Deal stage changed", { dealId: id, from: deal.stage.name, to: stageName });
   return { status: 200, body: { deal: updatedDeal } };
 };
 
 // steps/api/deals/list.step.ts
-var config30 = {
+var config32 = {
   name: "GetDeals",
   description: "List deals \u2014 BD members see own deals, Manager sees all",
   triggers: [{ type: "http", path: "/api/deals", method: "GET" }],
   enqueues: [],
   flows: ["deals"]
 };
-var handler30 = async (req, { logger }) => {
+var handler32 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -1578,7 +1741,7 @@ var handler30 = async (req, { logger }) => {
 };
 
 // steps/api/deals/history.step.ts
-var config31 = {
+var config33 = {
   name: "GetDealHistory",
   description: "GET /api/deals/:id/history \u2014 returns stage audit log for a deal",
   triggers: [
@@ -1587,7 +1750,7 @@ var config31 = {
   enqueues: [],
   flows: ["deals"]
 };
-var handler31 = async (req, { logger }) => {
+var handler33 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1615,14 +1778,14 @@ var handler31 = async (req, { logger }) => {
 };
 
 // steps/api/deals/get.step.ts
-var config32 = {
+var config34 = {
   name: "GetDeal",
   description: "Get a single deal by ID with full stage history",
   triggers: [{ type: "http", path: "/api/deals/:id", method: "GET" }],
   enqueues: [],
   flows: ["deals"]
 };
-var handler32 = async (req, { logger }) => {
+var handler34 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1653,14 +1816,14 @@ var handler32 = async (req, { logger }) => {
 };
 
 // steps/api/deals/delete.step.ts
-var config33 = {
+var config35 = {
   name: "DeleteDeal",
   description: "Hard delete a deal and its audit logs",
   triggers: [{ type: "http", path: "/api/deals/:id", method: "DELETE" }],
   enqueues: [],
   flows: ["deals"]
 };
-var handler33 = async (req, { logger }) => {
+var handler35 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -1671,29 +1834,30 @@ var handler33 = async (req, { logger }) => {
 };
 
 // steps/api/deals/create.step.ts
-import { z as z4 } from "zod";
-var bodySchema4 = z4.object({
-  dealName: z4.string().min(1).max(255),
-  monthlySubscription: z4.number().positive(),
-  duration: z4.number().int().positive(),
-  leadSource: z4.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
-  clientId: z4.uuid(),
-  serviceId: z4.uuid().optional(),
-  bundleId: z4.uuid().optional(),
-  remarks: z4.string().optional(),
-  actionPlan: z4.string().optional(),
-  dueDate: z4.string().optional(),
-  actionPlanDueDate: z4.string().optional(),
-  initialMeetingDate: z4.string().optional()
+import { z as z5 } from "zod";
+var bodySchema5 = z5.object({
+  dealName: z5.string().min(1).max(255),
+  monthlySubscription: z5.number().positive(),
+  duration: z5.number().int().positive(),
+  leadSource: z5.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
+  clientId: z5.uuid(),
+  serviceId: z5.uuid().optional(),
+  bundleId: z5.uuid().optional(),
+  remarks: z5.string().optional(),
+  actionPlan: z5.string().optional(),
+  dueDate: z5.string().optional(),
+  startDate: z5.string().optional(),
+  actionPlanDueDate: z5.string().optional(),
+  initialMeetingDate: z5.string().optional()
 });
-var config34 = {
+var config36 = {
   name: "CreateDeal",
   description: "Create a new deal \u2014 auto-sets stage to Inquiry, creates audit log and projection",
-  triggers: [{ type: "http", path: "/api/deals", method: "POST", bodySchema: bodySchema4 }],
+  triggers: [{ type: "http", path: "/api/deals", method: "POST", bodySchema: bodySchema5 }],
   enqueues: ["deal.created"],
   flows: ["deals"]
 };
-var handler34 = async (req, { logger, enqueue }) => {
+var handler36 = async (req, { logger, enqueue }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const body = req.body;
@@ -1703,6 +1867,16 @@ var handler34 = async (req, { logger, enqueue }) => {
   const inquiryStage = await getStageByName(STAGE.INQUIRY);
   const revenue = body.monthlySubscription * body.duration;
   const probability = getProbability(STAGE.INQUIRY);
+  const startDate = body.startDate ? new Date(body.startDate) : null;
+  let dueDate = null;
+  if (body.dueDate) {
+    dueDate = new Date(body.dueDate);
+  } else if (startDate && body.duration) {
+    const d = new Date(startDate);
+    d.setMonth(d.getMonth() + body.duration);
+    d.setDate(d.getDate() - 1);
+    dueDate = d;
+  }
   const deal = await prisma.$transaction(async (tx) => {
     const deal2 = await tx.deal.create({
       data: {
@@ -1718,8 +1892,8 @@ var handler34 = async (req, { logger, enqueue }) => {
         bundleId: body.bundleId,
         remarks: body.remarks,
         actionPlan: body.actionPlan,
-        startDate: /* @__PURE__ */ new Date(),
-        dueDate: body.dueDate ? new Date(body.dueDate) : void 0,
+        startDate,
+        dueDate,
         actionPlanDueDate: body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : void 0,
         initialMeetingDate: body.initialMeetingDate ? new Date(body.initialMeetingDate) : void 0
       }
@@ -1753,14 +1927,14 @@ var handler34 = async (req, { logger, enqueue }) => {
 };
 
 // steps/api/dashboard/executive.step.ts
-var config35 = {
+var config37 = {
   name: "GetExecutiveDashboard",
   description: "Manager-only executive dashboard \u2014 team quota, leaderboard, pipeline, stuck deals",
   triggers: [{ type: "http", path: "/api/dashboard/executive", method: "GET" }],
   enqueues: [],
   flows: ["dashboard"]
 };
-var handler35 = async (req, { logger }) => {
+var handler37 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   if (!requireManager(user.role)) {
@@ -1877,14 +2051,14 @@ var handler35 = async (req, { logger }) => {
 };
 
 // steps/api/dashboard/bd.step.ts
-var config36 = {
+var config38 = {
   name: "GetBDDashboard",
   description: "Individual BD dashboard \u2014 quota attainment, pipeline metrics, stuck deals",
   triggers: [{ type: "http", path: "/api/dashboard/bd", method: "GET" }],
   enqueues: [],
   flows: ["dashboard"]
 };
-var handler36 = async (req, { logger }) => {
+var handler38 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -1972,20 +2146,27 @@ var handler36 = async (req, { logger }) => {
   const otherPipelineDeals = pipelineDeals.filter(
     (d) => d.stage.name !== STAGE.NEGOTIATION && d.stage.name !== STAGE.PROPOSAL_SENT
   );
-  const allClosedWon = closedWonStage ? await prisma.deal.findMany({
-    where: { bdId, stageId: closedWonStage.id },
-    select: { monthlySubscription: true, startDate: true, closedDate: true, dueDate: true, duration: true }
-  }) : [];
+  const allPayments = await prisma.payment.findMany({
+    where: { deal: { bdId } },
+    select: {
+      amount: true,
+      date: { select: { year: true, monthNumber: true } },
+      deal: { select: { stage: { select: { name: true } } } }
+    }
+  });
   const monthlyForecast = forecastMonths.map(({ label, year: year2, monthNum }) => {
-    const monthStart = new Date(year2, monthNum, 1);
-    const monthEnd = new Date(year2, monthNum + 1, 0);
-    const inMonth = (start, end, duration) => {
-      const s = start ?? now;
-      const e = end ?? new Date(s.getFullYear(), s.getMonth() + duration, 0);
-      return s <= monthEnd && e >= monthStart;
-    };
-    const actual = allClosedWon.filter((d) => inMonth(d.closedDate ?? d.startDate, d.dueDate, d.duration ?? 1)).reduce((s, d) => s + Number(d.monthlySubscription ?? 0), 0);
-    const negotiation2 = negotiationDeals.filter((d) => inMonth(d.startDate, d.dueDate, 1)).reduce((s, d) => s + Number(d.monthlySubscription ?? 0), 0);
+    const calMonth = monthNum + 1;
+    const actual = allPayments.filter(
+      (p) => p.deal.stage.name === STAGE.CLOSED_WON && p.date?.year === year2 && p.date?.monthNumber === calMonth
+    ).reduce((s, p) => s + Number(p.amount), 0);
+    const negotiation2 = negotiationDeals.filter((d) => {
+      if (!d.startDate) return false;
+      const start = new Date(d.startDate);
+      const end = d.dueDate ? new Date(d.dueDate) : new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      const monthStart = new Date(year2, monthNum, 1);
+      const monthEnd = new Date(year2, monthNum + 1, 0);
+      return start <= monthEnd && end >= monthStart;
+    }).reduce((s, d) => s + Number(d.monthlySubscription ?? 0), 0);
     return {
       month: label,
       actual: Math.round(actual),
@@ -2025,24 +2206,24 @@ var handler36 = async (req, { logger }) => {
 };
 
 // steps/api/contacts/update.step.ts
-import { z as z5 } from "zod";
-var bodySchema5 = z5.object({
-  firstName: z5.string().min(1).max(30).optional(),
-  lastName: z5.string().min(1).max(30).optional(),
-  email: z5.string().email().max(100).optional(),
-  number: z5.string().max(15).optional(),
-  designation: z5.string().max(100).optional(),
-  decisionRank: z5.enum(["TIER_1_ECONOMIC_BUYER", "TIER_2_DECISION_MAKER", "TIER_3_INFLUENCER", "TIER_4_END_USER", "TIER_5_GATEKEEPER"]).optional(),
-  isPrimary: z5.boolean().optional()
+import { z as z6 } from "zod";
+var bodySchema6 = z6.object({
+  firstName: z6.string().min(1).max(30).optional(),
+  lastName: z6.string().min(1).max(30).optional(),
+  email: z6.string().email().max(100).optional(),
+  number: z6.string().max(15).optional(),
+  designation: z6.string().max(100).optional(),
+  decisionRank: z6.enum(["TIER_1_ECONOMIC_BUYER", "TIER_2_DECISION_MAKER", "TIER_3_INFLUENCER", "TIER_4_END_USER", "TIER_5_GATEKEEPER"]).optional(),
+  isPrimary: z6.boolean().optional()
 });
-var config37 = {
+var config39 = {
   name: "UpdateContact",
   description: "Update an existing contact",
-  triggers: [{ type: "http", path: "/api/contacts/:id", method: "PATCH", bodySchema: bodySchema5 }],
+  triggers: [{ type: "http", path: "/api/contacts/:id", method: "PATCH", bodySchema: bodySchema6 }],
   enqueues: [],
   flows: ["contacts"]
 };
-var handler37 = async (req, { logger }) => {
+var handler39 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2052,14 +2233,14 @@ var handler37 = async (req, { logger }) => {
 };
 
 // steps/api/contacts/list.step.ts
-var config38 = {
+var config40 = {
   name: "GetContacts",
   description: "List contacts with optional filters by client or decision rank",
   triggers: [{ type: "http", path: "/api/contacts", method: "GET" }],
   enqueues: [],
   flows: ["contacts"]
 };
-var handler38 = async (req, { logger }) => {
+var handler40 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -2076,14 +2257,14 @@ var handler38 = async (req, { logger }) => {
 };
 
 // steps/api/contacts/get.step.ts
-var config39 = {
+var config41 = {
   name: "GetContact",
   description: "Get a single contact by ID",
   triggers: [{ type: "http", path: "/api/contacts/:id", method: "GET" }],
   enqueues: [],
   flows: ["contacts"]
 };
-var handler39 = async (req, { logger }) => {
+var handler41 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2093,24 +2274,24 @@ var handler39 = async (req, { logger }) => {
 };
 
 // steps/api/contacts/delete.step.ts
-import { z as z6 } from "zod";
-var bodySchema6 = z6.object({
-  firstName: z6.string().min(1).max(30).optional(),
-  lastName: z6.string().min(1).max(30).optional(),
-  email: z6.string().email().max(100).optional(),
-  number: z6.string().max(15).optional(),
-  designation: z6.string().max(100).optional(),
-  decisionRank: z6.enum(["TIER_1_ECONOMIC_BUYER", "TIER_2_DECISION_MAKER", "TIER_3_INFLUENCER", "TIER_4_END_USER", "TIER_5_GATEKEEPER"]).optional(),
-  isPrimary: z6.boolean().optional()
+import { z as z7 } from "zod";
+var bodySchema7 = z7.object({
+  firstName: z7.string().min(1).max(30).optional(),
+  lastName: z7.string().min(1).max(30).optional(),
+  email: z7.string().email().max(100).optional(),
+  number: z7.string().max(15).optional(),
+  designation: z7.string().max(100).optional(),
+  decisionRank: z7.enum(["TIER_1_ECONOMIC_BUYER", "TIER_2_DECISION_MAKER", "TIER_3_INFLUENCER", "TIER_4_END_USER", "TIER_5_GATEKEEPER"]).optional(),
+  isPrimary: z7.boolean().optional()
 });
-var config40 = {
+var config42 = {
   name: "UpdateContact",
   description: "Update an existing contact",
-  triggers: [{ type: "http", path: "/api/contacts/:id", method: "PATCH", bodySchema: bodySchema6 }],
+  triggers: [{ type: "http", path: "/api/contacts/:id", method: "PATCH", bodySchema: bodySchema7 }],
   enqueues: [],
   flows: ["contacts"]
 };
-var handler40 = async (req, { logger }) => {
+var handler42 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2120,31 +2301,31 @@ var handler40 = async (req, { logger }) => {
 };
 
 // steps/api/contacts/create.step.ts
-import { z as z7 } from "zod";
-var bodySchema7 = z7.object({
-  firstName: z7.string().min(1).max(30),
-  lastName: z7.string().min(1).max(30),
-  email: z7.string().email().max(100),
-  number: z7.string().max(15).optional(),
-  designation: z7.string().max(100).optional(),
-  decisionRank: z7.enum([
+import { z as z8 } from "zod";
+var bodySchema8 = z8.object({
+  firstName: z8.string().min(1).max(30),
+  lastName: z8.string().min(1).max(30),
+  email: z8.string().email().max(100),
+  number: z8.string().max(15).optional(),
+  designation: z8.string().max(100).optional(),
+  decisionRank: z8.enum([
     "TIER_1_ECONOMIC_BUYER",
     "TIER_2_DECISION_MAKER",
     "TIER_3_INFLUENCER",
     "TIER_4_END_USER",
     "TIER_5_GATEKEEPER"
   ]),
-  isPrimary: z7.boolean().default(false),
-  clientId: z7.uuid()
+  isPrimary: z8.boolean().default(false),
+  clientId: z8.uuid()
 });
-var config41 = {
+var config43 = {
   name: "CreateContact",
   description: "Create a new contact linked to a client",
-  triggers: [{ type: "http", path: "/api/contacts", method: "POST", bodySchema: bodySchema7 }],
+  triggers: [{ type: "http", path: "/api/contacts", method: "POST", bodySchema: bodySchema8 }],
   enqueues: [],
   flows: ["contacts"]
 };
-var handler41 = async (req, { logger }) => {
+var handler43 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const contact = await prisma.contact.create({ data: req.body });
@@ -2153,22 +2334,22 @@ var handler41 = async (req, { logger }) => {
 };
 
 // steps/api/clients/update.step.ts
-import { z as z8 } from "zod";
-var bodySchema8 = z8.object({
-  name: z8.string().min(1).max(100).optional(),
-  brand: z8.string().max(100).optional(),
-  accountType: z8.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]).optional(),
-  status: z8.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).optional(),
-  industryId: z8.string().uuid().optional()
+import { z as z9 } from "zod";
+var bodySchema9 = z9.object({
+  name: z9.string().min(1).max(100).optional(),
+  brand: z9.string().max(100).optional(),
+  accountType: z9.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]).optional(),
+  status: z9.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).optional(),
+  industryId: z9.string().uuid().optional()
 });
-var config42 = {
+var config44 = {
   name: "UpdateClient",
   description: "Update an existing client",
-  triggers: [{ type: "http", path: "/api/clients/:id", method: "PATCH", bodySchema: bodySchema8 }],
+  triggers: [{ type: "http", path: "/api/clients/:id", method: "PATCH", bodySchema: bodySchema9 }],
   enqueues: [],
   flows: ["clients"]
 };
-var handler42 = async (req, { logger }) => {
+var handler44 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2186,14 +2367,14 @@ var handler42 = async (req, { logger }) => {
 };
 
 // steps/api/clients/list.step.ts
-var config43 = {
+var config45 = {
   name: "GetClients",
   description: "List all clients with optional filters",
   triggers: [{ type: "http", path: "/api/clients", method: "GET" }],
   enqueues: [],
   flows: ["clients"]
 };
-var handler43 = async (req, { logger }) => {
+var handler45 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const q = req.queryParams;
@@ -2215,14 +2396,14 @@ var handler43 = async (req, { logger }) => {
 };
 
 // steps/api/clients/get.step.ts
-var config44 = {
+var config46 = {
   name: "GetClient",
   description: "Get a single client by ID with contacts and deals",
   triggers: [{ type: "http", path: "/api/clients/:id", method: "GET" }],
   enqueues: [],
   flows: ["clients"]
 };
-var handler44 = async (req, { logger }) => {
+var handler46 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2240,14 +2421,14 @@ var handler44 = async (req, { logger }) => {
 };
 
 // steps/api/clients/delete.step.ts
-var config45 = {
+var config47 = {
   name: "DeleteClient",
   description: "Delete a client",
   triggers: [{ type: "http", path: "/api/clients/:id", method: "DELETE" }],
   enqueues: [],
   flows: ["clients"]
 };
-var handler45 = async (req, { logger }) => {
+var handler47 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
@@ -2257,22 +2438,22 @@ var handler45 = async (req, { logger }) => {
 };
 
 // steps/api/clients/create.step.ts
-import { z as z9 } from "zod";
-var bodySchema9 = z9.object({
-  name: z9.string().min(1).max(100),
-  brand: z9.string().max(100).optional(),
-  accountType: z9.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]),
-  status: z9.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).default("PROSPECT"),
-  industryId: z9.string().uuid().optional()
+import { z as z10 } from "zod";
+var bodySchema10 = z10.object({
+  name: z10.string().min(1).max(100),
+  brand: z10.string().max(100).optional(),
+  accountType: z10.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]),
+  status: z10.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).default("PROSPECT"),
+  industryId: z10.string().uuid().optional()
 });
-var config46 = {
+var config48 = {
   name: "CreateClient",
   description: "Create a new client account",
-  triggers: [{ type: "http", path: "/api/clients", method: "POST", bodySchema: bodySchema9 }],
+  triggers: [{ type: "http", path: "/api/clients", method: "POST", bodySchema: bodySchema10 }],
   enqueues: [],
   flows: ["clients"]
 };
-var handler46 = async (req, { logger }) => {
+var handler48 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { industryId, ...rest } = req.body;
@@ -2288,14 +2469,14 @@ var handler46 = async (req, { logger }) => {
 };
 
 // steps/api/bundles/Bundles.step.ts
-var config47 = {
+var config49 = {
   name: "BundlesList",
   description: "List all bundles with their services",
   triggers: [{ type: "http", path: "/api/bundles", method: "GET" }],
   enqueues: [],
   flows: ["services"]
 };
-var handler47 = async (req, { logger }) => {
+var handler49 = async (req, { logger }) => {
   const { error, status } = await authenticate(req);
   if (error) return { status, body: { error } };
   const bundles = await prisma.bundle.findMany({
@@ -2307,14 +2488,14 @@ var handler47 = async (req, { logger }) => {
 };
 
 // steps/api/auth/me.step.ts
-var config48 = {
+var config50 = {
   name: "AuthMe",
   description: "Return the authenticated user profile",
   triggers: [{ type: "http", path: "/api/auth/me", method: "GET" }],
   enqueues: [],
   flows: ["auth"]
 };
-var handler48 = async (req, { logger }) => {
+var handler50 = async (req, { logger }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   logger.info("Me fetched", { userId: user.id });
@@ -2322,9 +2503,9 @@ var handler48 = async (req, { logger }) => {
 };
 
 // steps/api/auth/login.step.ts
-import { z as z10 } from "zod";
+import { z as z11 } from "zod";
 import bcrypt from "bcrypt";
-var config49 = {
+var config51 = {
   name: "AuthLogin",
   description: "Authenticate a BD member and return a JWT token",
   triggers: [
@@ -2332,13 +2513,13 @@ var config49 = {
       type: "http",
       path: "/api/auth/login",
       method: "POST",
-      bodySchema: z10.object({ email: z10.string().email(), password: z10.string().min(1) })
+      bodySchema: z11.object({ email: z11.string().email(), password: z11.string().min(1) })
     }
   ],
   enqueues: [],
   flows: ["auth"]
 };
-var handler49 = async (req, { logger }) => {
+var handler51 = async (req, { logger }) => {
   const { email, password } = req.body;
   const user = await prisma.bD.findUnique({ where: { email: email.toLowerCase() } });
   if (!user || !user.isActive) return { status: 401, body: { error: "Invalid credentials" } };
@@ -2379,34 +2560,36 @@ motia.addStep(config18, "./steps/api/reports/pipeline.step.ts", handler18, "./st
 motia.addStep(config19, "./steps/api/reports/growth.step.ts", handler19, "./steps/api/reports/growth.step.ts");
 motia.addStep(config20, "./steps/api/reports/breakdown.step.ts", handler20, "./steps/api/reports/breakdown.step.ts");
 motia.addStep(config21, "./steps/api/pipelineStages/list.step.ts", handler21, "./steps/api/pipelineStages/list.step.ts");
-motia.addStep(config22, "./steps/api/payments/list.step.ts", handler22, "./steps/api/payments/list.step.ts");
-motia.addStep(config23, "./steps/api/payments/create.step.ts", handler23, "./steps/api/payments/create.step.ts");
-motia.addStep(config24, "./steps/api/notifications/markRead.step.ts", handler24, "./steps/api/notifications/markRead.step.ts");
-motia.addStep(config25, "./steps/api/notifications/markAllRead.step.ts", handler25, "./steps/api/notifications/markAllRead.step.ts");
-motia.addStep(config26, "./steps/api/notifications/list.step.ts", handler26, "./steps/api/notifications/list.step.ts");
-motia.addStep(config27, "./steps/api/industries/Industries.step.ts", handler27, "./steps/api/industries/Industries.step.ts");
-motia.addStep(config28, "./steps/api/deals/update.step.ts", handler28, "./steps/api/deals/update.step.ts");
-motia.addStep(config29, "./steps/api/deals/stage.step.ts", handler29, "./steps/api/deals/stage.step.ts");
-motia.addStep(config30, "./steps/api/deals/list.step.ts", handler30, "./steps/api/deals/list.step.ts");
-motia.addStep(config31, "./steps/api/deals/history.step.ts", handler31, "./steps/api/deals/history.step.ts");
-motia.addStep(config32, "./steps/api/deals/get.step.ts", handler32, "./steps/api/deals/get.step.ts");
-motia.addStep(config33, "./steps/api/deals/delete.step.ts", handler33, "./steps/api/deals/delete.step.ts");
-motia.addStep(config34, "./steps/api/deals/create.step.ts", handler34, "./steps/api/deals/create.step.ts");
-motia.addStep(config35, "./steps/api/dashboard/executive.step.ts", handler35, "./steps/api/dashboard/executive.step.ts");
-motia.addStep(config36, "./steps/api/dashboard/bd.step.ts", handler36, "./steps/api/dashboard/bd.step.ts");
-motia.addStep(config37, "./steps/api/contacts/update.step.ts", handler37, "./steps/api/contacts/update.step.ts");
-motia.addStep(config38, "./steps/api/contacts/list.step.ts", handler38, "./steps/api/contacts/list.step.ts");
-motia.addStep(config39, "./steps/api/contacts/get.step.ts", handler39, "./steps/api/contacts/get.step.ts");
-motia.addStep(config40, "./steps/api/contacts/delete.step.ts", handler40, "./steps/api/contacts/delete.step.ts");
-motia.addStep(config41, "./steps/api/contacts/create.step.ts", handler41, "./steps/api/contacts/create.step.ts");
-motia.addStep(config42, "./steps/api/clients/update.step.ts", handler42, "./steps/api/clients/update.step.ts");
-motia.addStep(config43, "./steps/api/clients/list.step.ts", handler43, "./steps/api/clients/list.step.ts");
-motia.addStep(config44, "./steps/api/clients/get.step.ts", handler44, "./steps/api/clients/get.step.ts");
-motia.addStep(config45, "./steps/api/clients/delete.step.ts", handler45, "./steps/api/clients/delete.step.ts");
-motia.addStep(config46, "./steps/api/clients/create.step.ts", handler46, "./steps/api/clients/create.step.ts");
-motia.addStep(config47, "./steps/api/bundles/Bundles.step.ts", handler47, "./steps/api/bundles/Bundles.step.ts");
-motia.addStep(config48, "./steps/api/auth/me.step.ts", handler48, "./steps/api/auth/me.step.ts");
-motia.addStep(config49, "./steps/api/auth/login.step.ts", handler49, "./steps/api/auth/login.step.ts");
+motia.addStep(config22, "./steps/api/payments/update.step.ts", handler22, "./steps/api/payments/update.step.ts");
+motia.addStep(config23, "./steps/api/payments/list.step.ts", handler23, "./steps/api/payments/list.step.ts");
+motia.addStep(config24, "./steps/api/payments/delete.step.ts", handler24, "./steps/api/payments/delete.step.ts");
+motia.addStep(config25, "./steps/api/payments/create.step.ts", handler25, "./steps/api/payments/create.step.ts");
+motia.addStep(config26, "./steps/api/notifications/markRead.step.ts", handler26, "./steps/api/notifications/markRead.step.ts");
+motia.addStep(config27, "./steps/api/notifications/markAllRead.step.ts", handler27, "./steps/api/notifications/markAllRead.step.ts");
+motia.addStep(config28, "./steps/api/notifications/list.step.ts", handler28, "./steps/api/notifications/list.step.ts");
+motia.addStep(config29, "./steps/api/industries/Industries.step.ts", handler29, "./steps/api/industries/Industries.step.ts");
+motia.addStep(config30, "./steps/api/deals/update.step.ts", handler30, "./steps/api/deals/update.step.ts");
+motia.addStep(config31, "./steps/api/deals/stage.step.ts", handler31, "./steps/api/deals/stage.step.ts");
+motia.addStep(config32, "./steps/api/deals/list.step.ts", handler32, "./steps/api/deals/list.step.ts");
+motia.addStep(config33, "./steps/api/deals/history.step.ts", handler33, "./steps/api/deals/history.step.ts");
+motia.addStep(config34, "./steps/api/deals/get.step.ts", handler34, "./steps/api/deals/get.step.ts");
+motia.addStep(config35, "./steps/api/deals/delete.step.ts", handler35, "./steps/api/deals/delete.step.ts");
+motia.addStep(config36, "./steps/api/deals/create.step.ts", handler36, "./steps/api/deals/create.step.ts");
+motia.addStep(config37, "./steps/api/dashboard/executive.step.ts", handler37, "./steps/api/dashboard/executive.step.ts");
+motia.addStep(config38, "./steps/api/dashboard/bd.step.ts", handler38, "./steps/api/dashboard/bd.step.ts");
+motia.addStep(config39, "./steps/api/contacts/update.step.ts", handler39, "./steps/api/contacts/update.step.ts");
+motia.addStep(config40, "./steps/api/contacts/list.step.ts", handler40, "./steps/api/contacts/list.step.ts");
+motia.addStep(config41, "./steps/api/contacts/get.step.ts", handler41, "./steps/api/contacts/get.step.ts");
+motia.addStep(config42, "./steps/api/contacts/delete.step.ts", handler42, "./steps/api/contacts/delete.step.ts");
+motia.addStep(config43, "./steps/api/contacts/create.step.ts", handler43, "./steps/api/contacts/create.step.ts");
+motia.addStep(config44, "./steps/api/clients/update.step.ts", handler44, "./steps/api/clients/update.step.ts");
+motia.addStep(config45, "./steps/api/clients/list.step.ts", handler45, "./steps/api/clients/list.step.ts");
+motia.addStep(config46, "./steps/api/clients/get.step.ts", handler46, "./steps/api/clients/get.step.ts");
+motia.addStep(config47, "./steps/api/clients/delete.step.ts", handler47, "./steps/api/clients/delete.step.ts");
+motia.addStep(config48, "./steps/api/clients/create.step.ts", handler48, "./steps/api/clients/create.step.ts");
+motia.addStep(config49, "./steps/api/bundles/Bundles.step.ts", handler49, "./steps/api/bundles/Bundles.step.ts");
+motia.addStep(config50, "./steps/api/auth/me.step.ts", handler50, "./steps/api/auth/me.step.ts");
+motia.addStep(config51, "./steps/api/auth/login.step.ts", handler51, "./steps/api/auth/login.step.ts");
 motia.authenticateStream = authenticateStream;
 motia.initialize();
 //# sourceMappingURL=index-dev.js.map

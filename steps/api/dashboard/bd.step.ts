@@ -128,30 +128,40 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
     d.stage.name !== STAGE.NEGOTIATION && d.stage.name !== STAGE.PROPOSAL_SENT
   )
 
-  // All Closed Won deals for actuals
-  const allClosedWon = closedWonStage ? await prisma.deal.findMany({
-    where: { bdId, stageId: closedWonStage.id },
-    select: { monthlySubscription: true, startDate: true, closedDate: true, dueDate: true, duration: true },
-  }) : []
+  // Actual payments per month — use real received amounts from the payment table
+  // This covers ALL stages (Proposal Sent onward) since payments are generated at Proposal Sent
+  const allPayments = await prisma.payment.findMany({
+    where: { deal: { bdId } },
+    select: {
+      amount: true,
+      date: { select: { year: true, monthNumber: true } },
+      deal: { select: { stage: { select: { name: true } } } },
+    },
+  })
 
+  // Negotiation deals — forecast using monthlySubscription (not yet actual payments)
   const monthlyForecast = forecastMonths.map(({ label, year, monthNum }) => {
-    const monthStart = new Date(year, monthNum, 1)
-    const monthEnd = new Date(year, monthNum + 1, 0)
+    const calMonth = monthNum + 1 // forecastMonths uses 0-based monthNum
 
-    const inMonth = (start: Date | null, end: Date | null, duration: number) => {
-      const s = start ?? now
-      const e = end ?? new Date(s.getFullYear(), s.getMonth() + duration, 0)
-      return s <= monthEnd && e >= monthStart
-    }
+    // Actual = sum of real payment amounts for this month (Closed Won deals)
+    const actual = allPayments
+      .filter(p =>
+        p.deal.stage.name === STAGE.CLOSED_WON &&
+        p.date?.year === year &&
+        p.date?.monthNumber === calMonth
+      )
+      .reduce((s, p) => s + Number(p.amount), 0)
 
-    // Actual: closed won deals whose contract covers this month
-    const actual = allClosedWon
-      .filter(d => inMonth(d.closedDate ?? d.startDate, d.dueDate, d.duration ?? 1))
-      .reduce((s, d) => s + Number(d.monthlySubscription ?? 0), 0)
-
-    // Negotiation (80% confidence label)
+    // Negotiation = expected monthly subscription (not yet received)
     const negotiation = negotiationDeals
-      .filter(d => inMonth(d.startDate, d.dueDate, 1))
+      .filter(d => {
+        if (!d.startDate) return false
+        const start = new Date(d.startDate)
+        const end = d.dueDate ? new Date(d.dueDate) : new Date(start.getFullYear(), start.getMonth() + 1, 0)
+        const monthStart = new Date(year, monthNum, 1)
+        const monthEnd = new Date(year, monthNum + 1, 0)
+        return start <= monthEnd && end >= monthStart
+      })
       .reduce((s, d) => s + Number(d.monthlySubscription ?? 0), 0)
 
     return {

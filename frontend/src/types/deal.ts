@@ -7,7 +7,7 @@ export type PipelineStage =
   | 'Closed Won'
   | 'Closed Lost';
 
-export type LeadSource = 'Inbound' | 'Outbound' | 'Referral';
+export type LeadSource = 'INBOUND' | 'OUTBOUND' | 'REFERRAL';
 
 export interface Deal {
   id: string;
