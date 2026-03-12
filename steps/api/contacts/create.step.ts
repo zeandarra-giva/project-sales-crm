@@ -1,8 +1,9 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 import { Prisma } from '@prisma/client'
+
 
 export const config = {
     name: 'CreateContact',
@@ -26,11 +27,11 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
-        const user = await authenticate(req)
+        const user = await authenticate(req.request)
         const { firstName, lastName, email, phone, jobTitle,
-            decisionMakerTier, clientId, isPrimary } = req.body
+            decisionMakerTier, clientId, isPrimary } = req.request.body
 
         // Map decision-maker tier (1-5) to Prisma Enum
         const rankMapping: Record<number, any> = {

@@ -1,4 +1,4 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 
@@ -12,9 +12,9 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
-        const user = await authenticate(req)
+        const user = await authenticate(req.request)
         logger.info('Listing deals', { userId: user.id })
 
         const deals = await prisma.deal.findMany({

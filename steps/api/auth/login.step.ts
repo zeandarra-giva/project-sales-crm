@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig } from 'motia'
+import { type Handlers, type StepConfig, logger } from 'motia'
 import { z } from 'zod'
 import bcrypt from 'bcrypt'
 import { prisma } from '../../../lib/db'
@@ -22,8 +22,8 @@ export const config = {
     flows: ['auth'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
-    const { email, password } = req.body
+export const handler: Handlers<typeof config> = async (req, ctx) => {
+    const { email, password } = req.request.body
 
     logger.info('Login attempt', { email })
 

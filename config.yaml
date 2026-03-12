@@ -1,4 +1,9 @@
 modules:
+  - class: modules::api::RestApiModule
+    config:
+      port: 3111
+      host: 0.0.0.0
+
   - class: modules::stream::StreamModule
     config:
       port: 3112
@@ -7,6 +12,8 @@ modules:
         class: modules::stream::adapters::KvStore
         config:
           base_path: .motia/streams
+
+  - class: modules::pubsub::PubSubModule
 
   - class: modules::state::StateModule
     config:
@@ -17,12 +24,18 @@ modules:
 
   - class: modules::cron::CronModule
 
-  - class: modules::queue::QueueModule
+  - class: modules::worker::WorkerModule
 
-  - class: modules::api::RestApiModule
+  - class: modules::telemetry::TelemetryModule
     config:
-      port: 3111
-      host: 0.0.0.0
+      adapter:
+        class: modules::telemetry::adapters::KvStore
+        config:
+          base_path: .motia/telemetry
+      # This flag tells the engine to expose the engine::logs functions
+      serve_logs: true
+
+  - class: modules::queue::QueueModule
 
   - class: modules::shell::ExecModule
     config:

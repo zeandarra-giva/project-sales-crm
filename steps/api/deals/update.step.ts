@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig } from 'motia'
+import { type Handlers, type StepConfig, logger } from 'motia'
 import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
@@ -29,11 +29,11 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
-        const user = await authenticate(req)
-        const { id } = req.pathParams
-        const { stageId, remarks, monthlySubscription, duration, ...rest } = req.body
+        const user = await authenticate(req.request)
+        const { id } = req.request.pathParams
+        const { stageId, remarks, monthlySubscription, duration, ...rest } = req.request.body
 
         // 1. Fetch current deal + target stage if changing
         const deal = await prisma.deal.findUnique({
@@ -136,7 +136,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
             return { status: 400, body: { error: 'Record not found or invalid ID provided' } }
         }
 
-        logger.error('Failed to update deal', { error: error.message, dealId: req.pathParams.id })
+        logger.error('Failed to update deal', { error: error.message, dealId: req.request.pathParams.id })
         return {
             status: 500,
             body: { error: 'Internal server error' },

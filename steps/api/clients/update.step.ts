@@ -1,4 +1,4 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
@@ -24,11 +24,11 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         // 1. Authenticate
-        const user = await authenticate(req)
-        const { id } = req.pathParams
+        const user = await authenticate(req.request)
+        const { id } = req.request.pathParams
 
         // 2. Ensure the client exists before updating
         const existing = await prisma.client.findUnique({ where: { id } })
@@ -36,7 +36,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
             return { status: 404, body: { error: 'Client not found' } }
         }
 
-        const { industryId, contactId, ...body } = req.body
+        const { industryId, contactId, ...body } = req.request.body
 
         // 3. Perform the update
         const updated = await prisma.client.update({
@@ -59,7 +59,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         return { status: 200, body: updated }
 
     } catch (error: any) {
-        logger.error('Failed to update client', { error: error.message, clientId: req.pathParams?.id })
+        logger.error('Failed to update client', { error: error.message, clientId: req.request.pathParams?.id })
 
         // Check for our AuthError (401)
         if (error.name === 'AuthError') {

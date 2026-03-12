@@ -1,4 +1,4 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
@@ -25,19 +25,19 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
-        const user = await authenticate(req)
-        const { id } = req.pathParams
+        const user = await authenticate(req.request)
+        const { id } = req.request.pathParams
 
         const contact = await prisma.contact.update({
             where: { id },
-            data: req.body,
+            data: req.request.body,
             include: { client: { select: { id: true, name: true } } },
         })
 
         // If promoted to primary, update the parent client
-        if (req.body.isPrimary) {
+        if (req.request.body.isPrimary) {
             await prisma.client.update({
                 where: { id: contact.clientId },
                 data: { contactId: contact.id },

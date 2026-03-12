@@ -3,18 +3,23 @@
   "version": "1.0.0",
   "description": "Sales CRM backend powered by Motia",
   "scripts": {
-    "dev": "motia dev",
+    "dev": "motia dev && node dist/index-dev.js",
     "build": "motia build",
     "start": "motia start",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "engine": "iii-cli start --config config.yaml",
+    "console": "iii-console",
+    "frontend": "npm run dev --prefix frontend"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
+    "dotenv": "^17.3.1",
+    "iii-sdk": "^0.8.3",
     "jsonwebtoken": "^9.0.3",
-    "motia": "^1.0.0-rc.26",
+    "motia": "^1.0.3-rc.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
