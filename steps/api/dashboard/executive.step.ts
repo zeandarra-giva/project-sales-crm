@@ -18,9 +18,9 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
     return { status: 403, body: { error: 'Executive dashboard is restricted to Sales Managers' } }
   }
 
-  const q       = req.queryParams as Record<string, string>
-  const now     = new Date()
-  const year    = parseInt(q.year    ?? String(now.getFullYear()))
+  const q = req.queryParams as Record<string, string>
+  const now = new Date()
+  const year = parseInt(q.year ?? String(now.getFullYear()))
   const quarter = parseInt(q.quarter ?? String(Math.floor(now.getMonth() / 3) + 1))
   const { start: qStart, end: qEnd } = getQuarterRange(year, quarter)
 
@@ -31,50 +31,55 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
 
   // All BD reps (not managers)
   const bdMembers = await prisma.bD.findMany({
-    where:  { role: 'BD_REP', isActive: true },
+    where: { role: 'BD_REP', isActive: true },
     select: { id: true, firstName: true, lastName: true, email: true, role: true },
   })
 
   const closedDeals = closedWonStage ? await prisma.deal.findMany({
-    where:  { stageId: closedWonStage.id, closedDate: { gte: qStart, lte: qEnd } },
-    select: { bdId: true, revenue: true, client: { select: { accountType: true } }, service: { select: { name: true } } },
+    where: { stageId: closedWonStage.id, closedDate: { gte: qStart, lte: qEnd } },
+    select: {
+      bdId: true, revenue: true,
+      leadSource: true,
+      client: { select: { accountType: true, industry: { select: { name: true } } } },
+      service: { select: { name: true } },
+    },
   }) : []
 
   // Targets for this quarter
   const allTargets = await prisma.target.findMany({
-    where:   { periodType: 'QUARTERLY', date: { year, quarter } },
+    where: { periodType: 'QUARTERLY', date: { year, quarter } },
     include: { date: true },
   })
 
   const allClosed = await prisma.deal.findMany({
-    where:  { isClosed: true },
+    where: { isClosed: true },
     select: { bdId: true, stageId: true },
   })
 
   const leaderboard = bdMembers.map(bd => {
-    const won      = closedDeals.filter(d => d.bdId === bd.id)
-    const revenue  = won.reduce((s, d) => s + Number(d.revenue ?? 0), 0)
-    const quota    = Number(allTargets.find(t => t.bdId === bd.id)?.quota ?? 0)
-    const myAll    = allClosed.filter(d => d.bdId === bd.id)
+    const won = closedDeals.filter(d => d.bdId === bd.id)
+    const revenue = won.reduce((s, d) => s + Number(d.revenue ?? 0), 0)
+    const quota = Number(allTargets.find(t => t.bdId === bd.id)?.quota ?? 0)
+    const myAll = allClosed.filter(d => d.bdId === bd.id)
     const wonCount = closedWonStage ? myAll.filter(d => d.stageId === closedWonStage.id).length : 0
-    const winRate  = myAll.length > 0 ? Math.round((wonCount / myAll.length) * 100) : 0
+    const winRate = myAll.length > 0 ? Math.round((wonCount / myAll.length) * 100) : 0
     return {
       bd, revenue, quota,
       attainmentPct: quota > 0 ? Math.round((revenue / quota) * 100) : 0,
-      dealsWon:      won.length,
+      dealsWon: won.length,
       winRate,
     }
   }).sort((a, b) => b.revenue - a.revenue)
 
   const teamRevenue = leaderboard.reduce((s, l) => s + l.revenue, 0)
-  const teamQuota   = leaderboard.reduce((s, l) => s + l.quota,   0)
+  const teamQuota = leaderboard.reduce((s, l) => s + l.quota, 0)
 
   const allStages = await prisma.pipelineStage.findMany()
   const pipelineByStage = await prisma.deal.groupBy({
-    by:    ['stageId'],
+    by: ['stageId'],
     where: { isClosed: false },
     _count: { id: true },
-    _sum:   { revenue: true },
+    _sum: { revenue: true },
   })
 
   const pipelineWithNames = pipelineByStage.map(row => ({
@@ -84,38 +89,38 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
 
   const negotiationVal = negotiationStage ? await prisma.deal.aggregate({
     where: { stageId: negotiationStage.id, isClosed: false },
-    _sum:  { revenue: true },
+    _sum: { revenue: true },
   }) : { _sum: { revenue: null } }
 
   const weightedForecast = await prisma.dealProjection.aggregate({
     where: { deal: { isClosed: false } },
-    _sum:  { weightedValue: true },
+    _sum: { weightedValue: true },
   })
 
   // Stuck deals across all BDs
   const activeDeals = await prisma.deal.findMany({
     where: { isClosed: false },
     include: {
-      stage:    true,
-      bd:       { select: { firstName: true, lastName: true } },
-      client:   { select: { name: true } },
+      stage: true,
+      bd: { select: { firstName: true, lastName: true } },
+      client: { select: { name: true } },
       auditLogs: { where: { exitedAt: null }, take: 1 },
     },
   })
 
   const stuckDeals = activeDeals
     .map(d => {
-      const log  = d.auditLogs[0]
+      const log = d.auditLogs[0]
       const days = log ? getDaysSince(log.enteredAt) : 0
-      const max  = d.stage.duration
+      const max = d.stage.duration
       return { ...d, daysInStage: days, isStuck: max !== null && days > max }
     })
     .filter(d => d.isStuck)
 
   const byAccountType = (['ENTERPRISE', 'CORPORATE', 'SMB', 'GOVERNMENT'] as const).map(type => ({
     accountType: type,
-    count:       closedDeals.filter(d => d.client.accountType === type).length,
-    revenue:     closedDeals.filter(d => d.client.accountType === type).reduce((s, d) => s + Number(d.revenue ?? 0), 0),
+    count: closedDeals.filter(d => d.client.accountType === type).length,
+    revenue: closedDeals.filter(d => d.client.accountType === type).reduce((s, d) => s + Number(d.revenue ?? 0), 0),
   }))
 
   const serviceMap: Record<string, { count: number; revenue: number }> = {}
@@ -126,16 +131,45 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
     serviceMap[svc].revenue += Number(d.revenue ?? 0)
   }
 
+  // By BD
+  const byBD = bdMembers.map(bd => {
+    const won = closedDeals.filter(d => d.bdId === bd.id)
+    return {
+      bd_id: bd.id,
+      bd_name: `${bd.firstName} ${bd.lastName}`,
+      count: won.length,
+      revenue: won.reduce((s, d) => s + Number(d.revenue ?? 0), 0),
+    }
+  }).filter(b => b.count > 0)
+
+  // By lead source
+  const leadSourceMap: Record<string, { count: number; revenue: number }> = {}
+  for (const d of closedDeals) {
+    const src = d.leadSource ?? 'UNKNOWN'
+    if (!leadSourceMap[src]) leadSourceMap[src] = { count: 0, revenue: 0 }
+    leadSourceMap[src].count++
+    leadSourceMap[src].revenue += Number(d.revenue ?? 0)
+  }
+
+  // By industry
+  const industryMap: Record<string, { count: number; revenue: number }> = {}
+  for (const d of closedDeals) {
+    const ind = (d.client as any)?.industry?.name ?? 'Unspecified'
+    if (!industryMap[ind]) industryMap[ind] = { count: 0, revenue: 0 }
+    industryMap[ind].count++
+    industryMap[ind].revenue += Number(d.revenue ?? 0)
+  }
+
   logger.info('Executive dashboard computed', { year, quarter })
   return {
     status: 200,
     body: {
       period: { year, quarter, start: qStart, end: qEnd },
       team: {
-        totalRevenue:     teamRevenue,
-        totalQuota:       teamQuota,
-        attainmentPct:    teamQuota > 0 ? Math.round((teamRevenue / teamQuota) * 100) : 0,
-        salesForecast:    teamRevenue + Number(negotiationVal._sum.revenue ?? 0),
+        totalRevenue: teamRevenue,
+        totalQuota: teamQuota,
+        attainmentPct: teamQuota > 0 ? Math.round((teamRevenue / teamQuota) * 100) : 0,
+        salesForecast: teamRevenue + Number(negotiationVal._sum.revenue ?? 0),
         weightedForecast: Number(weightedForecast._sum.weightedValue ?? 0),
       },
       leaderboard,
@@ -143,6 +177,11 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
       stuckDeals,
       byAccountType,
       byService: Object.entries(serviceMap).map(([service, data]) => ({ service, ...data })),
+      byBD,
+      byLeadSource: Object.entries(leadSourceMap).map(([source, data]) => ({ source, ...data })),
+      byIndustry: Object.entries(industryMap)
+        .map(([industry, data]) => ({ industry, ...data }))
+        .sort((a, b) => b.revenue - a.revenue),
     },
   }
 }

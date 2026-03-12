@@ -1449,13 +1449,17 @@ var handler28 = async (req, { logger }) => {
   const notifications = await prisma.notification.findMany({
     where: {
       bdId: user.id,
-      isRead: q.unread_only === "true" ? false : void 0
+      isRead: q.unread_only === "true" ? false : void 0,
+      OR: [
+        { scheduledAt: null },
+        { scheduledAt: { lte: /* @__PURE__ */ new Date() } }
+      ]
     },
     include: { deal: { select: { id: true, dealName: true, stage: { select: { name: true } } } } },
     orderBy: { createdAt: "desc" },
     take: 50
   });
-  const unreadCount = await prisma.notification.count({ where: { bdId: user.id, isRead: false } });
+  const unreadCount = await prisma.notification.count({ where: { bdId: user.id, isRead: false, OR: [{ scheduledAt: null }, { scheduledAt: { lte: /* @__PURE__ */ new Date() } }] } });
   logger.info("Notifications fetched", { count: notifications.length });
   return { status: 200, body: { notifications, unreadCount } };
 };
@@ -1569,6 +1573,7 @@ var bodySchema4 = z4.object({
   stageName: z4.string().min(1),
   // e.g. "Negotiation", "Closed Won"
   notes: z4.string().optional(),
+  remarks: z4.string().optional(),
   finalProposedValue: z4.number().optional(),
   contractLink: z4.string().optional()
 });
@@ -1585,7 +1590,7 @@ var handler31 = async (req, { logger, enqueue }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
-  const { stageName, notes, finalProposedValue, contractLink } = req.body;
+  const { stageName, notes, remarks, finalProposedValue, contractLink } = req.body;
   const [deal, newStage] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
@@ -1604,7 +1609,7 @@ var handler31 = async (req, { logger, enqueue }) => {
     return { status: 400, body: { error: `Deal is already in stage: ${stageName}` } };
   }
   const isClosed = isClosedStage(stageName);
-  const stagesRequiringDates = ["Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"];
+  const stagesRequiringDates = ["Proposal Sent", "Negotiation", "Closed Won"];
   if (stagesRequiringDates.includes(stageName)) {
     const missing = [];
     if (!deal.startDate) missing.push("Contract Start Date");
@@ -1617,11 +1622,9 @@ var handler31 = async (req, { logger, enqueue }) => {
     }
   }
   if (stageName === "Closed Lost") {
-    if (!deal.remarks?.trim()) {
-      return { status: 422, body: { error: "Remarks are required before closing a deal as Lost" } };
-    }
-    if (!notes?.trim()) {
-      return { status: 422, body: { error: "Closing notes are required for Closed Lost" } };
+    const effectiveRemarks = remarks?.trim() || deal.remarks?.trim();
+    if (!effectiveRemarks) {
+      return { status: 422, body: { error: "Remarks are required \u2014 explain why the deal was lost." } };
     }
   }
   const now = /* @__PURE__ */ new Date();
@@ -1653,8 +1656,9 @@ var handler31 = async (req, { logger, enqueue }) => {
       dealUpdate.closedDate = now;
       dealUpdate.salesCycleDays = Math.floor((now.getTime() - (deal.startDate ?? now).getTime()) / 864e5);
     }
-    if (stageName === "Closed Lost" && finalProposedValue !== void 0) {
-      dealUpdate.finalProposedValue = finalProposedValue;
+    if (stageName === "Closed Lost") {
+      if (finalProposedValue !== void 0) dealUpdate.finalProposedValue = finalProposedValue;
+      if (remarks?.trim()) dealUpdate.remarks = remarks.trim();
     }
     if (stageName === "Closed Won" && contractLink) {
       dealUpdate.contractLink = contractLink;
@@ -1955,7 +1959,13 @@ var handler37 = async (req, { logger }) => {
   });
   const closedDeals = closedWonStage ? await prisma.deal.findMany({
     where: { stageId: closedWonStage.id, closedDate: { gte: qStart, lte: qEnd } },
-    select: { bdId: true, revenue: true, client: { select: { accountType: true } }, service: { select: { name: true } } }
+    select: {
+      bdId: true,
+      revenue: true,
+      leadSource: true,
+      client: { select: { accountType: true, industry: { select: { name: true } } } },
+      service: { select: { name: true } }
+    }
   }) : [];
   const allTargets = await prisma.target.findMany({
     where: { periodType: "QUARTERLY", date: { year, quarter } },
@@ -2029,6 +2039,29 @@ var handler37 = async (req, { logger }) => {
     serviceMap[svc].count++;
     serviceMap[svc].revenue += Number(d.revenue ?? 0);
   }
+  const byBD = bdMembers.map((bd) => {
+    const won = closedDeals.filter((d) => d.bdId === bd.id);
+    return {
+      bd_id: bd.id,
+      bd_name: `${bd.firstName} ${bd.lastName}`,
+      count: won.length,
+      revenue: won.reduce((s, d) => s + Number(d.revenue ?? 0), 0)
+    };
+  }).filter((b) => b.count > 0);
+  const leadSourceMap = {};
+  for (const d of closedDeals) {
+    const src = d.leadSource ?? "UNKNOWN";
+    if (!leadSourceMap[src]) leadSourceMap[src] = { count: 0, revenue: 0 };
+    leadSourceMap[src].count++;
+    leadSourceMap[src].revenue += Number(d.revenue ?? 0);
+  }
+  const industryMap = {};
+  for (const d of closedDeals) {
+    const ind = d.client?.industry?.name ?? "Unspecified";
+    if (!industryMap[ind]) industryMap[ind] = { count: 0, revenue: 0 };
+    industryMap[ind].count++;
+    industryMap[ind].revenue += Number(d.revenue ?? 0);
+  }
   logger.info("Executive dashboard computed", { year, quarter });
   return {
     status: 200,
@@ -2045,7 +2078,10 @@ var handler37 = async (req, { logger }) => {
       pipelineByStage: pipelineWithNames,
       stuckDeals,
       byAccountType,
-      byService: Object.entries(serviceMap).map(([service, data]) => ({ service, ...data }))
+      byService: Object.entries(serviceMap).map(([service, data]) => ({ service, ...data })),
+      byBD,
+      byLeadSource: Object.entries(leadSourceMap).map(([source, data]) => ({ source, ...data })),
+      byIndustry: Object.entries(industryMap).map(([industry, data]) => ({ industry, ...data })).sort((a, b) => b.revenue - a.revenue)
     }
   };
 };

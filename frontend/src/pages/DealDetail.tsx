@@ -77,7 +77,7 @@ export default function DealDetail() {
     }
 
     // ── Guard 2: require contract dates before Proposal Sent and beyond ──
-    const stagesRequiringDates: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+    const stagesRequiringDates: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won'];
     if (stagesRequiringDates.includes(stage)) {
       const rawDeal = deal as any;
       const hasStart = !!(rawDeal?.start_date || rawDeal?.startDate);
@@ -97,7 +97,7 @@ export default function DealDetail() {
     if (!stageConfirm) return;
 
     // ── HARD GATE: require contract dates before Proposal Sent and beyond ──
-    const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+    const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won'];
     if (STAGES_NEED_DATES.includes(stageConfirm)) {
       const d = deal as any;
       // Check every possible key name — snake_case (after axios interceptor) and camelCase (raw)
@@ -329,7 +329,7 @@ export default function DealDetail() {
 
             {/* Stage confirm modal */}
             {stageConfirm && (() => {
-              const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
+              const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won'];
               const d = deal as any;
               const startVal = d?.start_date ?? d?.startDate ?? null;
               const dueVal = d?.due_date ?? d?.dueDate ?? null;

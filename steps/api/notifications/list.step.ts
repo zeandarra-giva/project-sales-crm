@@ -18,15 +18,19 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
 
   const notifications = await prisma.notification.findMany({
     where: {
-      bdId:   user!.id,
+      bdId: user!.id,
       isRead: q.unread_only === 'true' ? false : undefined,
+      OR: [
+        { scheduledAt: null },
+        { scheduledAt: { lte: new Date() } },
+      ],
     },
     include: { deal: { select: { id: true, dealName: true, stage: { select: { name: true } } } } },
     orderBy: { createdAt: 'desc' },
     take: 50,
   })
 
-  const unreadCount = await prisma.notification.count({ where: { bdId: user!.id, isRead: false } })
+  const unreadCount = await prisma.notification.count({ where: { bdId: user!.id, isRead: false, OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date() } }] } })
 
   logger.info('Notifications fetched', { count: notifications.length })
   return { status: 200, body: { notifications, unreadCount } }

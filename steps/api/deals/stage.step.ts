@@ -7,6 +7,7 @@ import { getProbability, isClosedStage, getStageByName } from '../../../lib/pipe
 const bodySchema = z.object({
   stageName: z.string().min(1),          // e.g. "Negotiation", "Closed Won"
   notes: z.string().optional(),
+  remarks: z.string().optional(),
   finalProposedValue: z.number().optional(),
   contractLink: z.string().optional(),
 })
@@ -26,7 +27,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
   if (error) return { status, body: { error } }
 
   const { id } = req.pathParams
-  const { stageName, notes, finalProposedValue, contractLink } = req.body
+  const { stageName, notes, remarks, finalProposedValue, contractLink } = req.body
 
   const [deal, newStage] = await Promise.all([
     prisma.deal.findUnique({
@@ -50,7 +51,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
   const isClosed = isClosedStage(stageName)
 
   // Require contract dates from Proposal Sent onward — enforced server-side as the true gate
-  const stagesRequiringDates = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost']
+  const stagesRequiringDates = ['Proposal Sent', 'Negotiation', 'Closed Won']
   if (stagesRequiringDates.includes(stageName)) {
     const missing: string[] = []
     if (!deal.startDate) missing.push('Contract Start Date')
@@ -64,11 +65,9 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
   }
 
   if (stageName === 'Closed Lost') {
-    if (!deal.remarks?.trim()) {
-      return { status: 422, body: { error: 'Remarks are required before closing a deal as Lost' } }
-    }
-    if (!notes?.trim()) {
-      return { status: 422, body: { error: 'Closing notes are required for Closed Lost' } }
+    const effectiveRemarks = remarks?.trim() || deal.remarks?.trim();
+    if (!effectiveRemarks) {
+      return { status: 422, body: { error: 'Remarks are required — explain why the deal was lost.' } }
     }
   }
 
@@ -104,8 +103,9 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
       dealUpdate.closedDate = now
       dealUpdate.salesCycleDays = Math.floor((now.getTime() - (deal.startDate ?? now).getTime()) / 86400000)
     }
-    if (stageName === 'Closed Lost' && finalProposedValue !== undefined) {
-      dealUpdate.finalProposedValue = finalProposedValue
+    if (stageName === 'Closed Lost') {
+      if (finalProposedValue !== undefined) dealUpdate.finalProposedValue = finalProposedValue
+      if (remarks?.trim()) dealUpdate.remarks = remarks.trim()
     }
     if (stageName === 'Closed Won' && contractLink) {
       dealUpdate.contractLink = contractLink
