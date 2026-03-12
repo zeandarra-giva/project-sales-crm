@@ -2,15 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../api/dashboard';
 import type { BDDashboard, ExecutiveDashboard } from '../types';
 
-export function useBDDashboard(year?: number, quarter?: number) {
-  const params: Record<string, string> = {};
-  if (year) params.year = String(year);
-  if (quarter) params.quarter = String(quarter);
-
+export function useBDDashboard(year?: number, quarter?: number, bdId?: string) {
   return useQuery({
-    queryKey: ['dashboard-bd', year, quarter],
+    queryKey: ['dashboard-bd', year, quarter, bdId],
     queryFn: async () => {
-      const res = await dashboardApi.bd(year && quarter ? `Q${quarter} ${year}` : undefined);
+      const res = await dashboardApi.bd(year, quarter, bdId);
       return res.data as unknown as {
         period: { year: number; quarter: number; start: string; end: string };
         metrics: {
@@ -39,7 +35,7 @@ export function useExecutiveDashboard(year?: number, quarter?: number) {
   return useQuery({
     queryKey: ['dashboard-executive', year, quarter],
     queryFn: async () => {
-      const res = await dashboardApi.executive(year && quarter ? `Q${quarter} ${year}` : undefined);
+      const res = await dashboardApi.executive(year, quarter);
       return res.data as unknown as {
         period: { year: number; quarter: number };
         team: {
@@ -57,7 +53,12 @@ export function useExecutiveDashboard(year?: number, quarter?: number) {
           deals_won: number;
           win_rate: number;
         }>;
-        pipeline_by_stage: Array<{ stage_id: string; stage_name: string; _count: { id: number }; _sum: { revenue: number } }>;
+        pipeline_by_stage: Array<{
+          stage_id: string;
+          stage_name: string;
+          _count: { id: number };
+          _sum: { revenue: number };
+        }>;
         stuck_deals: Array<{
           id: string;
           deal_name: string;
@@ -68,6 +69,9 @@ export function useExecutiveDashboard(year?: number, quarter?: number) {
         }>;
         by_account_type: Array<{ account_type: string; count: number; revenue: number }>;
         by_service: Array<{ service: string; count: number; revenue: number }>;
+        by_b_d: Array<{ bd_id: string; bd_name: string; count: number; revenue: number }>;
+        by_lead_source: Array<{ source: string; count: number; revenue: number }>;
+        by_industry: Array<{ industry: string; count: number; revenue: number }>;
       };
     },
   });
