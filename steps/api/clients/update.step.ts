@@ -67,7 +67,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         }
 
         // Check for Prisma's specific "Record to connect not found" error (400)
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2025' || error.code === 'P2003')) {
             return {
                 status: 400,
                 body: { error: 'Record not found or related ID is invalid' }

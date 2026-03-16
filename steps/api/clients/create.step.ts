@@ -47,7 +47,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
         }
         if (                                             // ← Refactor 4
             error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === 'P2025'
+            (error.code === 'P2025' || error.code === 'P2003')
         ) {
             return { status: 400, body: { error: 'Related record not found (check industryId, referralId)' } }
         }
