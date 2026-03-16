@@ -564,7 +564,7 @@ var handler7 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma4.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma4.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return {
         status: 400,
         body: { error: "Record not found or related ID is invalid" }
@@ -709,7 +709,7 @@ var handler10 = async (req, ctx) => {
     }
     if (
       // ← Refactor 4
-      error instanceof Prisma5.PrismaClientKnownRequestError && error.code === "P2025"
+      error instanceof Prisma5.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")
     ) {
       return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
     }
