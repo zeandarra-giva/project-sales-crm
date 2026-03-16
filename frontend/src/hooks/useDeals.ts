@@ -1,32 +1,38 @@
-import { useState, useCallback } from 'react';
-import { MOCK_DEALS } from '../mockData';
-import type { Deal, PipelineStage } from '../types';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getDeals, getDeal, createDeal, updateDeal, CreateDealPayload, UpdateDealPayload } from '../api/deals'
 
-export function useDeals(bdId?: string) {
-  const [deals, setDeals] = useState<Deal[]>(MOCK_DEALS);
+export function useDeals() {
+  return useQuery({
+    queryKey: ['deals'],
+    queryFn: getDeals,
+  })
+}
 
-  const filtered = bdId
-    ? deals.filter(d => d.bd_id === bdId)
-    : deals;
+export function useDeal(id: string) {
+  return useQuery({
+    queryKey: ['deal', id],
+    queryFn: () => getDeal(id),
+    enabled: !!id,
+  })
+}
 
-  const getById = useCallback((id: string) => deals.find(d => d.id === id), [deals]);
+export function useCreateDeal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CreateDealPayload) => createDeal(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['deals'] })
+    },
+  })
+}
 
-  const updateDeal = useCallback((id: string, patch: Partial<Deal>) => {
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
-  }, []);
-
-  const updateStage = useCallback((id: string, stage: PipelineStage, probability: number) => {
-    setDeals(prev => prev.map(d =>
-      d.id === id
-        ? { ...d, stage, probability_pct: probability, last_stage_update_at: new Date().toISOString() }
-        : d
-    ));
-  }, []);
-
-  const openDeals = filtered.filter(d => !d.is_closed);
-  const closedDeals = filtered.filter(d => d.is_closed);
-  const totalPipelineValue = openDeals.reduce((s, d) => s + d.revenue, 0);
-  const weightedValue = openDeals.reduce((s, d) => s + d.revenue * (d.probability_pct ?? 0) / 100, 0);
-
-  return { deals, filtered, openDeals, closedDeals, totalPipelineValue, weightedValue, getById, updateDeal, updateStage };
+export function useUpdateDeal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateDealPayload }) => updateDeal(id, data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['deals'] })
+      qc.invalidateQueries({ queryKey: ['deal', id] })
+    },
+  })
 }

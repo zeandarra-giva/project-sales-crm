@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, TrendingUp,
+  AlertTriangle, Edit2, Save, X, ChevronRight,
 } from 'lucide-react';
 import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
-import { MOCK_DEALS, PIPELINE_STAGES } from '../mockData';
+import { PIPELINE_STAGES } from '../mockData';
+import { useDeal, useUpdateDeal } from '../hooks/useDeals';
 import { formatCurrency, formatDate, getStageColor, cn } from '../lib/utils';
 import type { PipelineStage } from '../types/index';
 
@@ -17,35 +18,80 @@ const STAGE_CHANGE_CONFIRM = {
 
 export default function DealDetail() {
   const { id } = useParams();
-  const deal = MOCK_DEALS.find(d => d.id === id) || MOCK_DEALS[1];
-  const [currentStage, setCurrentStage] = useState<PipelineStage>(deal.stage);
-  const [remarks, setRemarks] = useState(deal.remarks);
-  const [actionPlan, setActionPlan] = useState(deal.action_plan);
+  const navigate = useNavigate();
+  const { data: deal, isLoading } = useDeal(id || '');
+  const updateMutation = useUpdateDeal();
+
   const [editing, setEditing] = useState(false);
   const [stageConfirm, setStageConfirm] = useState<PipelineStage | null>(null);
-  const [contractLink, setContractLink] = useState(deal.contract_link || '');
+  const [editRemarks, setEditRemarks] = useState('');
+  const [editActionPlan, setEditActionPlan] = useState('');
+  const [contractLink, setContractLink] = useState('');
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <p className="text-[#8b90a8]">Loading deal...</p>
+      </div>
+    );
+  }
+
+  if (!deal) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-4">
+        <p className="text-[#8b90a8]">Deal not found</p>
+        <Button variant="secondary" onClick={() => navigate('/pipeline')}>Back to Pipeline</Button>
+      </div>
+    );
+  }
+
+  const currentStage = deal.stage;
+  const stageIndex = PIPELINE_STAGES.findIndex(s => s.name === currentStage);
+  const isClosed = ['Closed Won', 'Closed Lost'].includes(currentStage);
+
+  const startEdit = () => {
+    setEditRemarks(deal.remarks);
+    setEditActionPlan(deal.action_plan);
+    setContractLink(deal.contract_link || '');
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    updateMutation.mutate({
+      id: deal.id,
+      data: {
+        remarks: editRemarks || undefined,
+        actionPlan: editActionPlan || undefined,
+        contractLink: contractLink || undefined,
+      },
+    });
+    setEditing(false);
+  };
 
   const handleStageClick = (stage: PipelineStage) => {
     if (stage === currentStage) return;
     if (stage === 'Closed Won' || stage === 'Closed Lost') {
       setStageConfirm(stage);
     } else {
-      setCurrentStage(stage);
+      updateMutation.mutate({ id: deal.id, data: { stageId: deal.stage_id } });
     }
   };
 
   const confirmStageChange = () => {
     if (!stageConfirm) return;
-    if (stageConfirm === 'Closed Lost' && !remarks.trim()) {
+    if (stageConfirm === 'Closed Lost' && !deal.remarks.trim() && !editRemarks.trim()) {
       alert('Remarks are required before closing as Lost.');
       return;
     }
-    setCurrentStage(stageConfirm);
+    updateMutation.mutate({
+      id: deal.id,
+      data: {
+        ...(stageConfirm === 'Closed Won' && contractLink ? { contractLink } : {}),
+        ...(editRemarks ? { remarks: editRemarks } : {}),
+      },
+    });
     setStageConfirm(null);
   };
-
-  const stageIndex = PIPELINE_STAGES.findIndex(s => s.name === currentStage);
-  const isClosed = ['Closed Won', 'Closed Lost'].includes(currentStage);
 
   return (
     <div className="flex flex-col h-full">
@@ -69,7 +115,7 @@ export default function DealDetail() {
           </Badge>
           {editing ? (
             <>
-              <Button size="sm" onClick={() => setEditing(false)}>
+              <Button size="sm" onClick={saveEdit}>
                 <Save size={14} /> Save
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -78,7 +124,7 @@ export default function DealDetail() {
             </>
           ) : (
             !isClosed && (
-              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+              <Button size="sm" variant="secondary" onClick={startEdit}>
                 <Edit2 size={14} /> Edit
               </Button>
             )
@@ -142,9 +188,7 @@ export default function DealDetail() {
             {stageConfirm && (
               <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full">
-                  <h3 className="font-bold font-display text-[#1a1d2e] mb-2">
-                    Move to {stageConfirm}?
-                  </h3>
+                  <h3 className="font-bold font-display text-[#1a1d2e] mb-2">Move to {stageConfirm}?</h3>
                   <p className="text-sm text-[#4a5068] mb-4">
                     {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
                   </p>
@@ -155,21 +199,12 @@ export default function DealDetail() {
                   )}
                   {stageConfirm === 'Closed Won' && (
                     <div className="mb-4">
-                      <Input
-                        label="Contract Link (required)"
-                        value={contractLink}
-                        onChange={e => setContractLink(e.target.value)}
-                        placeholder="https://..."
-                      />
+                      <Input label="Contract Link (required)" value={contractLink} onChange={e => setContractLink(e.target.value)} placeholder="https://..." />
                     </div>
                   )}
                   <div className="flex gap-2 justify-end">
                     <Button variant="secondary" size="sm" onClick={() => setStageConfirm(null)}>Cancel</Button>
-                    <Button
-                      variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'}
-                      size="sm"
-                      onClick={confirmStageChange}
-                    >
+                    <Button variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'} size="sm" onClick={confirmStageChange}>
                       Confirm — {stageConfirm}
                     </Button>
                   </div>
@@ -182,20 +217,13 @@ export default function DealDetail() {
               <div className="flex items-center gap-2 mb-3">
                 <FileText size={14} className="text-[#3d5af1]" />
                 <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Remarks</span>
-                {!remarks.trim() && !isClosed && (
-                  <Badge variant="danger" size="sm">Required for Closed Lost</Badge>
-                )}
+                {!deal.remarks.trim() && !isClosed && <Badge variant="danger" size="sm">Required for Closed Lost</Badge>}
               </div>
               {editing ? (
-                <Textarea
-                  value={remarks}
-                  onChange={e => setRemarks(e.target.value)}
-                  rows={4}
-                  placeholder="Add deal notes, client context, and progress updates..."
-                />
+                <Textarea value={editRemarks} onChange={e => setEditRemarks(e.target.value)} rows={4} placeholder="Add deal notes, client context, and progress updates..." />
               ) : (
                 <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
+                  {deal.remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
                 </p>
               )}
             </Card>
@@ -208,96 +236,48 @@ export default function DealDetail() {
                   <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Action Plan</span>
                 </div>
                 {deal.action_plan_due_date && (
-                  <Badge
-                    variant={new Date(deal.action_plan_due_date) < new Date() ? 'danger' : 'neutral'}
-                    size="sm"
-                  >
+                  <Badge variant={new Date(deal.action_plan_due_date) < new Date() ? 'danger' : 'neutral'} size="sm">
                     Due {formatDate(deal.action_plan_due_date)}
                   </Badge>
                 )}
               </div>
               {editing ? (
-                <Textarea
-                  value={actionPlan}
-                  onChange={e => setActionPlan(e.target.value)}
-                  rows={3}
-                  placeholder="Next steps, action items..."
-                />
+                <Textarea value={editActionPlan} onChange={e => setEditActionPlan(e.target.value)} rows={3} placeholder="Next steps, action items..." />
               ) : (
                 <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {actionPlan || <span className="text-[#8b90a8] italic">No action plan set</span>}
+                  {deal.action_plan || <span className="text-[#8b90a8] italic">No action plan set</span>}
                 </p>
               )}
-            </Card>
-
-            {/* Stage history */}
-            <Card className="p-5">
-              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Stage History</div>
-              <div className="flex flex-col gap-0">
-                {[
-                  { stage: 'Inquiry', entered: '2025-11-01', exited: '2025-11-03', days: 2 },
-                  { stage: 'Prospecting', entered: '2025-11-03', exited: '2025-11-10', days: 7 },
-                  { stage: 'Discovery', entered: '2025-11-10', exited: '2025-11-25', days: 15 },
-                  { stage: 'Proposal Sent', entered: '2025-11-25', exited: '2026-01-15', days: 51 },
-                  { stage: deal.stage, entered: '2026-01-15', exited: undefined, days: deal.days_in_stage },
-                ].map((h, i) => (
-                  <div key={i} className="flex gap-4 pb-4 last:pb-0">
-                    <div className="flex flex-col items-center">
-                      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: getStageColor(h.stage as PipelineStage) }} />
-                      {i < 4 && <div className="w-px flex-1 bg-[#f4f6fb] mt-1" />}
-                    </div>
-                    <div className="flex-1 min-w-0 pb-4 last:pb-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[#1a1d2e]">{h.stage}</span>
-                        <span className="text-xs text-[#8b90a8]">{h.days}d</span>
-                      </div>
-                      <span className="text-[10px] text-[#8b90a8]">
-                        {formatDate(h.entered)}{h.exited ? ` → ${formatDate(h.exited)}` : ' · current'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </Card>
           </div>
 
           {/* Sidebar */}
           <div className="flex flex-col gap-4">
-            {/* Deal value */}
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Deal Value</div>
               <div className="text-3xl font-bold font-display text-[#1a1d2e] mb-1">{formatCurrency(deal.revenue, true)}</div>
-              <div className="text-xs text-[#8b90a8] mb-4">
-                ₱{deal.monthly_subscription.toLocaleString()}/mo × {deal.duration} months
-              </div>
-
+              <div className="text-xs text-[#8b90a8] mb-4">₱{deal.monthly_subscription.toLocaleString()}/mo × {deal.duration} months</div>
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-[#8b90a8]">Win probability</span>
                   <span className="font-semibold text-[#4a5068]">{deal.probability_pct}%</span>
                 </div>
                 <div className="h-1.5 bg-[#ffffff0a] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${deal.probability_pct}%`, background: '#4f6ef7' }}
-                  />
+                  <div className="h-full rounded-full" style={{ width: `${deal.probability_pct}%`, background: '#4f6ef7' }} />
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#8b90a8]">Weighted value</span>
-                  <span className="font-semibold text-[#4a5068]">
-                    {formatCurrency(deal.revenue * (deal.probability_pct || 0) / 100, true)}
-                  </span>
+                  <span className="font-semibold text-[#4a5068]">{formatCurrency(deal.revenue * (deal.probability_pct || 0) / 100, true)}</span>
                 </div>
               </div>
             </Card>
 
-            {/* Key dates */}
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Key Dates</div>
               <div className="flex flex-col gap-2.5">
                 {[
                   { label: 'Deal Created', date: deal.start_date, icon: <Calendar size={12} /> },
-                  { label: 'Expected Close', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
+                  deal.due_date && { label: 'Expected Close', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
                   deal.action_plan_due_date && { label: 'Action Plan Due', date: deal.action_plan_due_date, icon: <Clock size={12} />, warning: new Date(deal.action_plan_due_date) < new Date() },
                 ].filter(Boolean).map((item: any, i) => (
@@ -306,15 +286,12 @@ export default function DealDetail() {
                       {item.icon}
                       <span className="text-xs">{item.label}</span>
                     </div>
-                    <span className={cn('text-xs font-medium', item.highlight ? 'text-[#1a1d2e]' : 'text-[#4a5068]')}>
-                      {formatDate(item.date)}
-                    </span>
+                    <span className={cn('text-xs font-medium', item.highlight ? 'text-[#1a1d2e]' : 'text-[#4a5068]')}>{formatDate(item.date)}</span>
                   </div>
                 ))}
               </div>
             </Card>
 
-            {/* BD & Client */}
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">People</div>
               {deal.bd && (
@@ -322,36 +299,31 @@ export default function DealDetail() {
                   <Avatar name={`${deal.bd.firstName} ${deal.bd.lastName}`} />
                   <div>
                     <div className="text-xs font-semibold text-[#1a1d2e]">{deal.bd.firstName} {deal.bd.lastName}</div>
-                    <div className="text-[10px] text-[#8b90a8]">{deal.bd.role} · BD Owner</div>
+                    <div className="text-[10px] text-[#8b90a8]">BD Owner</div>
                   </div>
                 </div>
               )}
               {deal.client && (
-                <div>
-                  <div className="text-xs font-semibold text-[#1a1d2e]">{deal.client.name}</div>
-                  <div className="text-[10px] text-[#8b90a8] mt-0.5">{deal.client.account_type} · {deal.client.industry?.name}</div>
+                <Link to={`/clients/${deal.client.id}`}>
+                  <div className="text-xs font-semibold text-[#1a1d2e] hover:text-[#3d5af1] transition-colors">{deal.client.name}</div>
+                  <div className="text-[10px] text-[#8b90a8] mt-0.5">{deal.client.account_type}</div>
                   <Badge variant="neutral" size="sm" className="mt-2">{deal.client.status}</Badge>
-                </div>
+                </Link>
               )}
             </Card>
 
-            {/* Links */}
             {(deal.proposal_link || deal.contract_link) && (
               <Card className="p-5">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Documents</div>
                 <div className="flex flex-col gap-2">
                   {deal.proposal_link && (
-                    <a href={deal.proposal_link} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-xs text-[#3d5af1] hover:text-[#3d5af1] transition-colors">
-                      <ExternalLink size={12} />
-                      View Proposal
+                    <a href={deal.proposal_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-[#3d5af1] transition-colors">
+                      <ExternalLink size={12} /> View Proposal
                     </a>
                   )}
                   {deal.contract_link && (
-                    <a href={deal.contract_link} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-xs text-[#059669] hover:text-[#047857] transition-colors">
-                      <ExternalLink size={12} />
-                      View Contract
+                    <a href={deal.contract_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-[#059669] hover:text-[#047857] transition-colors">
+                      <ExternalLink size={12} /> View Contract
                     </a>
                   )}
                 </div>

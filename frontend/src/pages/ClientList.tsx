@@ -3,7 +3,8 @@ import { Building2, Search, Plus, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import { Card, Badge, Avatar } from '../components/ui/index';
-import { MOCK_CLIENTS, MOCK_DEALS } from '../mockData';
+import { useClients } from '../hooks/useClients';
+import { useDeals } from '../hooks/useDeals';
 import { formatCurrency, cn } from '../lib/utils';
 import type { AccountType } from '../types/index';
 
@@ -19,22 +20,36 @@ export default function ClientList() {
   const [typeFilter, setTypeFilter] = useState<AccountType | 'All'>('All');
   const [search, setSearch] = useState('');
 
-  const filteredClients = MOCK_CLIENTS.filter(c => {
+  const { data: clients = [], isLoading: loadingClients } = useClients();
+  const { data: deals = [] } = useDeals();
+
+  const filteredClients = clients.filter(c => {
     if (typeFilter !== 'All' && c.account_type !== typeFilter) return false;
     if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const getClientRevenue = (clientId: string) =>
-    MOCK_DEALS.filter(d => d.client_id === clientId && d.stage === 'Closed Won')
+    deals.filter(d => d.client_id === clientId && d.stage === 'Closed Won')
       .reduce((sum, d) => sum + d.revenue, 0);
 
   const getClientDeals = (clientId: string) =>
-    MOCK_DEALS.filter(d => d.client_id === clientId).length;
+    deals.filter(d => d.client_id === clientId).length;
+
+  if (loadingClients) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title="Clients" action={{ label: 'New Client', to: '/clients/new' }} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[#8b90a8]">Loading clients...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Clients" subtitle={`${MOCK_CLIENTS.length} accounts`} action={{ label: 'New Client', to: '/clients/new' }} />
+      <Header title="Clients" subtitle={`${clients.length} accounts`} action={{ label: 'New Client', to: '/clients/new' }} />
 
       <div className="flex-1 overflow-y-auto p-6">
         {/* Filters */}
@@ -55,18 +70,13 @@ export default function ClientList() {
                 onClick={() => setTypeFilter(t)}
                 className={cn(
                   'px-2.5 py-1 rounded-lg text-xs font-medium transition-all',
-                  typeFilter === t
-                    ? 'text-white'
-                    : 'text-[#8b90a8] hover:text-[#4a5068]'
+                  typeFilter === t ? 'text-white' : 'text-[#8b90a8] hover:text-[#4a5068]'
                 )}
                 style={typeFilter === t && t !== 'All' ? {
                   background: `${ACCOUNT_COLORS[t as AccountType]}20`,
                   color: ACCOUNT_COLORS[t as AccountType],
                   border: `1px solid ${ACCOUNT_COLORS[t as AccountType]}40`,
-                } : typeFilter === t ? {
-                  background: '#ffffff10',
-                  color: '#ffffff',
-                } : {}}
+                } : typeFilter === t ? { background: '#ffffff10', color: '#ffffff' } : {}}
               >
                 {t}
               </button>

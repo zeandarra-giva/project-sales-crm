@@ -4,7 +4,10 @@ import { ArrowLeft, Mail, Phone, Building2, Plus, ExternalLink, Pencil, Trash2 }
 import { Card, Badge, Avatar, Button, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
 import StagePill from '../components/deals/StagePill';
-import { MOCK_CLIENTS, MOCK_DEALS, MOCK_CONTACTS, INDUSTRIES } from '../mockData';
+import { INDUSTRIES } from '../mockData';
+import { useClient, useUpdateClient } from '../hooks/useClients';
+import { useContacts, useUpdateContact } from '../hooks/useContacts';
+import { useDeals } from '../hooks/useDeals';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { AccountType, Client, Contact, DecisionRank } from '../types/index';
 
@@ -21,9 +24,14 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  // Local mutable state
-  const [client, setClient] = useState<Client | undefined>(() => MOCK_CLIENTS.find(c => c.id === id));
-  const [contacts, setContacts] = useState<Contact[]>(() => MOCK_CONTACTS.filter(c => c.client_id === id));
+  const { data: client, isLoading: loadingClient } = useClient(id || '');
+  const { data: allContacts = [] } = useContacts();
+  const { data: allDeals = [] } = useDeals();
+  const updateClient = useUpdateClient();
+  const updateContact = useUpdateContact();
+
+  const contacts = allContacts.filter(c => c.client_id === id);
+  const clientDeals = allDeals.filter(d => d.client_id === id);
 
   // Edit client modal
   const [editClient, setEditClient] = useState(false);
@@ -33,8 +41,13 @@ export default function ClientDetailPage() {
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [contactDraft, setContactDraft] = useState<Partial<Contact>>({});
 
-  // Delete contact confirm
-  const [deletingContact, setDeletingContact] = useState<Contact | null>(null);
+  if (loadingClient) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <p className="text-[#8b90a8]">Loading client...</p>
+      </div>
+    );
+  }
 
   if (!client) {
     return (
@@ -45,25 +58,18 @@ export default function ClientDetailPage() {
     );
   }
 
-  const clientDeals   = MOCK_DEALS.filter(d => d.client_id === id);
   const closedRevenue = clientDeals.filter(d => d.stage === 'Closed Won').reduce((s, d) => s + d.revenue, 0);
   const openPipeline  = clientDeals.filter(d => !d.is_closed).reduce((s, d) => s + d.revenue, 0);
-  const color         = ACCOUNT_COLORS[client.account_type];
+  const color         = ACCOUNT_COLORS[client.account_type] || '#4a5068';
 
   // ── Client edit handlers ──────────────────────────────────────────
   const openEditClient = () => {
-    setClientDraft({
-      name: client.name,
-      brand: client.brand,
-      account_type: client.account_type,
-      status: client.status,
-      industry: client.industry,
-    });
+    setClientDraft({ name: client.name, brand: client.brand, account_type: client.account_type, status: client.status });
     setEditClient(true);
   };
 
   const saveClient = () => {
-    setClient(prev => prev ? { ...prev, ...clientDraft } : prev);
+    updateClient.mutate({ id: client.id, data: clientDraft });
     setEditClient(false);
   };
 
@@ -75,14 +81,18 @@ export default function ClientDetailPage() {
 
   const saveContact = () => {
     if (!editingContact) return;
-    setContacts(prev => prev.map(c => c.id === editingContact.id ? { ...c, ...contactDraft } : c));
+    updateContact.mutate({
+      id: editingContact.id,
+      data: {
+        firstName: contactDraft.first_name,
+        lastName: contactDraft.last_name,
+        email: contactDraft.email,
+        phone: contactDraft.number,
+        jobTitle: contactDraft.designation,
+        isPrimary: contactDraft.is_primary,
+      },
+    });
     setEditingContact(null);
-  };
-
-  const deleteContact = () => {
-    if (!deletingContact) return;
-    setContacts(prev => prev.filter(c => c.id !== deletingContact.id));
-    setDeletingContact(null);
   };
 
   const uc = (field: keyof Client, val: string) => setClientDraft(p => ({ ...p, [field]: val }));
@@ -112,7 +122,6 @@ export default function ClientDetailPage() {
 
       <div className="flex-1 overflow-y-auto p-6 bg-[#f4f6fb]">
         <div className="max-w-4xl mx-auto flex flex-col gap-4">
-
           {/* Metrics */}
           <div className="grid grid-cols-4 gap-3">
             {[
@@ -133,9 +142,7 @@ export default function ClientDetailPage() {
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Details</div>
-                <button onClick={openEditClient} className="text-[#8b90a8] hover:text-[#3d5af1] transition-colors">
-                  <Pencil size={13} />
-                </button>
+                <button onClick={openEditClient} className="text-[#8b90a8] hover:text-[#3d5af1] transition-colors"><Pencil size={13} /></button>
               </div>
               <div className="flex flex-col gap-3">
                 <div>
@@ -149,15 +156,7 @@ export default function ClientDetailPage() {
                 {client.industry && (
                   <div>
                     <div className="text-[10px] text-[#8b90a8] uppercase tracking-wider mb-1">Industry</div>
-                    <div className="text-xs text-[#4a5068] flex items-center gap-1">
-                      <Building2 size={11} className="text-[#8b90a8]" /> {client.industry.name}
-                    </div>
-                  </div>
-                )}
-                {client.brand && (
-                  <div>
-                    <div className="text-[10px] text-[#8b90a8] uppercase tracking-wider mb-1">Brand</div>
-                    <div className="text-xs text-[#4a5068]">{client.brand}</div>
+                    <div className="text-xs text-[#4a5068] flex items-center gap-1"><Building2 size={11} className="text-[#8b90a8]" /> {client.industry.name}</div>
                   </div>
                 )}
               </div>
@@ -194,21 +193,9 @@ export default function ClientDetailPage() {
                         </div>
                       </div>
                       <Badge variant="neutral" size="sm">{contact.decision_rank.replace('Tier ', 'T')}</Badge>
-                      {/* Action buttons — visible on hover */}
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                        <button
-                          onClick={() => openEditContact(contact)}
-                          className="p-1 rounded-lg text-[#8b90a8] hover:text-[#3d5af1] hover:bg-[#eef1fe] transition-all"
-                          title="Edit contact"
-                        >
+                        <button onClick={() => openEditContact(contact)} className="p-1 rounded-lg text-[#8b90a8] hover:text-[#3d5af1] hover:bg-[#eef1fe] transition-all" title="Edit contact">
                           <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => setDeletingContact(contact)}
-                          className="p-1 rounded-lg text-[#8b90a8] hover:text-[#e11d48] hover:bg-[#fff1f2] transition-all"
-                          title="Delete contact"
-                        >
-                          <Trash2 size={12} />
                         </button>
                       </div>
                     </div>
@@ -255,18 +242,8 @@ export default function ClientDetailPage() {
           <Input label="Company Name" value={clientDraft.name ?? ''} onChange={e => uc('name', e.target.value)} required />
           <Input label="Brand Name" value={clientDraft.brand ?? ''} onChange={e => uc('brand', e.target.value)} />
           <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Account Type"
-              value={clientDraft.account_type ?? client.account_type}
-              onChange={e => uc('account_type', e.target.value)}
-              options={ACCOUNT_TYPES.map(t => ({ value: t, label: t }))}
-            />
-            <Select
-              label="Status"
-              value={clientDraft.status ?? client.status}
-              onChange={e => uc('status', e.target.value)}
-              options={CLIENT_STATUSES.map(s => ({ value: s, label: s }))}
-            />
+            <Select label="Account Type" value={clientDraft.account_type ?? client.account_type} onChange={e => uc('account_type', e.target.value)} options={ACCOUNT_TYPES.map(t => ({ value: t, label: t }))} />
+            <Select label="Status" value={clientDraft.status ?? client.status} onChange={e => uc('status', e.target.value)} options={CLIENT_STATUSES.map(s => ({ value: s, label: s }))} />
           </div>
           <Select
             label="Industry"
@@ -305,22 +282,6 @@ export default function ClientDetailPage() {
             </button>
           </div>
         </EditModal>
-      )}
-
-      {/* ── Delete Contact Confirm ────────────────────────────────────── */}
-      {deletingContact && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm p-6 shadow-xl animate-fade-in">
-            <h2 className="font-bold text-sm font-display text-[#1a1d2e] mb-2">Delete Contact?</h2>
-            <p className="text-xs text-[#4a5068] mb-5">
-              Are you sure you want to remove <strong>{deletingContact.first_name} {deletingContact.last_name}</strong>? This cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setDeletingContact(null)}>Cancel</Button>
-              <Button variant="danger" size="sm" onClick={deleteContact}>Delete</Button>
-            </div>
-          </Card>
-        </div>
       )}
     </div>
   );

@@ -3,7 +3,8 @@ import { Search, Mail, Phone, Star, Pencil, Trash2 } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { Card, Badge, Avatar, Button, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
-import { MOCK_CLIENTS, MOCK_CONTACTS } from '../mockData';
+import { useContacts, useUpdateContact } from '../hooks/useContacts';
+import { useClients } from '../hooks/useClients';
 import { cn } from '../lib/utils';
 import type { Contact, DecisionRank } from '../types/index';
 
@@ -23,16 +24,16 @@ const DECISION_RANKS: DecisionRank[] = [
 const RANKS: (DecisionRank | 'All')[] = ['All', ...DECISION_RANKS];
 
 export default function ContactList() {
-  const [contacts, setContacts] = useState<Contact[]>(MOCK_CONTACTS);
   const [search, setSearch] = useState('');
   const [rankFilter, setRankFilter] = useState<DecisionRank | 'All'>('All');
+
+  const { data: contacts = [], isLoading } = useContacts();
+  const { data: clients = [] } = useClients();
+  const updateContact = useUpdateContact();
 
   // Edit state
   const [editing, setEditing] = useState<Contact | null>(null);
   const [draft, setDraft]     = useState<Partial<Contact>>({});
-
-  // Delete state
-  const [deleting, setDeleting] = useState<Contact | null>(null);
 
   const filtered = contacts.filter(c => {
     const name = `${c.first_name} ${c.last_name}`.toLowerCase();
@@ -48,17 +49,32 @@ export default function ContactList() {
 
   const saveEdit = () => {
     if (!editing) return;
-    setContacts(prev => prev.map(c => c.id === editing.id ? { ...c, ...draft } : c));
+    updateContact.mutate({
+      id: editing.id,
+      data: {
+        firstName: draft.first_name,
+        lastName: draft.last_name,
+        email: draft.email,
+        phone: draft.number,
+        jobTitle: draft.designation,
+        isPrimary: draft.is_primary,
+      },
+    });
     setEditing(null);
   };
 
-  const confirmDelete = () => {
-    if (!deleting) return;
-    setContacts(prev => prev.filter(c => c.id !== deleting.id));
-    setDeleting(null);
-  };
-
   const ud = (field: keyof Contact, val: string | boolean) => setDraft(p => ({ ...p, [field]: val }));
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title="Contacts" action={{ label: 'New Contact', to: '/contacts/new' }} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[#8b90a8]">Loading contacts...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -84,10 +100,7 @@ export default function ContactList() {
             {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
           {(search || rankFilter !== 'All') && (
-            <button
-              onClick={() => { setSearch(''); setRankFilter('All'); }}
-              className="text-xs text-[#8b90a8] hover:text-[#4a5068] transition-colors"
-            >
+            <button onClick={() => { setSearch(''); setRankFilter('All'); }} className="text-xs text-[#8b90a8] hover:text-[#4a5068] transition-colors">
               Clear filters
             </button>
           )}
@@ -96,25 +109,13 @@ export default function ContactList() {
         {/* Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map(contact => {
-            const client   = MOCK_CLIENTS.find(c => c.id === contact.client_id);
-            const rankConf = RANK_CONFIG[contact.decision_rank];
+            const client   = clients.find(c => c.id === contact.client_id);
+            const rankConf = RANK_CONFIG[contact.decision_rank] || { color: '#8b90a8' };
             return (
               <Card key={contact.id} className="p-4 hover:border-[#c7d0fb] transition-all group relative">
-                {/* Edit / Delete buttons */}
                 <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => openEdit(contact)}
-                    className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#3d5af1] hover:bg-[#eef1fe] transition-all"
-                    title="Edit"
-                  >
+                  <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#3d5af1] hover:bg-[#eef1fe] transition-all" title="Edit">
                     <Pencil size={12} />
-                  </button>
-                  <button
-                    onClick={() => setDeleting(contact)}
-                    className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#e11d48] hover:bg-[#fff1f2] transition-all"
-                    title="Delete"
-                  >
-                    <Trash2 size={12} />
                   </button>
                 </div>
 
@@ -122,9 +123,7 @@ export default function ContactList() {
                   <Avatar name={`${contact.first_name} ${contact.last_name}`} />
                   <div className="flex-1 min-w-0 pr-10">
                     <div className="flex items-center gap-1.5">
-                      <h3 className="text-sm font-semibold text-[#1a1d2e] truncate">
-                        {contact.first_name} {contact.last_name}
-                      </h3>
+                      <h3 className="text-sm font-semibold text-[#1a1d2e] truncate">{contact.first_name} {contact.last_name}</h3>
                       {contact.is_primary && <Star size={10} className="text-[#d97706] fill-[#f59e0b] flex-shrink-0" />}
                     </div>
                     <p className="text-xs text-[#8b90a8] truncate">{contact.designation}</p>
@@ -189,22 +188,6 @@ export default function ContactList() {
             </div>
           </div>
         </EditModal>
-      )}
-
-      {/* ── Delete Confirm ───────────────────────────────────────────── */}
-      {deleting && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm p-6 shadow-xl animate-fade-in">
-            <h2 className="font-bold text-sm font-display text-[#1a1d2e] mb-2">Delete Contact?</h2>
-            <p className="text-xs text-[#4a5068] mb-5">
-              Remove <strong>{deleting.first_name} {deleting.last_name}</strong>? This cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
-              <Button variant="danger"    size="sm" onClick={confirmDelete}>Delete</Button>
-            </div>
-          </Card>
-        </div>
       )}
     </div>
   );

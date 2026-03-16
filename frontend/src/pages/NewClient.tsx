@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Input, Select, Textarea, Button, Card } from '../components/ui/index';
+import { useCreateClient } from '../hooks/useClients';
 import { INDUSTRIES } from '../mockData';
 
 const ACCOUNT_TYPES = [
@@ -19,13 +20,14 @@ const CLIENT_STATUSES = [
 
 export default function NewClientPage() {
   const navigate = useNavigate();
+  const createClient = useCreateClient();
+
   const [form, setForm] = useState({
     name: '',
     brand: '',
     account_type: 'Enterprise',
     status: 'Prospect',
     industry: '',
-    notes: '',
   });
 
   const industryOptions = INDUSTRIES.map(i => ({ value: i, label: i }));
@@ -35,8 +37,14 @@ export default function NewClientPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Client created successfully! (mock)');
-    navigate('/clients');
+    createClient.mutate({
+      name: form.name,
+      brand: form.brand || undefined,
+      account_type: form.account_type,
+      status: form.status,
+    }, {
+      onSuccess: () => navigate('/clients'),
+    });
   };
 
   return (
@@ -52,66 +60,25 @@ export default function NewClientPage() {
       <div className="flex-1 overflow-y-auto p-6 bg-[#f4f6fb]">
         <form onSubmit={handleSubmit} className="max-w-2xl mx-auto flex flex-col gap-4">
           <Card className="p-6">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">
-              Client Information
-            </div>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Client Information</div>
             <div className="flex flex-col gap-4">
-              <Input
-                label="Company Name"
-                value={form.name}
-                onChange={e => update('name', e.target.value)}
-                placeholder="TechCorp Philippines"
-                required
-              />
-              <Input
-                label="Brand Name (optional)"
-                value={form.brand}
-                onChange={e => update('brand', e.target.value)}
-                placeholder="TechCorp"
-              />
+              <Input label="Company Name" value={form.name} onChange={e => update('name', e.target.value)} placeholder="TechCorp Philippines" required />
+              <Input label="Brand Name (optional)" value={form.brand} onChange={e => update('brand', e.target.value)} placeholder="TechCorp" />
               <div className="grid grid-cols-2 gap-4">
-                <Select
-                  label="Account Type"
-                  value={form.account_type}
-                  onChange={e => update('account_type', e.target.value)}
-                  options={ACCOUNT_TYPES}
-                  required
-                />
-                <Select
-                  label="Status"
-                  value={form.status}
-                  onChange={e => update('status', e.target.value)}
-                  options={CLIENT_STATUSES}
-                  required
-                />
+                <Select label="Account Type" value={form.account_type} onChange={e => update('account_type', e.target.value)} options={ACCOUNT_TYPES} required />
+                <Select label="Status" value={form.status} onChange={e => update('status', e.target.value)} options={CLIENT_STATUSES} required />
               </div>
-              <Select
-                label="Industry"
-                value={form.industry}
-                onChange={e => update('industry', e.target.value)}
-                options={industryOptions}
-                placeholder="Select industry..."
-              />
+              <Select label="Industry" value={form.industry} onChange={e => update('industry', e.target.value)} options={industryOptions} placeholder="Select industry..." />
             </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">
-              Notes
-            </div>
-            <Textarea
-              label="Client Notes"
-              value={form.notes}
-              onChange={e => update('notes', e.target.value)}
-              rows={4}
-              placeholder="Background info, referral source, special considerations..."
-            />
           </Card>
 
           <div className="flex gap-3 justify-end">
             <Button type="button" variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
-            <Button type="submit">Create Client</Button>
+            <Button type="submit" disabled={createClient.isPending}>{createClient.isPending ? 'Creating...' : 'Create Client'}</Button>
           </div>
+          {createClient.isError && (
+            <div className="p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">Failed to create client. Please check all fields and try again.</div>
+          )}
         </form>
       </div>
     </div>
