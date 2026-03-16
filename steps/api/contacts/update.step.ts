@@ -29,20 +29,38 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
+        const { phone, jobTitle, decisionMakerTier, ...rest } = req.request.body
 
-        const contact = await prisma.contact.update({
-            where: { id },
-            data: req.request.body,
-            include: { client: { select: { id: true, name: true } } },
-        })
-
-        // If promoted to primary, update the parent client
-        if (req.request.body.isPrimary) {
-            await prisma.client.update({
-                where: { id: contact.clientId },
-                data: { contactId: contact.id },
-            })
+        // Map decision-maker tier (1-5) to Prisma Enum
+        const rankMapping: Record<number, string> = {
+            1: 'TIER_1_ECONOMIC_BUYER',
+            2: 'TIER_2_DECISION_MAKER',
+            3: 'TIER_3_INFLUENCER',
+            4: 'TIER_4_END_USER',
+            5: 'TIER_5_GATEKEEPER'
         }
+
+        const contact = await prisma.$transaction(async (tx) => {
+            const updatedContact = await tx.contact.update({
+                where: { id },
+                data: {
+                    ...rest,
+                    ...(phone && { number: phone }),
+                    ...(jobTitle && { designation: jobTitle }),
+                    ...(decisionMakerTier && { decisionRank: rankMapping[decisionMakerTier] as any }),
+                },
+                include: { client: { select: { id: true, name: true } } },
+            })
+
+            // If promoted to primary, update the parent client
+            if (req.request.body.isPrimary) {
+                await tx.client.update({
+                    where: { id: updatedContact.clientId },
+                    data: { contactId: updatedContact.id },
+                })
+            }
+            return updatedContact
+        })
 
         logger.info('Contact updated', { contactId: id, by: user.id })
         return { status: 200, body: contact }
@@ -55,7 +73,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             error instanceof Prisma.PrismaClientKnownRequestError &&
             error.code === 'P2025'
         ) {
-            return { status: 400, body: { error: 'Contact not found or invalid related ID' } }
+            return { status: 404, body: { error: 'Contact not found' } }
         }
         logger.error('Failed to update contact', { error })
         return { status: 500, body: { error: 'Internal server error' } }

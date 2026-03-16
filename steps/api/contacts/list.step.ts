@@ -1,6 +1,6 @@
-import { type StepConfig, type Handlers, logger } from "motia";
-import { prisma } from "../../../lib/db";
-import { authenticate } from "../../../lib/auth";
+import { type Handlers, type StepConfig, logger } from 'motia'
+import { prisma } from '../../../lib/db'
+import { authenticate } from '../../../lib/auth'
 
 export const config = {
     name: 'ListContacts',

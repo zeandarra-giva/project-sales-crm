@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { contactsApi } from '../api/contacts'
+import { contactsApi, CreateContactPayload } from '../api/contacts'
 
 export function useContacts() {
     return useQuery({
@@ -11,7 +11,7 @@ export function useContacts() {
 export function useCreateContact() {
     const qc = useQueryClient()
     return useMutation({
-        mutationFn: async (data: any) => (await contactsApi.create(data)).data,
+        mutationFn: async (data: CreateContactPayload) => (await contactsApi.create(data)).data,
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['contacts'] })
             qc.invalidateQueries({ queryKey: ['clients'] })  // client's contact list changed
@@ -22,7 +22,7 @@ export function useCreateContact() {
 export function useUpdateContact() {
     const qc = useQueryClient()
     return useMutation({
-        mutationFn: async ({ id, data }: { id: string; data: any }) =>
+        mutationFn: async ({ id, data }: { id: string; data: Partial<CreateContactPayload> }) =>
             (await contactsApi.update(id, data)).data,
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['contacts'] })

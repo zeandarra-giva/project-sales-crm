@@ -17,7 +17,12 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         const user = await authenticate(req.request)
         logger.info('Listing deals', { userId: user.id })
 
+        // If Manager, they can see all deals.
+        // If BD Rep, they can only see their own deals.
+        const whereClause = user.role === 'SALES_MANAGER' ? {} : { bdId: user.id }
+
         const deals = await prisma.deal.findMany({
+            where: whereClause,
             include: {
                 stage: true,                              // pipeline stage info
                 bd: { select: { id: true, firstName: true, lastName: true } },

@@ -42,27 +42,30 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             5: 'TIER_5_GATEKEEPER'
         }
 
-        const contact = await prisma.contact.create({
-            data: {
-                firstName,
-                lastName,
-                email,
-                number: phone,                // map phone -> number
-                designation: jobTitle,        // map jobTitle -> designation
-                decisionRank: rankMapping[decisionMakerTier] || 'TIER_3_INFLUENCER',
-                clientId,
-                isPrimary,
-            },
-            include: { client: { select: { id: true, name: true } } },
-        })
-
-        // If this contact is marked primary, update the client table
-        if (isPrimary) {
-            await prisma.client.update({
-                where: { id: clientId },
-                data: { contactId: contact.id },
+        const contact = await prisma.$transaction(async (tx) => {
+            const newContact = await tx.contact.create({
+                data: {
+                    firstName,
+                    lastName,
+                    email,
+                    number: phone,                // map phone -> number
+                    designation: jobTitle,        // map jobTitle -> designation
+                    decisionRank: rankMapping[decisionMakerTier] || 'TIER_3_INFLUENCER',
+                    clientId,
+                    isPrimary,
+                },
+                include: { client: { select: { id: true, name: true } } },
             })
-        }
+
+            // If this contact is marked primary, update the client table
+            if (isPrimary) {
+                await tx.client.update({
+                    where: { id: clientId },
+                    data: { contactId: newContact.id },
+                })
+            }
+            return newContact
+        })
 
         logger.info('Contact created', { contactId: contact.id, by: user.id })
         return { status: 201, body: contact }
@@ -71,11 +74,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         if (error.name === 'AuthError') {
             return { status: 401, body: { error: error.message } }
         }
-        if (error.code === 'P2002') { // Handle unique constraint if email is unique
-            return { status: 400, body: { error: 'A contact with this email already exists' } }
-        }
-        if (error.code === 'P2025') {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            (error.code === 'P2025' || error.code === 'P2003')
+        ) {
             return { status: 400, body: { error: 'Client not found — check clientId' } }
+        }
+        if (
+            error instanceof Prisma.PrismaClientValidationError ||
+            (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2000')
+        ) {
+            return { status: 400, body: { error: 'Invalid input — check field lengths and types' } }
         }
         logger.error('Failed to create contact', { error })
         return { status: 500, body: { error: 'Internal server error' } }

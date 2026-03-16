@@ -194,7 +194,9 @@ var handler2 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     logger2.info("Listing deals", { userId: user.id });
+    const whereClause = user.role === "SALES_MANAGER" ? {} : { bdId: user.id };
     const deals = await prisma.deal.findMany({
+      where: whereClause,
       include: {
         stage: true,
         // pipeline stage info
@@ -359,17 +361,33 @@ var handler4 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
-    const contact = await prisma.contact.update({
-      where: { id },
-      data: req.request.body,
-      include: { client: { select: { id: true, name: true } } }
-    });
-    if (req.request.body.isPrimary) {
-      await prisma.client.update({
-        where: { id: contact.clientId },
-        data: { contactId: contact.id }
+    const { phone, jobTitle, decisionMakerTier, ...rest } = req.request.body;
+    const rankMapping = {
+      1: "TIER_1_ECONOMIC_BUYER",
+      2: "TIER_2_DECISION_MAKER",
+      3: "TIER_3_INFLUENCER",
+      4: "TIER_4_END_USER",
+      5: "TIER_5_GATEKEEPER"
+    };
+    const contact = await prisma.$transaction(async (tx) => {
+      const updatedContact = await tx.contact.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...phone && { number: phone },
+          ...jobTitle && { designation: jobTitle },
+          ...decisionMakerTier && { decisionRank: rankMapping[decisionMakerTier] }
+        },
+        include: { client: { select: { id: true, name: true } } }
       });
-    }
+      if (req.request.body.isPrimary) {
+        await tx.client.update({
+          where: { id: updatedContact.clientId },
+          data: { contactId: updatedContact.id }
+        });
+      }
+      return updatedContact;
+    });
     logger4.info("Contact updated", { contactId: id, by: user.id });
     return { status: 200, body: contact };
   } catch (error) {
@@ -377,7 +395,7 @@ var handler4 = async (req, ctx) => {
       return { status: 401, body: { error: error.message } };
     }
     if (error instanceof Prisma3.PrismaClientKnownRequestError && error.code === "P2025") {
-      return { status: 400, body: { error: "Contact not found or invalid related ID" } };
+      return { status: 404, body: { error: "Contact not found" } };
     }
     logger4.error("Failed to update contact", { error });
     return { status: 500, body: { error: "Internal server error" } };
@@ -427,6 +445,7 @@ var handler5 = async (req, ctx) => {
 // steps/api/contacts/create.step.ts
 import { logger as logger6 } from "motia";
 import { z as z4 } from "zod";
+import { Prisma as Prisma4 } from "@prisma/client";
 var config6 = {
   name: "CreateContact",
   description: "Create a new contact",
@@ -471,38 +490,41 @@ var handler6 = async (req, ctx) => {
       4: "TIER_4_END_USER",
       5: "TIER_5_GATEKEEPER"
     };
-    const contact = await prisma.contact.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        number: phone,
-        // map phone -> number
-        designation: jobTitle,
-        // map jobTitle -> designation
-        decisionRank: rankMapping[decisionMakerTier] || "TIER_3_INFLUENCER",
-        clientId,
-        isPrimary
-      },
-      include: { client: { select: { id: true, name: true } } }
-    });
-    if (isPrimary) {
-      await prisma.client.update({
-        where: { id: clientId },
-        data: { contactId: contact.id }
+    const contact = await prisma.$transaction(async (tx) => {
+      const newContact = await tx.contact.create({
+        data: {
+          firstName,
+          lastName,
+          email,
+          number: phone,
+          // map phone -> number
+          designation: jobTitle,
+          // map jobTitle -> designation
+          decisionRank: rankMapping[decisionMakerTier] || "TIER_3_INFLUENCER",
+          clientId,
+          isPrimary
+        },
+        include: { client: { select: { id: true, name: true } } }
       });
-    }
+      if (isPrimary) {
+        await tx.client.update({
+          where: { id: clientId },
+          data: { contactId: newContact.id }
+        });
+      }
+      return newContact;
+    });
     logger6.info("Contact created", { contactId: contact.id, by: user.id });
     return { status: 201, body: contact };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error.code === "P2002") {
-      return { status: 400, body: { error: "A contact with this email already exists" } };
-    }
-    if (error.code === "P2025") {
+    if (error instanceof Prisma4.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Client not found \u2014 check clientId" } };
+    }
+    if (error instanceof Prisma4.PrismaClientValidationError || error instanceof Prisma4.PrismaClientKnownRequestError && error.code === "P2000") {
+      return { status: 400, body: { error: "Invalid input \u2014 check field lengths and types" } };
     }
     logger6.error("Failed to create contact", { error });
     return { status: 500, body: { error: "Internal server error" } };
@@ -512,7 +534,7 @@ var handler6 = async (req, ctx) => {
 // steps/api/clients/update.step.ts
 import { logger as logger7 } from "motia";
 import { z as z5 } from "zod";
-import { Prisma as Prisma4 } from "@prisma/client";
+import { Prisma as Prisma5 } from "@prisma/client";
 var config7 = {
   name: "UpdateClient",
   description: "Update an existing client",
@@ -564,7 +586,7 @@ var handler7 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma4.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma5.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return {
         status: 400,
         body: { error: "Record not found or related ID is invalid" }
@@ -671,7 +693,7 @@ var handler9 = async (req, ctx) => {
 // steps/api/clients/create.step.ts
 import { logger as logger10 } from "motia";
 import { z as z6 } from "zod";
-import { Prisma as Prisma5 } from "@prisma/client";
+import { Prisma as Prisma6 } from "@prisma/client";
 var config10 = {
   name: "CreateClient",
   description: "Create a new client",
@@ -709,7 +731,7 @@ var handler10 = async (req, ctx) => {
     }
     if (
       // ← Refactor 4
-      error instanceof Prisma5.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")
+      error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")
     ) {
       return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
     }
