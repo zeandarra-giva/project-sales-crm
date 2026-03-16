@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
 
@@ -16,9 +16,9 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
-        const user = await authenticate(req)
+        const user = await authenticate(req.request)
 
         // If Manager, they can see all deals.
         // If BD Rep, they can only see their own deals.

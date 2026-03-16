@@ -1,4 +1,4 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 
@@ -12,11 +12,11 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         // 1. Authenticate the user
-        const user = await authenticate(req)
-        const { id } = req.pathParams      // Motia extracts :id from the URL
+        const user = await authenticate(req.request)
+        const { id } = req.request.pathParams      // Motia extracts :id from the URL
 
         // 2. Fetch the client
         const client = await prisma.client.findUnique({
@@ -45,7 +45,7 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
 
     } catch (error: any) {
         // 5. Catch errors cleanly (401 for AuthError, 500 for everything else)
-        logger.error('Failed to get client details', { error: error.message, clientId: req.pathParams.id })
+        logger.error('Failed to get client details', { error: error.message, clientId: req.request.pathParams.id })
 
         return {
             status: error.name === 'AuthError' ? 401 : 500,

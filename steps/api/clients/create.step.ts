@@ -1,4 +1,4 @@
-import type { StepConfig, Handlers } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
@@ -24,11 +24,11 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         // 1. Authenticate the user
-        const user = await authenticate(req)
-        const { name, brand, accountType, status, industryId, referralId } = req.body
+        const user = await authenticate(req.request)
+        const { name, brand, accountType, status, industryId, referralId } = req.request.body
 
         // 2. Create the client in the database
         const client = await prisma.client.create({

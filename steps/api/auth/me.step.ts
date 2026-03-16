@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig } from 'motia'
+import { type StepConfig, type Handlers, logger } from 'motia'
 import { z } from 'zod'
 import { authenticate } from '../../../lib/auth'
 
@@ -16,11 +16,11 @@ export const config = {
     flows: ['auth'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, { logger }) => {
+export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         // authenticate() reads the JWT from the Authorization header,
         // verifies it, and returns the user from the database
-        const user = await authenticate(req)
+        const user = await authenticate(req.request)
 
         logger.info('Auth check successful', { userId: user.id })
 
