@@ -85,6 +85,12 @@ export default function NewDealPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Client-side required check for fields not covered by HTML required
+    if (!form.remarks.trim()) { setError('Remarks are required.'); return; }
+    if (!form.action_plan.trim()) { setError('Action plan is required.'); return; }
+    if (!form.action_plan_due_date) { setError('Action plan due date is required.'); return; }
+
     createMutation.mutate({
       deal_name: form.deal_name,
       monthly_subscription: parseFloat(form.monthly_subscription),
@@ -95,11 +101,10 @@ export default function NewDealPage() {
       bundle_id: dealType === 'bundle' ? form.bundle_id : undefined,
       proposal_link: form.proposal_link || undefined,
       contract_link: form.contract_link || undefined,
-      remarks: form.remarks || undefined,
-      action_plan: form.action_plan || undefined,
+      remarks: form.remarks.trim(),
+      action_plan: form.action_plan.trim(),
       start_date: form.start_date || undefined,
-      // due_date is auto-computed server-side from start_date + duration
-      action_plan_due_date: form.action_plan_due_date || undefined,
+      action_plan_due_date: form.action_plan_due_date,
     });
   };
 
@@ -214,7 +219,7 @@ export default function NewDealPage() {
                   disabled
                   placeholder="Set start date to calculate"
                 />
-                <Input label="Action Plan Due Date" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} />
+                <Input label="Action Plan Due Date *" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} required />
               </div>
             </div>
           </Card>
@@ -230,8 +235,8 @@ export default function NewDealPage() {
           <Card className="p-6">
             <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Notes & Action Plan</div>
             <div className="flex flex-col gap-4">
-              <Textarea label="Remarks" value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={3} placeholder="Initial notes about this deal..." />
-              <Textarea label="Action Plan" value={form.action_plan} onChange={e => update('action_plan', e.target.value)} rows={3} placeholder="Next steps and action items..." />
+              <Textarea label="Remarks *" value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={3} placeholder="Initial notes about this deal..." required />
+              <Textarea label="Action Plan *" value={form.action_plan} onChange={e => update('action_plan', e.target.value)} rows={3} placeholder="Next steps and action items..." required />
             </div>
           </Card>
 

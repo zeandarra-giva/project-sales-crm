@@ -12,11 +12,11 @@ const bodySchema = z.object({
   clientId: z.uuid(),
   serviceId: z.uuid().optional(),
   bundleId: z.uuid().optional(),
-  remarks: z.string().optional(),
-  actionPlan: z.string().optional(),
-  dueDate: z.string().optional(),
+  remarks: z.string().min(1, 'Remarks are required'),
+  actionPlan: z.string().min(1, 'Action plan is required'),
+  actionPlanDueDate: z.string().min(1, 'Action plan due date is required'),
   startDate: z.string().optional(),
-  actionPlanDueDate: z.string().optional(),
+  dueDate: z.string().optional(),
   initialMeetingDate: z.string().optional(),
 })
 
@@ -69,11 +69,8 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
         bdId: user!.id,
         serviceId: body.serviceId,
         bundleId: body.bundleId,
-        remarks: body.remarks,
-        actionPlan: body.actionPlan,
         startDate,
         dueDate,
-        actionPlanDueDate: body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : undefined,
         initialMeetingDate: body.initialMeetingDate ? new Date(body.initialMeetingDate) : undefined,
       },
     })
@@ -85,7 +82,10 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
         changedById: user!.id,
         enteredAt: new Date(),
         notes: 'Deal created',
-      },
+        remarks: body.remarks.trim(),
+        actionPlan: body.actionPlan.trim(),
+        actionPlanDueDate: new Date(body.actionPlanDueDate),
+      } as any,
     })
 
     await tx.dealProjection.create({

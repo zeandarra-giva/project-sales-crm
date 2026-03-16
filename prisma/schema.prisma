@@ -286,8 +286,6 @@ model Deal {
   revenue               Decimal? // COMPUTED: monthly_subscription x duration
   duration              Int      // Contract length in months
   isClosed              Boolean  @default(false) @map("is_closed")
-  remarks               String?  // Running BD notes. Required — blocks Closed Lost if empty
-  actionPlan            String?  @map("action_plan") // Next planned steps
   proposalRevisionCount Int      @default(0) @map("proposal_revision_count")
   proposalLink          String?  @map("proposal_link")
   contractLink          String?  @map("contract_link")
@@ -311,7 +309,6 @@ model Deal {
   lastStageUpdateAt  DateTime? @map("last_stage_update_at")
   lastFollowUpAt     DateTime? @map("last_follow_up_at")
   initialMeetingDate DateTime? @map("initial_meeting_date")
-  actionPlanDueDate  DateTime? @map("action_plan_due_date")
 
   // Relations
   stage   PipelineStage @relation(fields: [stageId], references: [id])
@@ -339,14 +336,17 @@ model Deal {
 // ============================================================
 
 model DealAuditLog {
-  id          String    @id @default(uuid())
-  dealId      String    @map("deal_id")
-  stageId     String    @map("stage_id")
-  enteredAt   DateTime  @map("entered_at")
-  exitedAt    DateTime? @map("exited_at") // NULL means this is the current stage
-  daysInStage Int?      @map("days_in_stage") // COMPUTED: exited_at - entered_at
-  changedById String    @map("changed_by")
-  notes       String?   // Why the stage changed. Primary source for loss analysis
+  id                String    @id @default(uuid())
+  dealId            String    @map("deal_id")
+  stageId           String    @map("stage_id")
+  enteredAt         DateTime  @map("entered_at")
+  exitedAt          DateTime? @map("exited_at")       // NULL means this is the current stage
+  daysInStage       Int?      @map("days_in_stage")   // COMPUTED: exited_at - entered_at
+  changedById       String    @map("changed_by")
+  notes             String?                            // Why the stage changed. Primary source for loss analysis
+  remarks           String                             // Running BD notes at time of stage transition. Required.
+  actionPlan        String    @map("action_plan")      // Next planned steps at time of transition. Required.
+  actionPlanDueDate DateTime  @map("action_plan_due_date") // When the action plan item is due. Required.
 
   // Relations
   deal      Deal          @relation(fields: [dealId], references: [id])

@@ -1455,13 +1455,54 @@ var handler28 = async (req, { logger }) => {
         { scheduledAt: { lte: /* @__PURE__ */ new Date() } }
       ]
     },
-    include: { deal: { select: { id: true, dealName: true, stage: { select: { name: true } } } } },
+    include: {
+      deal: {
+        select: {
+          id: true,
+          dealName: true,
+          stage: { select: { name: true } },
+          client: { select: { name: true, accountType: true } },
+          bd: { select: { firstName: true, lastName: true, role: true } },
+          auditLogs: {
+            orderBy: { enteredAt: "asc" },
+            select: {
+              id: true,
+              enteredAt: true,
+              exitedAt: true,
+              daysInStage: true,
+              remarks: true,
+              actionPlan: true,
+              actionPlanDueDate: true,
+              stage: { select: { name: true } },
+              changedBy: { select: { firstName: true, lastName: true } }
+            }
+          }
+        }
+      }
+    },
     orderBy: { createdAt: "desc" },
     take: 50
   });
-  const unreadCount = await prisma.notification.count({ where: { bdId: user.id, isRead: false, OR: [{ scheduledAt: null }, { scheduledAt: { lte: /* @__PURE__ */ new Date() } }] } });
+  const notificationsWithSnapshot = notifications.map((n) => {
+    if (!n.deal) return n;
+    const createdAt = n.createdAt;
+    const logsAtTime = n.deal.auditLogs.filter(
+      (log) => new Date(log.enteredAt) <= createdAt
+    );
+    return {
+      ...n,
+      deal: { ...n.deal, auditLogs: logsAtTime }
+    };
+  });
+  const unreadCount = await prisma.notification.count({
+    where: {
+      bdId: user.id,
+      isRead: false,
+      OR: [{ scheduledAt: null }, { scheduledAt: { lte: /* @__PURE__ */ new Date() } }]
+    }
+  });
   logger.info("Notifications fetched", { count: notifications.length });
-  return { status: 200, body: { notifications, unreadCount } };
+  return { status: 200, body: { notifications: notificationsWithSnapshot, unreadCount } };
 };
 
 // steps/api/industries/Industries.step.ts
@@ -1571,9 +1612,10 @@ var handler30 = async (req, { logger, enqueue }) => {
 import { z as z4 } from "zod";
 var bodySchema4 = z4.object({
   stageName: z4.string().min(1),
-  // e.g. "Negotiation", "Closed Won"
+  remarks: z4.string().min(1, "Remarks are required"),
+  actionPlan: z4.string().min(1, "Action plan is required"),
+  actionPlanDueDate: z4.string().min(1, "Action plan due date is required"),
   notes: z4.string().optional(),
-  remarks: z4.string().optional(),
   finalProposedValue: z4.number().optional(),
   contractLink: z4.string().optional()
 });
@@ -1590,7 +1632,7 @@ var handler31 = async (req, { logger, enqueue }) => {
   const { error, status, user } = await authenticate(req);
   if (error) return { status, body: { error } };
   const { id } = req.pathParams;
-  const { stageName, notes, remarks, finalProposedValue, contractLink } = req.body;
+  const { stageName, notes, remarks, actionPlan, actionPlanDueDate, finalProposedValue, contractLink } = req.body;
   const [deal, newStage] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
@@ -1621,12 +1663,6 @@ var handler31 = async (req, { logger, enqueue }) => {
       };
     }
   }
-  if (stageName === "Closed Lost") {
-    const effectiveRemarks = remarks?.trim() || deal.remarks?.trim();
-    if (!effectiveRemarks) {
-      return { status: 422, body: { error: "Remarks are required \u2014 explain why the deal was lost." } };
-    }
-  }
   const now = /* @__PURE__ */ new Date();
   const probability = getProbability(stageName);
   const updatedDeal = await prisma.$transaction(async (tx) => {
@@ -1644,7 +1680,10 @@ var handler31 = async (req, { logger, enqueue }) => {
         stageId: newStage.id,
         changedById: user.id,
         enteredAt: now,
-        notes: notes ?? null
+        notes: notes ?? null,
+        remarks: remarks.trim(),
+        actionPlan: actionPlan.trim(),
+        actionPlanDueDate: new Date(actionPlanDueDate)
       }
     });
     const dealUpdate = {
@@ -1656,9 +1695,8 @@ var handler31 = async (req, { logger, enqueue }) => {
       dealUpdate.closedDate = now;
       dealUpdate.salesCycleDays = Math.floor((now.getTime() - (deal.startDate ?? now).getTime()) / 864e5);
     }
-    if (stageName === "Closed Lost") {
-      if (finalProposedValue !== void 0) dealUpdate.finalProposedValue = finalProposedValue;
-      if (remarks?.trim()) dealUpdate.remarks = remarks.trim();
+    if (stageName === "Closed Lost" && finalProposedValue !== void 0) {
+      dealUpdate.finalProposedValue = finalProposedValue;
     }
     if (stageName === "Closed Won" && contractLink) {
       dealUpdate.contractLink = contractLink;
@@ -1775,6 +1813,9 @@ var handler33 = async (req, { logger }) => {
     exited_at: h.exitedAt,
     days_in_stage: h.daysInStage,
     notes: h.notes,
+    remarks: h.remarks ?? null,
+    action_plan: h.actionPlan ?? null,
+    action_plan_due_date: h.actionPlanDueDate ?? null,
     changed_by: `${h.changedBy.firstName} ${h.changedBy.lastName}`
   }));
   logger.info("GetDealHistory", { dealId: id, count: mapped.length });
@@ -1847,11 +1888,11 @@ var bodySchema5 = z5.object({
   clientId: z5.uuid(),
   serviceId: z5.uuid().optional(),
   bundleId: z5.uuid().optional(),
-  remarks: z5.string().optional(),
-  actionPlan: z5.string().optional(),
-  dueDate: z5.string().optional(),
+  remarks: z5.string().min(1, "Remarks are required"),
+  actionPlan: z5.string().min(1, "Action plan is required"),
+  actionPlanDueDate: z5.string().min(1, "Action plan due date is required"),
   startDate: z5.string().optional(),
-  actionPlanDueDate: z5.string().optional(),
+  dueDate: z5.string().optional(),
   initialMeetingDate: z5.string().optional()
 });
 var config36 = {
@@ -1894,11 +1935,8 @@ var handler36 = async (req, { logger, enqueue }) => {
         bdId: user.id,
         serviceId: body.serviceId,
         bundleId: body.bundleId,
-        remarks: body.remarks,
-        actionPlan: body.actionPlan,
         startDate,
         dueDate,
-        actionPlanDueDate: body.actionPlanDueDate ? new Date(body.actionPlanDueDate) : void 0,
         initialMeetingDate: body.initialMeetingDate ? new Date(body.initialMeetingDate) : void 0
       }
     });
@@ -1908,7 +1946,10 @@ var handler36 = async (req, { logger, enqueue }) => {
         stageId: inquiryStage.id,
         changedById: user.id,
         enteredAt: /* @__PURE__ */ new Date(),
-        notes: "Deal created"
+        notes: "Deal created",
+        remarks: body.remarks.trim(),
+        actionPlan: body.actionPlan.trim(),
+        actionPlanDueDate: new Date(body.actionPlanDueDate)
       }
     });
     await tx.dealProjection.create({

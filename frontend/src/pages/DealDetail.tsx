@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, TrendingUp, Trash2, Pencil,
+  ArrowLeft, ExternalLink, Calendar, Clock,
+  AlertTriangle, X, ChevronRight, Trash2, Pencil, CheckCircle,
 } from 'lucide-react';
 import { Card, Button, Badge, Textarea, Input, Avatar, Select } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -39,6 +39,9 @@ export default function DealDetail() {
   const [remarks, setRemarks] = useState('');
   const [actionPlan, setActionPlan] = useState('');
   const [stageNotes, setStageNotes] = useState('');
+  const [stageRemarks, setStageRemarks] = useState('');
+  const [stageActionPlan, setStageActionPlan] = useState('');
+  const [stageActionPlanDue, setStageActionPlanDue] = useState('');
   const [contractLink, setContractLink] = useState('');
   const [finalProposedValue, setFinalProposedValue] = useState('');
   const [editing, setEditing] = useState(false);
@@ -57,8 +60,6 @@ export default function DealDetail() {
   useEffect(() => {
     if (deal) {
       setCurrentStage(deal.stage);
-      setRemarks(deal.remarks ?? '');
-      setActionPlan(deal.action_plan ?? '');
       setContractLink(deal.contract_link ?? '');
     }
   }, [deal]);
@@ -96,11 +97,10 @@ export default function DealDetail() {
   const confirmStageChange = async () => {
     if (!stageConfirm) return;
 
-    // ── HARD GATE: require contract dates before Proposal Sent and beyond ──
+    // Hard gate: contract dates
     const STAGES_NEED_DATES: PipelineStage[] = ['Proposal Sent', 'Negotiation', 'Closed Won'];
     if (STAGES_NEED_DATES.includes(stageConfirm)) {
       const d = deal as any;
-      // Check every possible key name — snake_case (after axios interceptor) and camelCase (raw)
       const startVal = d?.start_date ?? d?.startDate ?? null;
       const dueVal = d?.due_date ?? d?.dueDate ?? null;
       const missingList: string[] = [];
@@ -108,40 +108,44 @@ export default function DealDetail() {
       if (!dueVal) missingList.push('Contract End Date');
       if (missingList.length > 0) {
         setStageError(`⚠ Required: ${missingList.join(' and ')} — close this and click ✏ Edit Deal to add them.`);
-        return; // hard stop — do not proceed
+        return;
       }
     }
 
-    if (stageConfirm === 'Closed Lost' && !remarks.trim()) {
-      setStageError('Remarks are required before closing as Lost.');
-      return;
-    }
+    // Required: remarks, action plan, due date on every stage change
+    if (!stageRemarks.trim()) { setStageError('Remarks are required.'); return; }
+    if (!stageActionPlan.trim()) { setStageError('Action plan is required.'); return; }
+    if (!stageActionPlanDue) { setStageError('Action plan due date is required.'); return; }
+
     if (stageConfirm === 'Closed Won' && !contractLink.trim()) {
       setStageError('Contract link is required to close as Won.');
       return;
     }
+
     try {
       await updateStage({
         id: id!,
         stage: stageConfirm,
+        remarks: stageRemarks.trim(),
+        actionPlan: stageActionPlan.trim(),
+        actionPlanDueDate: stageActionPlanDue,
         notes: stageNotes || undefined,
-        remarks: stageConfirm === 'Closed Lost' ? remarks : undefined,
         contractLink: stageConfirm === 'Closed Won' ? contractLink : undefined,
         finalProposedValue: finalProposedValue ? parseFloat(finalProposedValue) : undefined,
-        deal, // passed so the mutation can enforce the date guard
+        deal,
       });
       setCurrentStage(stageConfirm);
       setStageConfirm(null);
       setStageNotes('');
+      setStageRemarks('');
+      setStageActionPlan('');
+      setStageActionPlanDue('');
       refetch();
-      // Trigger real-time notification refresh
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ['notifications'] });
         qc.invalidateQueries({ queryKey: ['deal-history', id] });
       }, 800);
     } catch (err: any) {
-      // err.message = our thrown Error from the mutation guard
-      // err.response.data.error = axios 4xx from backend
       setStageError(err?.message ?? err?.response?.data?.error ?? 'Failed to update stage');
     }
   };
@@ -192,9 +196,9 @@ export default function DealDetail() {
   };
 
   const handleSave = async () => {
+    // contractLink is the only deal-level field still editable outside the edit modal
     try {
-      await updateDeal({ id: id!, data: { remarks, action_plan: actionPlan, contract_link: contractLink } });
-      setEditing(false);
+      await updateDeal({ id: id!, data: { contract_link: contractLink } });
       refetch();
     } catch {
       alert('Failed to save changes');
@@ -240,9 +244,6 @@ export default function DealDetail() {
           </Badge>
           {editing ? (
             <>
-              <Button size="sm" onClick={handleSave} disabled={isUpdating}>
-                <Save size={14} /> {isUpdating ? 'Saving…' : 'Save'}
-              </Button>
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 <X size={14} />
               </Button>
@@ -250,14 +251,9 @@ export default function DealDetail() {
           ) : (
             <>
               {!isClosed && (
-                <>
-                  <Button size="sm" variant="secondary" onClick={openEditDeal}>
-                    <Pencil size={14} /> Edit Deal
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-                    <Edit2 size={14} /> Notes
-                  </Button>
-                </>
+                <Button size="sm" variant="secondary" onClick={openEditDeal}>
+                  <Pencil size={14} /> Edit Deal
+                </Button>
               )}
               <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(true)}
                 className="text-[#e11d48] hover:bg-[#fff1f2]">
@@ -340,31 +336,64 @@ export default function DealDetail() {
               }
               return (
                 <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                  <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full">
-                    <h3 className="font-bold font-display text-[#1a1d2e] mb-2">
-                      Move to {stageConfirm}?
-                    </h3>
-                    <p className="text-sm text-[#4a5068] mb-4">
-                      {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
+                  <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                    <h3 className="font-bold font-display text-[#1a1d2e] mb-1">Move to {stageConfirm}?</h3>
+                    <p className="text-xs text-[#8b90a8] mb-4">
+                      {STAGE_CHANGE_CONFIRM[stageConfirm as keyof typeof STAGE_CHANGE_CONFIRM] || `Move "${deal.deal_name}" to ${stageConfirm}.`}
                     </p>
+
                     {modalMissing.length > 0 && (
-                      <div className="mb-3 p-3 bg-[#fffbeb] border border-[#fde68a] rounded-xl text-xs text-[#92400e]">
-                        ⚠ <strong>Missing required fields:</strong> {modalMissing.join(' and ')}.<br />
-                        <span className="mt-1 block">Close this and click <strong>✏ Edit Deal</strong> to add contract dates before proceeding.</span>
+                      <div className="mb-4 p-3 bg-[#fffbeb] border border-[#fde68a] rounded-xl text-xs text-[#92400e]">
+                        ⚠ <strong>Missing:</strong> {modalMissing.join(' and ')}.<br />
+                        <span className="mt-1 block">Close this and click <strong>✏ Edit Deal</strong> to add contract dates first.</span>
                       </div>
                     )}
+
                     {stageError && (
                       <div className="mb-3 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">{stageError}</div>
                     )}
-                    {stageConfirm === 'Closed Lost' && (
-                      <div className="mb-3 flex flex-col gap-3">
-                        <Textarea
-                          label="Remarks (required — explain why deal was lost)"
-                          value={remarks}
-                          onChange={e => setRemarks(e.target.value)}
-                          rows={3}
-                          placeholder="Budget constraints, competitor won, timing..."
+
+                    {/* Required on every stage change */}
+                    <div className="flex flex-col gap-3 mb-3">
+                      <Textarea
+                        label="Remarks *"
+                        value={stageRemarks}
+                        onChange={e => setStageRemarks(e.target.value)}
+                        rows={3}
+                        placeholder={stageConfirm === 'Closed Lost'
+                          ? 'Explain why the deal was lost — budget, competitor, timing…'
+                          : 'Current deal status, client context, key updates…'}
+                      />
+                      <Textarea
+                        label="Action Plan *"
+                        value={stageActionPlan}
+                        onChange={e => setStageActionPlan(e.target.value)}
+                        rows={2}
+                        placeholder="Next steps and action items for this stage…"
+                      />
+                      <Input
+                        label="Action Plan Due Date *"
+                        type="date"
+                        value={stageActionPlanDue}
+                        onChange={e => setStageActionPlanDue(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Closed Won: contract link */}
+                    {stageConfirm === 'Closed Won' && (
+                      <div className="mb-3">
+                        <Input
+                          label="Contract Link *"
+                          value={contractLink}
+                          onChange={e => setContractLink(e.target.value)}
+                          placeholder="https://…"
                         />
+                      </div>
+                    )}
+
+                    {/* Closed Lost: final proposed value */}
+                    {stageConfirm === 'Closed Lost' && (
+                      <div className="mb-3">
                         <Input
                           label="Final Proposed Value (optional)"
                           type="number"
@@ -374,25 +403,18 @@ export default function DealDetail() {
                         />
                       </div>
                     )}
-                    {stageConfirm === 'Closed Won' && (
-                      <div className="mb-3">
-                        <Input
-                          label="Contract Link (required)"
-                          value={contractLink}
-                          onChange={e => setContractLink(e.target.value)}
-                          placeholder="https://..."
-                        />
-                      </div>
-                    )}
+
+                    {/* Optional transition notes */}
                     <div className="mb-4">
                       <Textarea
-                        label="Stage transition notes (optional)"
+                        label="Additional notes (optional)"
                         value={stageNotes}
                         onChange={e => setStageNotes(e.target.value)}
                         rows={2}
-                        placeholder="Notes about this stage change..."
+                        placeholder="Any extra context about this stage change…"
                       />
                     </div>
+
                     <div className="flex gap-2 justify-end">
                       <Button variant="secondary" size="sm" onClick={() => { setStageConfirm(null); setStageError(''); }}>Cancel</Button>
                       <Button
@@ -408,59 +430,6 @@ export default function DealDetail() {
                 </div>
               );
             })()}
-
-            {/* Remarks */
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText size={14} className="text-[#3d5af1]" />
-                  <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Remarks</span>
-                  {!remarks.trim() && !isClosed && (
-                    <Badge variant="danger" size="sm">Required for Closed Lost</Badge>
-                  )}
-                </div>
-                {editing ? (
-                  <Textarea
-                    value={remarks}
-                    onChange={e => setRemarks(e.target.value)}
-                    rows={4}
-                    placeholder="Add deal notes, client context, and progress updates..."
-                  />
-                ) : (
-                  <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                    {remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
-                  </p>
-                )}
-              </Card>
-            }
-            { /* Action plan */}
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={14} className="text-[#059669]" />
-                  <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Action Plan</span>
-                </div>
-                {deal.action_plan_due_date && (
-                  <Badge
-                    variant={new Date(deal.action_plan_due_date) < new Date() ? 'danger' : 'neutral'}
-                    size="sm"
-                  >
-                    Due {formatDate(deal.action_plan_due_date)}
-                  </Badge>
-                )}
-              </div>
-              {editing ? (
-                <Textarea
-                  value={actionPlan}
-                  onChange={e => setActionPlan(e.target.value)}
-                  rows={3}
-                  placeholder="Next steps, action items..."
-                />
-              ) : (
-                <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {actionPlan || <span className="text-[#8b90a8] italic">No action plan set</span>}
-                </p>
-              )}
-            </Card>
 
             {/* Stage history */}
             <Card className="p-5">
@@ -484,9 +453,9 @@ export default function DealDetail() {
                           {!isLast && <div className="w-px flex-1 bg-[#e2e6f0] my-1" />}
                         </div>
                         {/* Content */}
-                        <div className={`flex-1 min-w-0 ${isLast ? 'pb-0' : 'pb-4'}`}>
+                        <div className={`flex-1 min-w-0 ${isLast ? 'pb-0' : 'pb-5'}`}>
                           <div className="flex items-start justify-between gap-2">
-                            <div>
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-semibold text-[#1a1d2e]">{stageName}</span>
                                 {isCurrent && (
@@ -497,11 +466,37 @@ export default function DealDetail() {
                               </div>
                               <div className="text-[10px] text-[#8b90a8] mt-0.5">
                                 {h.entered_at ? formatDate(h.entered_at) : ''}
-                                {h.exited_at ? ` → ${formatDate(h.exited_at)}` : ''}
+                                {h.exited_at ? ` → ${formatDate(h.exited_at)}` : ' → present'}
                                 {h.changed_by && <span className="ml-1">· {h.changed_by}</span>}
                               </div>
+                              {/* Remarks */}
+                              {h.remarks && (
+                                <div className="mt-2 text-[11px] text-[#4a5068] bg-white rounded-lg px-3 py-2 border border-[#e2e6f0]">
+                                  <span className="text-[9px] font-semibold text-[#8b90a8] uppercase tracking-wider block mb-0.5">Remarks</span>
+                                  {h.remarks}
+                                </div>
+                              )}
+                              {/* Action plan */}
+                              {h.action_plan && (
+                                <div className="mt-1.5 text-[11px] text-[#4a5068] bg-[#f4faf7] rounded-lg px-3 py-2 border border-[#d1fae5]">
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[9px] font-semibold text-[#059669] uppercase tracking-wider">Action Plan</span>
+                                    {h.action_plan_due_date && (
+                                      <span className={cn(
+                                        'text-[9px] font-medium',
+                                        new Date(h.action_plan_due_date) < new Date() && !h.exited_at
+                                          ? 'text-[#e11d48]' : 'text-[#8b90a8]'
+                                      )}>
+                                        Due {formatDate(h.action_plan_due_date)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {h.action_plan}
+                                </div>
+                              )}
+                              {/* Optional notes */}
                               {h.notes && (
-                                <div className="mt-1 text-[10px] text-[#4a5068] italic bg-[#f4f6fb] rounded px-2 py-1 border-l-2 border-[#c7d0fb]">
+                                <div className="mt-1.5 text-[10px] text-[#8b90a8] italic px-2 py-1 border-l-2 border-[#c7d0fb]">
                                   "{h.notes}"
                                 </div>
                               )}
@@ -565,7 +560,6 @@ export default function DealDetail() {
                   { label: 'Contract Start', date: deal.start_date, icon: <Calendar size={12} />, missing: !deal.start_date },
                   { label: 'Contract End', date: deal.due_date, icon: <Calendar size={12} />, highlight: true, missing: !deal.due_date },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
-                  deal.action_plan_due_date && { label: 'Action Plan Due', date: deal.action_plan_due_date, icon: <Clock size={12} />, warning: new Date(deal.action_plan_due_date) < new Date() },
                 ].filter(Boolean).map((item: any, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
                     <div className={cn('flex items-center gap-1.5', item.warning ? 'text-[#e11d48]' : item.missing ? 'text-[#d97706]' : 'text-[#8b90a8]')}>

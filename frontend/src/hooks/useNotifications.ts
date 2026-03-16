@@ -20,7 +20,30 @@ export function useNotifications() {
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    // Optimistically flip is_read in the cache — avoids refetch that collapses expanded cards
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ['notifications'] });
+      const prev = qc.getQueryData(['notifications']);
+      qc.setQueryData(['notifications'], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          notifications: old.notifications.map((n: Notification) =>
+            n.id === id ? { ...n, is_read: true } : n
+          ),
+          unread_count: Math.max(0, (old.unread_count ?? 0) - 1),
+        };
+      });
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      // Roll back on failure
+      if (ctx?.prev) qc.setQueryData(['notifications'], ctx.prev);
+    },
+    onSettled: () => {
+      // Background sync after a delay so the UI doesn't jump
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['notifications'] }), 2000);
+    },
   });
 
   const markAllReadMutation = useMutation({

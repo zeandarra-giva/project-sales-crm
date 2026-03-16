@@ -46,11 +46,11 @@ export function useDeals(params?: Record<string, string>) {
   const weightedValue = openDeals.reduce((s, d) => s + Number(d.revenue ?? 0) * (d.probability_pct ?? 0) / 100, 0);
 
   const updateStageMutation = useMutation({
-    mutationFn: async ({ id, stage, notes, remarks, contractLink, finalProposedValue, deal }: {
-      id: string; stage: PipelineStage; notes?: string; remarks?: string;
-      contractLink?: string; finalProposedValue?: number; deal?: any;
+    mutationFn: async ({ id, stage, remarks, actionPlan, actionPlanDueDate, notes, contractLink, finalProposedValue, deal }: {
+      id: string; stage: PipelineStage;
+      remarks: string; actionPlan: string; actionPlanDueDate: string;
+      notes?: string; contractLink?: string; finalProposedValue?: number; deal?: any;
     }) => {
-      // ── HARD GATE: contract dates required from Proposal Sent onward ──
       const ORDERED = ['Inquiry', 'Prospecting', 'Discovery', 'Proposal Sent', 'Negotiation', 'Closed Won'];
       const GATED = ['Proposal Sent', 'Negotiation', 'Closed Won', 'Closed Lost'];
 
@@ -75,7 +75,8 @@ export function useDeals(params?: Record<string, string>) {
           throw new Error(`Please add ${missing.join(' and ')} before moving to "${stage}". Use ✏ Edit Deal.`);
         }
       }
-      return dealsApi.updateStage(id, stage, notes, remarks, contractLink, finalProposedValue);
+
+      return dealsApi.updateStage(id, stage, remarks, actionPlan, actionPlanDueDate, notes, contractLink, finalProposedValue);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['deals'] }),
   });

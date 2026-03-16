@@ -37,6 +37,9 @@ export const handler: Handlers<typeof config> = async (req, { logger }) => {
     exited_at: h.exitedAt,
     days_in_stage: h.daysInStage,
     notes: h.notes,
+    remarks: (h as any).remarks ?? null,
+    action_plan: (h as any).actionPlan ?? null,
+    action_plan_due_date: (h as any).actionPlanDueDate ?? null,
     changed_by: `${h.changedBy.firstName} ${h.changedBy.lastName}`,
   }))
 

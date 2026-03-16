@@ -5,9 +5,11 @@ import { prisma } from '../../../lib/prisma.js'
 import { getProbability, isClosedStage, getStageByName } from '../../../lib/pipeline.js'
 
 const bodySchema = z.object({
-  stageName: z.string().min(1),          // e.g. "Negotiation", "Closed Won"
+  stageName: z.string().min(1),
+  remarks: z.string().min(1, 'Remarks are required'),
+  actionPlan: z.string().min(1, 'Action plan is required'),
+  actionPlanDueDate: z.string().min(1, 'Action plan due date is required'),
   notes: z.string().optional(),
-  remarks: z.string().optional(),
   finalProposedValue: z.number().optional(),
   contractLink: z.string().optional(),
 })
@@ -27,7 +29,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
   if (error) return { status, body: { error } }
 
   const { id } = req.pathParams
-  const { stageName, notes, remarks, finalProposedValue, contractLink } = req.body
+  const { stageName, notes, remarks, actionPlan, actionPlanDueDate, finalProposedValue, contractLink } = req.body
 
   const [deal, newStage] = await Promise.all([
     prisma.deal.findUnique({
@@ -50,7 +52,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
 
   const isClosed = isClosedStage(stageName)
 
-  // Require contract dates from Proposal Sent onward — enforced server-side as the true gate
+  // Require contract dates from Proposal Sent onward
   const stagesRequiringDates = ['Proposal Sent', 'Negotiation', 'Closed Won']
   if (stagesRequiringDates.includes(stageName)) {
     const missing: string[] = []
@@ -64,17 +66,11 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
     }
   }
 
-  if (stageName === 'Closed Lost') {
-    const effectiveRemarks = remarks?.trim() || deal.remarks?.trim();
-    if (!effectiveRemarks) {
-      return { status: 422, body: { error: 'Remarks are required — explain why the deal was lost.' } }
-    }
-  }
-
   const now = new Date()
   const probability = getProbability(stageName)
 
   const updatedDeal = await prisma.$transaction(async (tx) => {
+    // Close current open audit log
     const currentLog = deal.auditLogs[0]
     if (currentLog) {
       const daysInStage = Math.floor((now.getTime() - currentLog.enteredAt.getTime()) / 86400000)
@@ -84,6 +80,7 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
       })
     }
 
+    // Open new audit log with required fields
     await tx.dealAuditLog.create({
       data: {
         dealId: id,
@@ -91,7 +88,10 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
         changedById: user!.id,
         enteredAt: now,
         notes: notes ?? null,
-      },
+        remarks: remarks.trim(),
+        actionPlan: actionPlan.trim(),
+        actionPlanDueDate: new Date(actionPlanDueDate),
+      } as any,
     })
 
     const dealUpdate: Record<string, unknown> = {
@@ -103,9 +103,8 @@ export const handler: Handlers<typeof config> = async (req, { logger, enqueue })
       dealUpdate.closedDate = now
       dealUpdate.salesCycleDays = Math.floor((now.getTime() - (deal.startDate ?? now).getTime()) / 86400000)
     }
-    if (stageName === 'Closed Lost') {
-      if (finalProposedValue !== undefined) dealUpdate.finalProposedValue = finalProposedValue
-      if (remarks?.trim()) dealUpdate.remarks = remarks.trim()
+    if (stageName === 'Closed Lost' && finalProposedValue !== undefined) {
+      dealUpdate.finalProposedValue = finalProposedValue
     }
     if (stageName === 'Closed Won' && contractLink) {
       dealUpdate.contractLink = contractLink

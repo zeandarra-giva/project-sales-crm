@@ -53,7 +53,7 @@ export default function DealForm({ form, update }: DealFormProps) {
   return (
     <div className="flex flex-col gap-4">
       <Input label="Deal Name" value={form.deal_name} onChange={e => update('deal_name', e.target.value)}
-        placeholder="Client – Service" required />
+        placeholder="Client - Service" required />
 
       <Select label="Client" value={form.client_id} onChange={e => update('client_id', e.target.value)}
         options={clientOptions} placeholder="Select client..." required />
@@ -117,16 +117,16 @@ export default function DealForm({ form, update }: DealFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <Input label="Expected Close Date" type="date" value={form.due_date} onChange={e => update('due_date', e.target.value)} required />
-        <Input label="Action Plan Due Date" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} />
+        <Input label="Action Plan Due Date *" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} required />
       </div>
 
       <Input label="Proposal Link" type="url" value={form.proposal_link} onChange={e => update('proposal_link', e.target.value)} placeholder="https://drive.google.com/..." />
       <Input label="Contract Link" type="url" value={form.contract_link} onChange={e => update('contract_link', e.target.value)} placeholder="https://drive.google.com/..." />
 
-      <Textarea label="Remarks" value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={3}
-        placeholder="Client context, notes..." />
-      <Textarea label="Action Plan" value={form.action_plan} onChange={e => update('action_plan', e.target.value)} rows={3}
-        placeholder="Next steps..." />
+      <Textarea label="Remarks *" value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={3}
+        placeholder="Client context, notes..." required />
+      <Textarea label="Action Plan *" value={form.action_plan} onChange={e => update('action_plan', e.target.value)} rows={3}
+        placeholder="Next steps..." required />
     </div>
   );
 }
