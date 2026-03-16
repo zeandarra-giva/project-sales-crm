@@ -103,7 +103,10 @@ var handler = async (req, ctx) => {
       const targetStage = await prisma.pipelineStage.findUnique({
         where: { id: stageId }
       });
-      targetStageName = targetStage?.name || "";
+      if (!targetStage) {
+        return { status: 400, body: { error: "Target stage not found \u2014 check stageId" } };
+      }
+      targetStageName = targetStage.name;
     }
     if (targetStageName === "Closed Lost" && !remarks && !deal.remarks) {
       return {
@@ -133,32 +136,35 @@ var handler = async (req, ctx) => {
         updateData.closedDate = null;
       }
     }
-    const updatedDeal = await prisma.deal.update({
-      where: { id },
-      data: updateData,
-      include: {
-        stage: true,
-        client: true,
-        bd: {
-          select: { id: true, firstName: true, lastName: true }
+    const updatedDeal = await prisma.$transaction(async (tx) => {
+      const updated = await tx.deal.update({
+        where: { id },
+        data: updateData,
+        include: {
+          stage: true,
+          client: true,
+          bd: {
+            select: { id: true, firstName: true, lastName: true }
+          }
         }
+      });
+      if (stageId && stageId !== deal.stageId) {
+        await tx.dealAuditLog.updateMany({
+          where: { dealId: id, exitedAt: null },
+          data: { exitedAt: /* @__PURE__ */ new Date() }
+        });
+        await tx.dealAuditLog.create({
+          data: {
+            dealId: id,
+            stageId,
+            changedById: user.id,
+            enteredAt: /* @__PURE__ */ new Date(),
+            notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
+          }
+        });
       }
+      return updated;
     });
-    if (stageId && stageId !== deal.stageId) {
-      await prisma.dealAuditLog.updateMany({
-        where: { dealId: id, exitedAt: null },
-        data: { exitedAt: /* @__PURE__ */ new Date() }
-      });
-      await prisma.dealAuditLog.create({
-        data: {
-          dealId: id,
-          stageId,
-          changedById: user.id,
-          enteredAt: /* @__PURE__ */ new Date(),
-          notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
-        }
-      });
-    }
     logger.info("Updated deal", { dealId: id, by: user.id });
     return {
       status: 200,
@@ -168,7 +174,7 @@ var handler = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Record not found or invalid ID provided" } };
     }
     logger.error("Failed to update deal", { error: error.message, dealId: req.request.pathParams.id });
@@ -729,10 +735,7 @@ var handler10 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (
-      // ← Refactor 4
-      error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")
-    ) {
+    if (error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
     }
     logger10.error("Failed to create client", { error });

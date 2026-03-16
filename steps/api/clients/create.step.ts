@@ -42,10 +42,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
 
     } catch (error: any) {
         // 4. Catch and handle errors cleanly
-        if (error.name === 'AuthError') {                // ← Refactor 2
+        if (error.name === 'AuthError') {
             return { status: 401, body: { error: error.message } }
         }
-        if (                                             // ← Refactor 4
+        if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
             (error.code === 'P2025' || error.code === 'P2003')
         ) {

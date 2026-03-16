@@ -50,7 +50,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             const targetStage = await prisma.pipelineStage.findUnique({
                 where: { id: stageId }
             })
-            targetStageName = targetStage?.name || ""
+            if (!targetStage) {
+                return { status: 400, body: { error: 'Target stage not found — check stageId' } }
+            }
+            targetStageName = targetStage.name
         }
 
         // 2. Business rule: If moving to Closed Lost, require remarks
@@ -89,37 +92,41 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             }
         }
 
-        // 4. Update the deal
-        const updatedDeal = await prisma.deal.update({
-            where: { id },
-            data: updateData,
-            include: {
-                stage: true,
-                client: true,
-                bd: {
-                    select: { id: true, firstName: true, lastName: true }
+        // 4. Update deal + audit logs atomically
+        const updatedDeal = await prisma.$transaction(async (tx) => {
+            const updated = await tx.deal.update({
+                where: { id },
+                data: updateData,
+                include: {
+                    stage: true,
+                    client: true,
+                    bd: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
                 }
+            })
+
+            // 5. Record history in DealAuditLog if stage changed
+            if (stageId && stageId !== deal.stageId) {
+                // Close out the previous audit log entry
+                await tx.dealAuditLog.updateMany({
+                    where: { dealId: id, exitedAt: null },
+                    data: { exitedAt: new Date() }
+                })
+
+                await tx.dealAuditLog.create({
+                    data: {
+                        dealId: id,
+                        stageId: stageId,
+                        changedById: user.id,
+                        enteredAt: new Date(),
+                        notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
+                    }
+                })
             }
+
+            return updated
         })
-
-        // 5. Record history in DealAuditLog if stage changed
-        if (stageId && stageId !== deal.stageId) {
-            // Optional: Close out the previous audit log entry
-            await prisma.dealAuditLog.updateMany({
-                where: { dealId: id, exitedAt: null },
-                data: { exitedAt: new Date() }
-            })
-
-            await prisma.dealAuditLog.create({
-                data: {
-                    dealId: id,
-                    stageId: stageId,
-                    changedById: user.id,
-                    enteredAt: new Date(),
-                    notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
-                }
-            })
-        }
 
         logger.info('Updated deal', { dealId: id, by: user.id })
 
@@ -132,7 +139,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         if (error.name === 'AuthError') {
             return { status: 401, body: { error: error.message } }
         }
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            (error.code === 'P2025' || error.code === 'P2003')
+        ) {
             return { status: 400, body: { error: 'Record not found or invalid ID provided' } }
         }
 
