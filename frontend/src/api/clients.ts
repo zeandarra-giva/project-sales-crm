@@ -23,24 +23,20 @@ function mapClientToBackend(data: Partial<Client>): any {
 }
 
 export const clientsApi = {
-  list: async (params?: Record<string, string>) => {
+  list: async (params?: Record<string, string>): Promise<{ data: Client[] }> => {
     const res = await apiClient.get<any[]>('/api/clients', { params })
-    res.data = res.data.map(mapClientToFrontend)
-    return res
+    return { ...res, data: res.data.map(mapClientToFrontend) }
   },
-  getById: async (id: string) => {
+  getById: async (id: string): Promise<{ data: Client }> => {
     const res = await apiClient.get<any>(`/api/clients/${id}`)
-    res.data = mapClientToFrontend(res.data)
-    return res
+    return { ...res, data: mapClientToFrontend(res.data) }
   },
-  create: async (data: Partial<Client>) => {
+  create: async (data: Partial<Client>): Promise<{ data: Client }> => {
     const res = await apiClient.post<any>('/api/clients', mapClientToBackend(data))
-    res.data = mapClientToFrontend(res.data)
-    return res
+    return { ...res, data: mapClientToFrontend(res.data) }
   },
-  update: async (id: string, data: Partial<Client>) => {
+  update: async (id: string, data: Partial<Client>): Promise<{ data: Client }> => {
     const res = await apiClient.patch<any>(`/api/clients/${id}`, mapClientToBackend(data))
-    res.data = mapClientToFrontend(res.data)
-    return res
+    return { ...res, data: mapClientToFrontend(res.data) }
   }
 };

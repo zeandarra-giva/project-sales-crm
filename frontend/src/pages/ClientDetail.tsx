@@ -81,6 +81,10 @@ export default function ClientDetailPage() {
 
   const saveContact = () => {
     if (!editingContact) return;
+    const rankStr = contactDraft.decision_rank ?? editingContact.decision_rank;
+    const tierMatch = rankStr ? rankStr.match(/Tier (\d)/) : null;
+    const decisionMakerTier = tierMatch ? parseInt(tierMatch[1], 10) : undefined;
+
     updateContact.mutate({
       id: editingContact.id,
       data: {
@@ -90,6 +94,7 @@ export default function ClientDetailPage() {
         phone: contactDraft.number,
         jobTitle: contactDraft.designation,
         isPrimary: contactDraft.is_primary,
+        decisionMakerTier,
       },
     });
     setEditingContact(null);
