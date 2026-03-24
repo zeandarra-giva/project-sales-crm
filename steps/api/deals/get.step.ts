@@ -29,6 +29,8 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                         brand: true,
                         accountType: true,
                         status: true,
+                        industryId: true,
+                        contactId: true,
                         contact: {
                             select: { id: true, firstName: true, lastName: true },
                         },

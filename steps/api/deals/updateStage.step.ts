@@ -25,6 +25,8 @@ export const config = {
             path: '/api/deals/:id/stage',
             bodySchema: z.object({
                 stageId: z.string().uuid(),
+                remarks: z.string().min(1, 'Remarks are required when moving a deal'),
+                actionPlan: z.string().min(1, 'Action plan is required when moving a deal'),
                 notes: z.string().optional(),
             }),
         },
@@ -37,7 +39,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
-        const { stageId, notes } = req.request.body
+        const { stageId, remarks, actionPlan, notes } = req.request.body
 
         // ── 1. Fetch current deal + its stage ──
         const deal = await prisma.deal.findUnique({
@@ -68,12 +70,12 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             return { status: 400, body: { error: 'Target stage not found — check stageId' } }
         }
 
-        // ── 3. Business rule: Closed Lost requires remarks (FR-ADD-004) ──
-        if (targetStage.name === 'Closed Lost' && !deal.remarks?.trim()) {
+        // ── 3. Business rule: Closed Lost requires meaningful remarks (FR-ADD-004) ──
+        if (targetStage.name === 'Closed Lost' && !remarks.trim()) {
             return {
                 status: 400,
                 body: {
-                    error: 'Remarks are required before closing a deal as Lost. Update remarks first then move to Closed Lost.',
+                    error: 'Remarks must explain why the deal was lost before moving to Closed Lost.',
                 },
             }
         }
@@ -90,20 +92,28 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 data: { exitedAt: new Date() },
             })
 
-            // 4b. Open a new audit log row for the incoming stage (FR-D09)
+            // 4b. Open a new audit log row — includes remarks + action plan in notes
+            const auditNote = [
+                notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
+                `Remarks: ${remarks}`,
+                `Action Plan: ${actionPlan}`,
+            ].join('\n')
+
             await tx.dealAuditLog.create({
                 data: {
                     dealId: id,
                     stageId,
                     changedById: user.id,
                     enteredAt: new Date(),
-                    notes: notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
+                    notes: auditNote,
                 },
             })
 
-            // 4c. Update the deal's stage + timestamps (FR-D10)
+            // 4c. Update the deal's stage + remarks + action plan + timestamps (FR-D10)
             const dealUpdateData: Prisma.DealUpdateInput = {
                 stage: { connect: { id: stageId } },
+                remarks,
+                actionPlan,
                 lastStageUpdateAt: new Date(),
                 isClosed,
                 ...(isClosed && { closedDate: new Date() }),

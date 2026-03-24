@@ -54,6 +54,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 exitedAt: entry.exitedAt,
                 daysInStage,
                 isCurrent: entry.exitedAt === null,
+                changedById: entry.changedById,
                 changedBy: entry.changedBy,
                 notes: entry.notes,
             }

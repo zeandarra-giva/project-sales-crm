@@ -30,11 +30,22 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             where: { bdId: user.id, isRead: false },
         })
 
+        // Prisma enum → frontend PascalCase (STAGE_CHANGE → StageChange)
+        const TYPE_MAP: Record<string, string> = {
+            STAGE_CHANGE:        'StageChange',
+            DEAL_STUCK:          'DealStuck',
+            ACTION_PLAN_DUE:     'ActionPlanDue',
+            FOLLOW_UP_DUE:       'FollowUpDue',
+            QUOTA_BEHIND_PACE:   'QuotaAlert',
+            NEW_DEAL_ASSIGNED:   'NewDealAssigned',
+            LOST_DEAL_FOLLOW_UP: 'LostDealFollowUp',
+        }
+
         // Map to frontend snake_case shape (matches Notification type in frontend/src/types/notification.ts)
         const mapped = notifications.map((n) => ({
             id: n.id,
             content: n.content,
-            type: n.type,
+            type: TYPE_MAP[n.type] ?? n.type,
             is_read: n.isRead,
             triggered_by: n.triggeredBy,
             scheduled_at: n.scheduledAt?.toISOString() ?? null,

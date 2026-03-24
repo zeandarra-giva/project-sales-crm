@@ -15,12 +15,17 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
   const isOverdue = deal.action_plan_due_date && new Date(deal.action_plan_due_date) < new Date() && !deal.is_closed;
 
   return (
-    <Link to={`/deals/${deal.id}`}>
-      <div className={cn(
-        'group bg-white border rounded-xl transition-all duration-150 hover:border-[#a5b4fc] hover:bg-[#eef1fd] cursor-pointer',
-        isStuck ? 'border-[#fde68a]' : 'border-[#e2e6f0]',
-        compact ? 'p-3' : 'p-4'
-      )}>
+    <Link to={`/deals/${deal.id}`} className="block select-none" draggable={false}>
+      <div 
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('dealId', String(deal.id));
+        }}
+        className={cn(
+          'group bg-white border rounded-xl transition-all duration-150 hover:border-[#a5b4fc] hover:bg-[#eef1fd] cursor-grab active:cursor-grabbing',
+          isStuck ? 'border-[#fde68a]' : 'border-[#e2e6f0]',
+          compact ? 'p-3' : 'p-4'
+        )}>
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
