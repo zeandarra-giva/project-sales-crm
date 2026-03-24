@@ -48,7 +48,9 @@ export default function DealDetail() {
   const [editRemarks, setEditRemarks]       = useState('');
   const [editActionPlan, setEditActionPlan] = useState('');
   const [contractLink, setContractLink]     = useState('');
-  const [showHistory, setShowHistory]       = useState(false);
+  // Stage change modal fields (mandatory)
+  const [stageRemarks, setStageRemarks]     = useState('');
+  const [stageActionPlan, setStageActionPlan] = useState('');
 
   if (isLoading) {
     return (
@@ -94,35 +96,45 @@ export default function DealDetail() {
     setEditing(false);
   };
 
-  // Stage click on the progress bar (non-closing stages only)
+  // Every stage click shows a confirmation modal with mandatory fields
   const handleStageClick = (stage: PipelineStage) => {
     if (stage === currentStage || isClosed || stageMutation.isPending) return;
-    if (stage === 'Closed Won') { setStageConfirm('Closed Won'); return; }
-    const targetStageId = getStageId(stage);
-    if (!targetStageId) return;
-    stageMutation.mutate({ id: deal.id, data: { stageId: targetStageId } });
+    setStageRemarks(deal.remarks || '');
+    setStageActionPlan(deal.action_plan || '');
+    setContractLink(deal.contract_link || '');
+    setStageConfirm(stage);
   };
 
-  // Confirm modal callback for Closed Won / Closed Lost
+  // Confirm modal callback — remarks + action plan are mandatory
   const confirmStageChange = () => {
     if (!stageConfirm) return;
-    if (stageConfirm === 'Closed Lost' && !deal.remarks.trim() && !editRemarks.trim()) {
-      alert('Remarks are required before closing as Lost.');
+    if (!stageRemarks.trim()) {
+      alert('Remarks are required when moving a deal to a new stage.');
+      return;
+    }
+    if (!stageActionPlan.trim()) {
+      alert('Action plan is required when moving a deal to a new stage.');
       return;
     }
     const targetStageId = getStageId(stageConfirm);
-    if (!targetStageId) return;
+    if (!targetStageId) {
+      alert('Pipeline stages are still loading. Please try again.');
+      return;
+    }
 
+    // Save contract link if provided for Closed Won
     if (stageConfirm === 'Closed Won' && contractLink) {
       updateMutation.mutate({ id: deal.id, data: { contractLink } });
-    }
-    if (editRemarks) {
-      updateMutation.mutate({ id: deal.id, data: { remarks: editRemarks } });
     }
 
     stageMutation.mutate({
       id: deal.id,
-      data: { stageId: targetStageId, notes: `Moved to ${stageConfirm}` },
+      data: {
+        stageId: targetStageId,
+        remarks: stageRemarks.trim(),
+        actionPlan: stageActionPlan.trim(),
+        notes: `Moved from ${currentStage} to ${stageConfirm}`,
+      },
     });
     setStageConfirm(null);
   };
@@ -159,15 +171,6 @@ export default function DealDetail() {
           <Badge variant={deal.lead_source === 'Inbound' ? 'success' : deal.lead_source === 'Outbound' ? 'info' : 'warning'} size="sm">
             {deal.lead_source}
           </Badge>
-          <Button
-            size="sm"
-            variant={showHistory ? 'secondary' : 'ghost'}
-            onClick={() => setShowHistory(h => !h)}
-            title="Toggle stage history"
-          >
-            <History size={14} />
-            {auditLogs.length > 0 && <span className="ml-1">{auditLogs.length}</span>}
-          </Button>
           {editing ? (
             <>
               <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}>
@@ -225,7 +228,7 @@ export default function DealDetail() {
               {!isClosed && (
                 <div className="mt-3 pt-3 border-t border-[#e2e6f0] flex items-center justify-between">
                   <button
-                    onClick={() => setStageConfirm('Closed Lost')}
+                    onClick={() => handleStageClick('Closed Lost')}
                     disabled={stageMutation.isPending}
                     className="text-xs text-[#e11d48] hover:text-[#c81d3e] transition-colors disabled:opacity-50"
                   >
@@ -239,42 +242,79 @@ export default function DealDetail() {
               )}
             </Card>
 
-            {/* Stage history (collapsible via header button) */}
-            {showHistory && (
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <History size={14} className="text-[#3d5af1]" />
-                  <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Stage History</span>
-                </div>
-                <DealHistory logs={auditLogs} />
-              </Card>
-            )}
+            {/* Stage history — always visible */}
+            <Card className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <History size={14} className="text-[#3d5af1]" />
+                <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Activity Log</span>
+                {auditLogs.length > 0 && (
+                  <Badge variant="neutral" size="sm">{auditLogs.length} entries</Badge>
+                )}
+              </div>
+              <DealHistory logs={auditLogs} />
+            </Card>
 
-            {/* Stage confirm modal */}
+            {/* Stage confirm modal — with mandatory remarks + action plan */}
             {stageConfirm && (
               <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-md w-full">
-                  <h3 className="font-bold font-display text-[#1a1d2e] mb-2">Move to {stageConfirm}?</h3>
+                <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                  <h3 className="font-bold font-display text-[#1a1d2e] mb-1">Move to {stageConfirm}?</h3>
                   <p className="text-sm text-[#4a5068] mb-4">
-                    {STAGE_CHANGE_CONFIRM[stageConfirm] || `Move "${deal.deal_name}" to ${stageConfirm}?`}
+                    {STAGE_CHANGE_CONFIRM[stageConfirm] || `Move "${deal.deal_name}" from ${currentStage} to ${stageConfirm}.`}
                   </p>
+
                   {stageConfirm === 'Closed Lost' && (
-                    <div className="mb-4 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">
-                      Deal remarks must be filled before closing as Lost.
+                    <div className="mb-3 p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">
+                      Remarks must explain why this deal was lost.
                     </div>
                   )}
+
+                  {/* Remarks — mandatory */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-[#4a5068] mb-1">
+                      Remarks <span className="text-[#e11d48]">*</span>
+                    </label>
+                    <Textarea
+                      value={stageRemarks}
+                      onChange={e => setStageRemarks(e.target.value)}
+                      rows={3}
+                      placeholder="Why is this deal moving? Key context, client feedback, blockers..."
+                    />
+                    {!stageRemarks.trim() && (
+                      <p className="text-[10px] text-[#e11d48] mt-1">Required — explain the reason for this stage change</p>
+                    )}
+                  </div>
+
+                  {/* Action Plan — mandatory */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-[#4a5068] mb-1">
+                      Action Plan <span className="text-[#e11d48]">*</span>
+                    </label>
+                    <Textarea
+                      value={stageActionPlan}
+                      onChange={e => setStageActionPlan(e.target.value)}
+                      rows={3}
+                      placeholder="Next steps: follow-up calls, deliverables, deadlines..."
+                    />
+                    {!stageActionPlan.trim() && (
+                      <p className="text-[10px] text-[#e11d48] mt-1">Required — describe the next steps for this deal</p>
+                    )}
+                  </div>
+
+                  {/* Contract link for Closed Won */}
                   {stageConfirm === 'Closed Won' && (
-                    <div className="mb-4">
+                    <div className="mb-3">
                       <Input label="Contract Link (recommended)" value={contractLink} onChange={e => setContractLink(e.target.value)} placeholder="https://..." />
                     </div>
                   )}
-                  <div className="flex gap-2 justify-end">
+
+                  <div className="flex gap-2 justify-end pt-2 border-t border-[#e2e6f0]">
                     <Button variant="secondary" size="sm" onClick={() => setStageConfirm(null)}>Cancel</Button>
                     <Button
-                      variant={stageConfirm === 'Closed Lost' ? 'danger' : 'success'}
+                      variant={stageConfirm === 'Closed Lost' ? 'danger' : stageConfirm === 'Closed Won' ? 'success' : 'primary'}
                       size="sm"
                       onClick={confirmStageChange}
-                      disabled={stageMutation.isPending}
+                      disabled={stageMutation.isPending || !stageRemarks.trim() || !stageActionPlan.trim()}
                     >
                       {stageMutation.isPending ? 'Saving...' : `Confirm — ${stageConfirm}`}
                     </Button>

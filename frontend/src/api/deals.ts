@@ -126,6 +126,8 @@ export async function getPipelineStages(): Promise<PipelineStageData[]> {
 
 export interface UpdateDealStagePayload {
   stageId: string
+  remarks: string
+  actionPlan: string
   notes?: string
 }
 
