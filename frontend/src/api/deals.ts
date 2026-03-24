@@ -108,3 +108,47 @@ export async function updateDeal(id: string, data: UpdateDealPayload): Promise<D
   const res = await apiClient.patch<any>(`/api/deals/${id}`, data)
   return mapDealToFrontend(res.data)
 }
+
+// ── Pipeline Stages ──────────────────────────────────────────────────
+
+export interface PipelineStageData {
+  id: string
+  name: PipelineStage
+  duration: number | null
+}
+
+export async function getPipelineStages(): Promise<PipelineStageData[]> {
+  const res = await apiClient.get<PipelineStageData[]>('/api/pipeline-stages')
+  return res.data
+}
+
+// ── Stage Change (dedicated endpoint with audit log + event emit) ────
+
+export interface UpdateDealStagePayload {
+  stageId: string
+  notes?: string
+}
+
+export async function updateDealStage(id: string, data: UpdateDealStagePayload): Promise<Deal> {
+  const res = await apiClient.patch<any>(`/api/deals/${id}/stage`, data)
+  return mapDealToFrontend(res.data)
+}
+
+// ── Deal History ─────────────────────────────────────────────────────
+
+export interface DealHistoryEntry {
+  id: string
+  stage: PipelineStage
+  stageId: string
+  enteredAt: string
+  exitedAt?: string
+  daysInStage?: number
+  isCurrent: boolean
+  notes?: string
+  changedById: string
+}
+
+export async function getDealHistory(id: string): Promise<DealHistoryEntry[]> {
+  const res = await apiClient.get<DealHistoryEntry[]>(`/api/deals/${id}/history`)
+  return res.data
+}
