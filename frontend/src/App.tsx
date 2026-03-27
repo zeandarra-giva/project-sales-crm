@@ -15,6 +15,7 @@ import ContactList from './pages/ContactList';
 import NewContactPage from './pages/NewContact';
 import NotificationsPage from './pages/Notifications';
 import ReportsPage from './pages/Reports';
+import ExecutiveReportsPage from './pages/ExecutiveReports';
 import PaymentsPage from './pages/Payments';
 
 const queryClient = new QueryClient();
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/contacts/new" element={<NewContactPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/executive-reports" element={<ExecutiveReportsPage />} />
             <Route path="/payments" element={<PaymentsPage />} />
           </Route>
         </Routes>

@@ -23,16 +23,16 @@ const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, v
 
 const TABS = ['Pipeline', 'Quota Performance', 'Win/Loss', 'Sales Cycle', 'Service Performance', 'Growth'];
 const WIN_LOSS_DATA = [
-  { name: 'Won',    value: 1, color: '#059669' },
-  { name: 'Lost',   value: 1, color: '#e11d48' },
+  { name: 'Won', value: 1, color: '#059669' },
+  { name: 'Lost', value: 1, color: '#e11d48' },
   { name: 'Active', value: 5, color: '#3d5af1' },
 ];
 const SALES_CYCLE_DATA = [
-  { stage: 'Inquiry',       avg_days: 2.5 },
-  { stage: 'Prospecting',   avg_days: 7   },
-  { stage: 'Discovery',     avg_days: 15  },
-  { stage: 'Proposal Sent', avg_days: 30  },
-  { stage: 'Negotiation',   avg_days: 45  },
+  { stage: 'Inquiry', avg_days: 2.5 },
+  { stage: 'Prospecting', avg_days: 7 },
+  { stage: 'Discovery', avg_days: 15 },
+  { stage: 'Proposal Sent', avg_days: 30 },
+  { stage: 'Negotiation', avg_days: 45 },
 ];
 const GROWTH_DATA = [
   { period: 'Q3 25', revenue: 0 },
@@ -40,15 +40,15 @@ const GROWTH_DATA = [
   { period: 'Q1 26', revenue: 1958162 },
 ];
 const SERVICE_PERF = [
-  { name: 'LOCOBUZZ',   deals: 3, revenue: 1440000, win_rate: 50 },
+  { name: 'LOCOBUZZ', deals: 3, revenue: 1440000, win_rate: 50 },
   { name: 'MEDIAWATCH', deals: 3, revenue: 1568162, win_rate: 67 },
-  { name: 'SHAREDVIEW', deals: 1, revenue: 0,       win_rate: 0  },
-  { name: 'REPORTS',    deals: 1, revenue: 0,       win_rate: 0  },
+  { name: 'SHAREDVIEW', deals: 1, revenue: 0, win_rate: 0 },
+  { name: 'REPORTS', deals: 1, revenue: 0, win_rate: 0 },
 ];
 const QUOTA_DATA = [
   { name: 'Henne', quota: 7000000, actual: 1568162 },
-  { name: 'Isten', quota: 7000000, actual: 390000  },
-  { name: 'Brian', quota: 7000000, actual: 0       },
+  { name: 'Isten', quota: 7000000, actual: 390000 },
+  { name: 'Brian', quota: 7000000, actual: 0 },
 ];
 const COLORS = ['#3d5af1', '#059669', '#d97706', '#7c3aed', '#e11d48', '#0891b2'];
 const TT = {
@@ -212,8 +212,8 @@ export default function ReportsPage() {
                     <AreaChart data={GROWTH_DATA} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                       <defs>
                         <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#3d5af1" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#3d5af1" stopOpacity={0}   />
+                          <stop offset="5%" stopColor="#3d5af1" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3d5af1" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
@@ -248,7 +248,7 @@ export default function ReportsPage() {
                       <XAxis dataKey="name" tick={{ fill: '#8b90a8', fontSize: 11 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₱${(v / 1000000).toFixed(1)}M`} />
                       <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e6f0', borderRadius: 8, fontSize: 12, color: '#1a1d2e' }} labelStyle={{ color: '#1a1d2e', fontWeight: 600 }} itemStyle={{ color: '#4a5068' }} formatter={(val: number) => [formatCurrency(val), '']} />
-                      <Bar dataKey="quota"  name="Quota"  fill="#e6eaf5" stroke="#c8cfe8" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="quota" name="Quota" fill="#e6eaf5" stroke="#c8cfe8" strokeWidth={1} radius={[4, 4, 0, 0]} />
                       <Bar dataKey="actual" name="Actual" fill="#dce3fd" stroke="#3d5af1" strokeWidth={1} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

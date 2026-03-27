@@ -107,3 +107,51 @@ export const analyticsApi = {
 };
 
 export default analyticsClient;
+// ── Reports API ────────────────────────────────────────────────────────────
+
+export interface PipelineReport {
+  report: string;
+  period: string;
+  bd_id: string | null;
+  stages: { stage_name: string; deal_count: number; total_value: number; pct_of_total: number }[];
+  total_deals: number;
+  total_pipeline_value: number;
+  stage_totals: { stage_name: string; deal_count: number; total_value: number }[];
+  by_bd: { stage_name: string; bd_name: string; bd_id: string; deal_count: number; total_value: number }[];
+  by_service: { stage_name: string; service_name: string; deal_count: number; total_value: number }[];
+  by_account_type: { stage_name: string; account_type: string; deal_count: number; total_value: number }[];
+  lead_source: { lead_source: string; deal_count: number; total_value: number }[];
+}
+
+export interface GrowthSeries {
+  year: number;
+  granularity: string;
+  bd_id: string | null;
+  series: { period_label: string; period_order: number; revenue: number }[];
+}
+
+export interface BDOption {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
+export const reportsAnalyticsApi = {
+  bds: () =>
+    analyticsClient.get<BDOption[]>('/api/analytics/reports/bds'),
+
+  pipeline: (params: { year: number; quarter: number; bd_id?: string }) =>
+    analyticsClient.get<PipelineReport>('/api/analytics/reports/pipeline', { params }),
+
+  quota: (params: { year: number; quarter: number }) =>
+    analyticsClient.get('/api/analytics/reports/quota', { params }),
+
+  growth: (params: { year: number; granularity: 'month' | 'quarter' | 'year'; bd_id?: string }) =>
+    analyticsClient.get<GrowthSeries>('/api/analytics/reports/growth', { params }),
+
+  salesCycle: (params: { year: number; quarter: number }) =>
+    analyticsClient.get('/api/analytics/reports/sales-cycle', { params }),
+
+  winRate: (params: { year: number; quarter: number }) =>
+    analyticsClient.get('/api/analytics/reports/win-rate', { params }),
+};
