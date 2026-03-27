@@ -147,13 +147,22 @@ RESP=$(safe_curl "$BASE/api/payments" \
 BODY=$(echo "$RESP" | head -n1); STATUS=$(echo "$RESP" | tail -n1)
 check "Payments: Manager list all (200)" "$STATUS" "$BODY" 200 ""
 
-# Get a real dealId first
+# Get a real dealId first — use python3 to reliably parse the top-level id
 echo -e "\n  [getting a real dealId to test POST /api/payments...]"
 DEALS=$(curl -s --max-time 8 "$BASE/api/deals" -H "Authorization: Bearer $BD_TOKEN" 2>/dev/null)
-DEAL_ID=$(echo "$DEALS" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+DEAL_ID=$(echo "$DEALS" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    deals = data if isinstance(data, list) else data.get('deals', data.get('data', []))
+    print(deals[0]['id'] if deals else '')
+except Exception:
+    print('')
+" 2>/dev/null)
 
 if [ -n "$DEAL_ID" ]; then
   echo "     Using dealId: $DEAL_ID"
+  echo "     (raw deals prefix: $(echo $DEALS | head -c 120))"
 
   RESP=$(safe_curl -X POST "$BASE/api/payments" \
     -H "Authorization: Bearer $BD_TOKEN" \
