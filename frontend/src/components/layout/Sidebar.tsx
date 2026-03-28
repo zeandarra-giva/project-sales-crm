@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { to: '/pipeline', icon: Briefcase, label: 'Pipeline', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/clients', icon: Users, label: 'Clients', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/contacts', icon: UserCheck, label: 'Contacts', roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/reports', icon: BarChart3, label: 'Executive Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/payments', icon: CreditCard, label: 'Payments', roles: ['BD_REP', 'SALES_MANAGER'] },
 ];
 
