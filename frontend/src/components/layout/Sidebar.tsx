@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, TrendingUp, Users, UserCheck, Bell, BarChart3, FileText,
+  LayoutDashboard, TrendingUp, Users, UserCheck, Bell, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Briefcase, CreditCard,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -15,8 +15,7 @@ const NAV_ITEMS = [
   { to: '/pipeline', icon: Briefcase, label: 'Pipeline', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/clients', icon: Users, label: 'Clients', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/contacts', icon: UserCheck, label: 'Contacts', roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/reports', icon: FileText, label: 'Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/executive-reports', icon: BarChart3, label: 'Executive Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/reports', icon: BarChart3, label: 'Executive Reports', roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/payments', icon: CreditCard, label: 'Payments', roles: ['BD_REP', 'SALES_MANAGER'] },
 ];
 
