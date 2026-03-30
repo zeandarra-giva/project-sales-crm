@@ -1,64 +1,157 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadialBarChart, RadialBar, PolarAngleAxis,
 } from 'recharts';
-import { Target, TrendingUp, TrendingDown, Briefcase, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Target, TrendingUp, TrendingDown, Briefcase, AlertTriangle, Loader2 } from 'lucide-react';
 import Header from '../components/layout/Header';
-import { MetricCard, Card, Badge, Button, ProgressBar, Avatar } from '../components/ui/index';
-import DealCard from '../components/deals/DealCard';
+import { MetricCard, Card, Badge, ProgressBar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useAuthStore } from '../store/authStore';
-import { MOCK_DEALS, MOCK_BD_DASHBOARD, PIPELINE_STAGES } from '../mockData';
-import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { dashboardApi } from '../api/dashboard';
+import { formatCurrency, cn } from '../lib/utils';
+import type { PipelineStage } from '../types';
 
-const MONTHLY_PROGRESS = [
-  { month: 'Oct', actual: 0, quota: 583333 },
-  { month: 'Nov', actual: 1568162, quota: 583333 },
-  { month: 'Dec', actual: 0, quota: 583333 },
-  { month: 'Jan', actual: 0, quota: 583333 },
-  { month: 'Feb', actual: 0, quota: 583333 },
-  { month: 'Mar', actual: 0, quota: 583333 },
-];
+const STAGE_COLORS: Record<string, string> = {
+  'Inquiry': '#4a4f6b',
+  'Prospecting': '#4f6ef7',
+  'Discovery': '#10b981',
+  'Proposal Sent': '#8b5cf6',
+  'Negotiation': '#f59e0b',
+};
 
-const QUARTERS = ['Q1 2026', 'Q2 2025', 'Q3 2025', 'Q4 2025'];
+interface BDData {
+  quarter: number;
+  year: number;
+  bdId: string;
+  metrics: {
+    dealsClosed: number;
+    closedRevenue: number;
+    openPipeline: { count: number; value: number };
+    quotaAttainment: number;
+    salesForecast: number;
+    salesVariance: number;
+    monthlyExcessDeficit: number;
+    quarterlyExcessDeficit: number;
+    pipelineByStage: { stage: string; count: number; value: number }[];
+    openDeals: {
+      id: string;
+      dealName: string;
+      revenue: number;
+      startDate: string | null;
+      stage: string;
+      client: { id: string; name: string; accountType: string };
+    }[];
+  };
+}
 
 export default function BDDashboard() {
   const { user } = useAuthStore();
-  const [selectedQ, setSelectedQ] = useState('Q1 2026');
-  const dash = MOCK_BD_DASHBOARD;
-  const myDeals = MOCK_DEALS.filter(d => d.bd_id === user?.id || user?.role === 'SALES_MANAGER');
-  const stuckDeals = myDeals.filter(d => (d.days_in_stage || 0) > 3 && !d.is_closed);
-  const openDeals = myDeals.filter(d => !d.is_closed);
-  const closedWon = myDeals.filter(d => d.stage === 'Closed Won');
+  const [data, setData] = useState<BDData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const attainmentPct = Math.min(dash.total_target_status_pct, 100);
-  const excessDeficit = dash.quarterly_excess_deficit;
-  const isAhead = excessDeficit >= 0;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+  const [selectedQ, setSelectedQ] = useState(currentQuarter);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+
+  const quarters = [
+    { label: `Q1 ${currentYear}`, q: 1, y: currentYear },
+    { label: `Q4 ${currentYear - 1}`, q: 4, y: currentYear - 1 },
+    { label: `Q3 ${currentYear - 1}`, q: 3, y: currentYear - 1 },
+    { label: `Q2 ${currentYear - 1}`, q: 2, y: currentYear - 1 },
+  ];
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    dashboardApi
+      .bd({ year: selectedYear, quarter: selectedQ, bdId: user?.id })
+      .then((res) => {
+        setData(res.data as BDData);
+      })
+      .catch((err) => {
+        console.error('BD dashboard failed:', err);
+        setError(err.response?.data?.error || 'Failed to load dashboard');
+      })
+      .finally(() => setLoading(false));
+  }, [selectedQ, selectedYear, user?.id]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title={`${user?.firstName}'s Dashboard`} subtitle={`Q${currentQuarter} ${currentYear}`} action={{ label: 'New Deal', to: '/deals/new' }} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-3 text-[#8b90a8]">
+            <Loader2 size={20} className="animate-spin" />
+            <span className="text-sm">Loading dashboard...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title={`${user?.firstName}'s Dashboard`} subtitle={`Q${currentQuarter} ${currentYear}`} action={{ label: 'New Deal', to: '/deals/new' }} />
+        <div className="flex-1 flex items-center justify-center">
+          <Card className="p-8 text-center max-w-md">
+            <AlertTriangle size={24} className="text-[#d97706] mx-auto mb-3" />
+            <div className="text-sm font-semibold text-[#1a1d2e] mb-1">Failed to load dashboard</div>
+            <div className="text-xs text-[#8b90a8]">{error || 'No data available'}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 text-xs font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors"
+            >
+              Retry
+            </button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const { metrics } = data;
+  const attainmentPct = Math.min(metrics.quotaAttainment, 100);
+  const qExcessDeficit = metrics.quarterlyExcessDeficit;
+  const isAhead = qExcessDeficit >= 0;
+
+  const openStages = metrics.pipelineByStage.filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage));
+
+  // Stuck deals = deals that have been open long enough (open deals with old start dates)
+  // We'll highlight deals in early stages with high revenue as important
+  const stuckDeals = metrics.openDeals.filter(d => {
+    if (!d.startDate) return false;
+    const daysSinceStart = Math.floor((Date.now() - new Date(d.startDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSinceStart > 14;
+  });
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title={`${user?.firstName}'s Dashboard`}
-        subtitle="Q1 2026 · Jan 1 – Mar 31"
+        subtitle={`Q${data.quarter} ${data.year} · ${getQuarterRange(data.quarter, data.year)}`}
         action={{ label: 'New Deal', to: '/deals/new' }}
       />
 
       <div className="flex-1 overflow-y-auto p-6">
         {/* Quarter selector */}
         <div className="flex items-center gap-2 mb-6">
-          {QUARTERS.map(q => (
+          {quarters.map(q => (
             <button
-              key={q}
-              onClick={() => setSelectedQ(q)}
+              key={q.label}
+              onClick={() => { setSelectedQ(q.q); setSelectedYear(q.y); }}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                q === selectedQ
+                q.q === selectedQ && q.y === selectedYear
                   ? 'bg-[#eef1fe] border-[#a5b4fc] text-[#3d5af1]'
                   : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
               )}
             >
-              {q}
+              {q.label}
             </button>
           ))}
         </div>
@@ -68,12 +161,12 @@ export default function BDDashboard() {
           <div className="absolute inset-0 bg-gradient-to-br from-[#4f6ef708] to-transparent pointer-events-none" />
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · {selectedQ}</div>
+              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · Q{data.quarter} {data.year}</div>
               <div className="flex items-baseline gap-3">
-                <span className="text-5xl font-bold font-display text-[#1a1d2e]">{dash.total_target_status_pct.toFixed(1)}%</span>
+                <span className="text-5xl font-bold font-display text-[#1a1d2e]">{metrics.quotaAttainment.toFixed(1)}%</span>
                 <div>
-                  <div className="text-sm text-[#4a5068]">{formatCurrency(dash.actual_closed_quarterly, true)} closed</div>
-                  <div className="text-xs text-[#8b90a8]">of {formatCurrency(dash.quota_quarterly, true)} quota</div>
+                  <div className="text-sm text-[#4a5068]">{formatCurrency(metrics.closedRevenue, true)} closed</div>
+                  <div className="text-xs text-[#8b90a8]">of target quota</div>
                 </div>
               </div>
               <ProgressBar
@@ -93,8 +186,8 @@ export default function BDDashboard() {
                     endAngle={-270}
                   >
                     <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
-                    <RadialBar dataKey="value" background={{ fill: '#ffffff0a' }} cornerRadius={4} />
-                    <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold" fill="#1a1d2e" fontSize={20} fontFamily="Syne">
+                    <RadialBar dataKey="value" background={{ fill: '#f0f2f8' }} cornerRadius={4} />
+                    <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#1a1d2e" fontSize={20} fontFamily="Syne" fontWeight="bold">
                       {attainmentPct.toFixed(0)}%
                     </text>
                   </RadialBarChart>
@@ -108,7 +201,7 @@ export default function BDDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
           <MetricCard
             label="Deals Closed"
-            value={closedWon.length}
+            value={metrics.dealsClosed}
             sub="this quarter"
             accent="#10b981"
             icon={<Target size={16} />}
@@ -116,38 +209,38 @@ export default function BDDashboard() {
           />
           <MetricCard
             label="Open Pipeline"
-            value={openDeals.length}
-            sub={`${stuckDeals.length} stuck`}
-            accent={stuckDeals.length > 0 ? '#f59e0b' : '#4f6ef7'}
+            value={metrics.openPipeline.count}
+            sub={formatCurrency(metrics.openPipeline.value, true)}
+            accent="#4f6ef7"
             icon={<Briefcase size={16} />}
             delay={50}
           />
           <MetricCard
             label="Sales Forecast"
-            value={formatCurrency(dash.sales_forecast, true)}
-            sub="closed + negotiation"
+            value={formatCurrency(metrics.salesForecast, true)}
+            sub="closed + weighted"
             accent="#8b5cf6"
             icon={<TrendingUp size={16} />}
             delay={100}
           />
           <MetricCard
             label="Sales Variance"
-            value={formatCurrency(Math.abs(dash.sales_variance), true)}
-            sub={dash.sales_variance < 0 ? 'below quota' : 'above quota'}
-            accent={dash.sales_variance < 0 ? '#f43f5e' : '#10b981'}
-            icon={dash.sales_variance < 0 ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
+            value={formatCurrency(Math.abs(metrics.salesVariance), true)}
+            sub={metrics.salesVariance <= 0 ? 'above quota' : 'below quota'}
+            accent={metrics.salesVariance <= 0 ? '#10b981' : '#f43f5e'}
+            icon={metrics.salesVariance > 0 ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
             delay={150}
           />
           <MetricCard
-            label="Monthly Excess/Deficit"
-            value={`${excessDeficit >= 0 ? '+' : '-'}${formatCurrency(Math.abs(dash.monthly_excess_deficit), true)}`}
+            label="Monthly +/-"
+            value={`${metrics.monthlyExcessDeficit >= 0 ? '+' : '-'}${formatCurrency(Math.abs(metrics.monthlyExcessDeficit), true)}`}
             sub="month-to-date"
-            accent={isAhead ? '#10b981' : '#f43f5e'}
+            accent={metrics.monthlyExcessDeficit >= 0 ? '#10b981' : '#f43f5e'}
             delay={200}
           />
           <MetricCard
             label="Q Excess/Deficit"
-            value={`${excessDeficit >= 0 ? '+' : '-'}${formatCurrency(Math.abs(excessDeficit), true)}`}
+            value={`${qExcessDeficit >= 0 ? '+' : '-'}${formatCurrency(Math.abs(qExcessDeficit), true)}`}
             sub="quarter-to-date"
             accent={isAhead ? '#10b981' : '#f43f5e'}
             delay={250}
@@ -155,35 +248,24 @@ export default function BDDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Revenue chart */}
+          {/* Open deals list */}
           <Card className="p-5 lg:col-span-2">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Revenue vs Quota (Monthly)</div>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={MONTHLY_PROGRESS} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id="actualGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4f6ef7" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#4f6ef7" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="quotaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" />
-                  <XAxis dataKey="month" tick={{ fill: '#4a4f6b', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#4a4f6b', fontSize: 11 }} axisLine={false} tickLine={false}
-                    tickFormatter={v => `₱${(v / 1000000).toFixed(1)}M`} />
-                  <Tooltip
-                    contentStyle={{ background: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 8, fontSize: 12 }}
-                    labelStyle={{ color: '#8b90a8' }}
-                    formatter={(val: number) => [formatCurrency(val), '']}
-                  />
-                  <Area type="monotone" dataKey="quota" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 4" fill="url(#quotaGrad)" name="Quota" />
-                  <Area type="monotone" dataKey="actual" stroke="#4f6ef7" strokeWidth={2} fill="url(#actualGrad)" name="Actual" />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Open Deals</div>
+            <div className="flex flex-col gap-2">
+              {metrics.openDeals.length > 0 ? metrics.openDeals.map(deal => (
+                <div key={deal.id} className="flex items-center justify-between gap-3 p-3 bg-[#f4f6fb] rounded-xl border border-[#e2e6f0]">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-[#1a1d2e] truncate">{deal.dealName}</div>
+                    <div className="text-[10px] text-[#8b90a8]">{deal.client.name} · {deal.client.accountType}</div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <StagePill stage={deal.stage as PipelineStage} size="sm" />
+                    <span className="text-xs font-bold text-[#1a1d2e]">{formatCurrency(deal.revenue, true)}</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="text-center py-8 text-xs text-[#8b90a8]">No open deals</div>
+              )}
             </div>
           </Card>
 
@@ -191,54 +273,62 @@ export default function BDDashboard() {
           <Card className="p-5">
             <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Pipeline by Stage</div>
             <div className="flex flex-col gap-2">
-              {PIPELINE_STAGES.filter(s => !['Closed Won', 'Closed Lost'].includes(s.name)).map(stage => {
-                const stageDeals = openDeals.filter(d => d.stage === stage.name);
-                const totalVal = stageDeals.reduce((sum, d) => sum + d.revenue, 0);
-                if (stageDeals.length === 0) return null;
+              {openStages.length > 0 ? openStages.map(stage => (
+                <div key={stage.stage} className="flex items-center justify-between gap-3 py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STAGE_COLORS[stage.stage] || '#6b7280' }} />
+                    <span className="text-xs text-[#4a5068] truncate">{stage.stage}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(stage.value, true)}</span>
+                    <span className="text-[10px] text-[#8b90a8] w-4 text-right">{stage.count}</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="text-center py-4 text-xs text-[#8b90a8]">No open pipeline</div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Stuck deals */}
+        {stuckDeals.length > 0 && (
+          <Card className="p-5 mt-4">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle size={14} className="text-[#d97706]" />
+              <span className="text-xs font-semibold font-display text-[#d97706] uppercase tracking-wider">Aging Deals</span>
+              <Badge variant="warning" size="sm">{stuckDeals.length}</Badge>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              {stuckDeals.map(deal => {
+                const days = deal.startDate ? Math.floor((Date.now() - new Date(deal.startDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
                 return (
-                  <div key={stage.id} className="flex items-center justify-between gap-3 py-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stage.color }} />
-                      <span className="text-xs text-[#4a5068] truncate">{stage.name}</span>
+                  <div key={deal.id} className="flex items-center justify-between gap-3 p-3 bg-[#fffbeb] rounded-xl border border-[#fde68a]">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-[#1a1d2e] truncate">{deal.dealName}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <StagePill stage={deal.stage as PipelineStage} size="sm" />
+                        <span className="text-[10px] text-[#8b90a8]">{deal.client.name}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(totalVal, true)}</span>
-                      <span className="text-[10px] text-[#8b90a8] w-4 text-right">{stageDeals.length}</span>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs font-bold text-[#d97706]">{days}d</div>
+                      <div className="text-[10px] text-[#8b90a8]">{formatCurrency(deal.revenue, true)}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
           </Card>
-        </div>
-
-        {/* Stuck deals + recent */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          {stuckDeals.length > 0 && (
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <AlertTriangle size={14} className="text-[#d97706]" />
-                <span className="text-xs font-semibold font-display text-[#d97706] uppercase tracking-wider">Stuck Deals</span>
-                <Badge variant="warning" size="sm">{stuckDeals.length}</Badge>
-              </div>
-              <div className="flex flex-col gap-2">
-                {stuckDeals.map(deal => (
-                  <DealCard key={deal.id} deal={deal} compact />
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <Card className="p-5">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Open Deals</div>
-            <div className="flex flex-col gap-2">
-              {openDeals.slice(0, 5).map(deal => (
-                <DealCard key={deal.id} deal={deal} compact />
-              ))}
-            </div>
-          </Card>
-        </div>
+        )}
       </div>
     </div>
   );
+}
+
+function getQuarterRange(quarter: number, year: number): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const startMonth = (quarter - 1) * 3;
+  const endMonth = startMonth + 2;
+  return `${months[startMonth]} 1 – ${months[endMonth]} ${new Date(year, endMonth + 1, 0).getDate()}`;
 }

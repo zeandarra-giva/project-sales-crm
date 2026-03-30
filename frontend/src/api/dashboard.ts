@@ -1,7 +1,9 @@
 import apiClient from './client';
-import type { BDDashboard, ExecutiveDashboard } from '../types';
 
 export const dashboardApi = {
-  bd:        (period?: string) => apiClient.get<BDDashboard>('/dashboard/bd', { params: { period } }),
-  executive: (period?: string) => apiClient.get<ExecutiveDashboard>('/dashboard/executive', { params: { period } }),
+  bd: (params: { year: number; quarter: number; bdId?: string }) =>
+    apiClient.get('/api/dashboard/bd', { params }),
+
+  executive: (params: { year: number; quarter: number }) =>
+    apiClient.get('/api/dashboard/executive', { params }),
 };
