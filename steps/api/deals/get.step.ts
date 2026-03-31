@@ -47,6 +47,24 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
                         contact: {
                             select: { id: true, firstName: true, lastName: true },
                         },
+                        contacts: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                number: true,
+                                designation: true,
+                                decisionRank: true,
+                                isPrimary: true,
+                                clientId: true,
+                            },
+                            orderBy: [
+                                { isPrimary: 'desc' },
+                                { lastName: 'asc' },
+                                { firstName: 'asc' },
+                            ],
+                        },
                     },
                 },
                 service: true,

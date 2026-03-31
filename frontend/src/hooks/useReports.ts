@@ -15,6 +15,7 @@ export function useBDList() {
 export function useReportData(tab: string, year: number, quarter: number, bdId: string) {
   return useQuery({
     queryKey: ['report', tab, year, quarter, bdId],
+    enabled: tab !== 'Growth Table',
     queryFn: async () => {
       const params: any = { year, quarter };
       if (bdId) params.bd_id = bdId;

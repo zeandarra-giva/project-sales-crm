@@ -140,8 +140,27 @@ model BD{
     notifications Notification[]
     forecastSnapshot ForecastSnapshot[]
     dealProjections DealProjection[]
+    growthEntries GrowthEntry[]
 
     @@map("bd")
+}
+
+model GrowthEntry {
+  id        String   @id @default(uuid())
+  label     String   @db.VarChar(120)
+  year      Int
+  quarter   Int?
+  revenue   Decimal
+  notes     String?
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner BD @relation(fields: [ownerId], references: [id])
+
+  @@index([year, quarter])
+  @@index([label, year, quarter])
+  @@map("growth_entry")
 }
 
 // ============================================================

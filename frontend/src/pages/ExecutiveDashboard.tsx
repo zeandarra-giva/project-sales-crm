@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell,
@@ -8,6 +8,7 @@ import Header from '../components/layout/Header';
 import { Card, Badge, MetricCard, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useExecutiveDashboard } from '../hooks/useDashboard';
+import { useReportingPeriods } from '../hooks/useReporting';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -33,8 +34,12 @@ export default function ExecutiveDashboard() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
+  const { data: reportingPeriods } = useReportingPeriods();
+  const availableYears = reportingPeriods?.years ?? [currentYear];
 
-  const { data, isLoading: loading, error: queryError } = useExecutiveDashboard(currentQuarter, currentYear);
+  const { data, isLoading: loading, error: queryError } = useExecutiveDashboard(selectedQuarter, selectedYear);
   const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || 'Failed to load executive dashboard' : null;
 
   if (loading) {
@@ -80,6 +85,31 @@ export default function ExecutiveDashboard() {
       <Header title="Executive Dashboard" subtitle={`Team-wide performance · Q${data.quarter} ${data.year}`} />
 
       <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[#e2e6f0] bg-white text-[#1a1d2e]"
+          >
+            {availableYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          {[1, 2, 3, 4].map((quarter) => (
+            <button
+              key={quarter}
+              onClick={() => setSelectedQuarter(quarter)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                quarter === selectedQuarter
+                  ? 'bg-[#eef1fe] border-[#a5b4fc] text-[#3d5af1]'
+                  : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
+              )}
+            >
+              {`Q${quarter}`}
+            </button>
+          ))}
+        </div>
         {/* Team metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <MetricCard label="Team Actual" value={formatCurrency(metrics.teamActual, true)} sub="Closed Won" accent="#10b981" delay={0} />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, History, User,
+  AlertTriangle, Edit2, Save, X, ChevronRight, History, User, Mail, Phone,
 } from 'lucide-react';
 import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -259,6 +259,43 @@ export default function DealDetail() {
                 )}
               </div>
               <DealHistory logs={auditLogs} />
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <User size={14} className="text-[#3d5af1]" />
+                <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Client Contacts</span>
+                <Badge variant="neutral" size="sm">{deal.client?.contacts?.length || 0}</Badge>
+              </div>
+              {(deal.client?.contacts?.length || 0) > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {deal.client?.contacts?.map((contact) => (
+                    <div key={contact.id} className="p-4 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <div className="text-sm font-semibold text-[#1a1d2e]">
+                            {contact.first_name} {contact.last_name}
+                          </div>
+                          <div className="text-xs text-[#8b90a8]">{contact.designation || contact.decision_rank}</div>
+                        </div>
+                        {contact.is_primary && <Badge variant="info" size="sm">Primary</Badge>}
+                      </div>
+                      <div className="flex flex-col gap-1.5 text-xs text-[#4a5068]">
+                        <div className="flex items-center gap-2">
+                          <Mail size={12} className="text-[#8b90a8]" />
+                          <span>{contact.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Phone size={12} className="text-[#8b90a8]" />
+                          <span>{contact.number || 'No phone number'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-[#8b90a8]">No client contacts linked yet.</div>
+              )}
             </Card>
 
             {/* Stage confirm modal — with mandatory remarks + action plan */}

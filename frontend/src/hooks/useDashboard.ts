@@ -7,7 +7,6 @@ export function useBDDashboard(quarter: number, year: number, bdId?: string) {
   return useQuery({
     queryKey: ['bd-dashboard', quarter, year, bdId],
     queryFn: async () => {
-      // Must cast because reportsApi doesn't use strong typing for bdDashboard yet
       const res = await reportsApi.bdDashboard({ quarter, year, bd_id: bdId || '' });
       return res.data as AnalyticsBDData;
     },
@@ -25,4 +24,3 @@ export function useExecutiveDashboard(quarter: number, year: number) {
     staleTime: 30_000,
   });
 } 
-

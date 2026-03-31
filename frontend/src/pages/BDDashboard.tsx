@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -13,6 +13,7 @@ import { MetricCard, Card, Badge, ProgressBar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useAuthStore } from '../store/authStore';
 import { useBDDashboard } from '../hooks/useDashboard';
+import { useReportingPeriods } from '../hooks/useReporting';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -73,18 +74,8 @@ export default function BDDashboard() {
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
   const [selectedQ, setSelectedQ] = useState(currentQuarter);
   const [selectedYear, setSelectedYear] = useState(currentYear);
-
-  // All 4 quarters of current year + all 4 of prior year (Rev — quarter selector)
-  const quarters = [
-    { label: `Q4 ${currentYear}`, q: 4, y: currentYear },
-    { label: `Q3 ${currentYear}`, q: 3, y: currentYear },
-    { label: `Q2 ${currentYear}`, q: 2, y: currentYear },
-    { label: `Q1 ${currentYear}`, q: 1, y: currentYear },
-    { label: `Q4 ${currentYear - 1}`, q: 4, y: currentYear - 1 },
-    { label: `Q3 ${currentYear - 1}`, q: 3, y: currentYear - 1 },
-    { label: `Q2 ${currentYear - 1}`, q: 2, y: currentYear - 1 },
-    { label: `Q1 ${currentYear - 1}`, q: 1, y: currentYear - 1 },
-  ];
+  const { data: reportingPeriods } = useReportingPeriods();
+  const availableYears = reportingPeriods?.years ?? [currentYear];
 
   const { data, isLoading: loading, error: queryError } = useBDDashboard(selectedQ, selectedYear, user?.id);
   const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || 'Failed to load dashboard' : null;
@@ -140,19 +131,28 @@ export default function BDDashboard() {
 
       <div className="flex-1 overflow-y-auto p-6">
         {/* Quarter selector */}
-        <div className="flex items-center gap-2 mb-6">
-          {quarters.map(q => (
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[#e2e6f0] bg-white text-[#1a1d2e]"
+          >
+            {availableYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          {[1, 2, 3, 4].map((quarter) => (
             <button
-              key={q.label}
-              onClick={() => { setSelectedQ(q.q); setSelectedYear(q.y); }}
+              key={quarter}
+              onClick={() => setSelectedQ(quarter)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                q.q === selectedQ && q.y === selectedYear
+                quarter === selectedQ
                   ? 'bg-[#eef1fe] border-[#a5b4fc] text-[#3d5af1]'
                   : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
               )}
             >
-              {q.label}
+              {`Q${quarter}`}
             </button>
           ))}
         </div>

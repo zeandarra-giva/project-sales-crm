@@ -1,6 +1,17 @@
 import apiClient from './client'
 import type { Deal, PipelineStage, LeadSource } from '../types'
 
+function mapDecisionRank(rank?: string) {
+  switch (rank) {
+    case 'TIER_1_ECONOMIC_BUYER': return 'Tier 1 Economic Buyer'
+    case 'TIER_2_DECISION_MAKER': return 'Tier 2 Decision Maker'
+    case 'TIER_3_INFLUENCER': return 'Tier 3 Influencer'
+    case 'TIER_4_END_USER': return 'Tier 4 End User'
+    case 'TIER_5_GATEKEEPER': return 'Tier 5 Gatekeeper'
+    default: return 'Tier 3 Influencer'
+  }
+}
+
 // ── Backend → Frontend mapper ────────────────────────────────────────
 // Prisma returns camelCase + nested includes; our Deal type is snake_case + flat stage string.
 
@@ -57,6 +68,17 @@ export function mapDealToFrontend(d: any): Deal {
       status: d.client.status,
       industry_id: d.client.industryId,
       contact_id: d.client.contactId,
+      contacts: (d.client.contacts ?? []).map((contact: any) => ({
+        id: contact.id,
+        first_name: contact.firstName,
+        last_name: contact.lastName,
+        email: contact.email,
+        number: contact.number ?? undefined,
+        designation: contact.designation ?? undefined,
+        decision_rank: mapDecisionRank(contact.decisionRank),
+        is_primary: contact.isPrimary,
+        client_id: contact.clientId,
+      })),
     } : undefined,
     service: d.service ?? undefined,
     bundle: d.bundle ?? undefined,
