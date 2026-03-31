@@ -7,13 +7,13 @@ import { Trophy, AlertTriangle, TrendingUp, Loader2 } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { Card, Badge, MetricCard, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
-import { dashboardApi } from '../api/dashboard';
+import { useExecutiveDashboard } from '../hooks/useDashboard';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
 const COLORS = ['#4f6ef7', '#10b981', '#f59e0b', '#8b5cf6', '#e11d48', '#0891b2'];
 
-interface ExecData {
+export interface ExecData {
   quarter: number;
   year: number;
   metrics: {
@@ -30,28 +30,12 @@ interface ExecData {
 }
 
 export default function ExecutiveDashboard() {
-  const [data, setData] = useState<ExecData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    dashboardApi
-      .executive({ year: currentYear, quarter: currentQuarter })
-      .then((res) => {
-        setData(res.data as ExecData);
-      })
-      .catch((err) => {
-        console.error('Executive dashboard failed:', err);
-        setError(err.response?.data?.error || 'Failed to load executive dashboard');
-      })
-      .finally(() => setLoading(false));
-  }, [currentYear, currentQuarter]);
+  const { data, isLoading: loading, error: queryError } = useExecutiveDashboard(currentQuarter, currentYear);
+  const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || 'Failed to load executive dashboard' : null;
 
   if (loading) {
     return (

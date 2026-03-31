@@ -12,7 +12,7 @@ import Header from '../components/layout/Header';
 import { MetricCard, Card, Badge, ProgressBar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useAuthStore } from '../store/authStore';
-import { reportsApi } from '../api/reports';
+import { useBDDashboard } from '../hooks/useDashboard';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -45,7 +45,7 @@ const TT = {
   labelStyle: { color: '#1a1d2e', fontWeight: 600 },
 };
 
-interface AnalyticsBDData {
+export interface AnalyticsBDData {
   total_revenue: number;
   quota: number;
   monthly_quota: number;
@@ -67,9 +67,6 @@ interface AnalyticsBDData {
 
 export default function BDDashboard() {
   const { user } = useAuthStore();
-  const [data, setData] = useState<AnalyticsBDData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -84,21 +81,8 @@ export default function BDDashboard() {
     { label: `Q2 ${currentYear - 1}`, q: 2, y: currentYear - 1 },
   ];
 
-  useEffect(() => {
-    if (!user?.id) return;
-    setLoading(true);
-    setError(null);
-    reportsApi
-      .bdDashboard({ year: selectedYear, quarter: selectedQ, bd_id: user.id })
-      .then((res) => {
-        setData(res.data as AnalyticsBDData);
-      })
-      .catch((err) => {
-        console.error('BD dashboard failed:', err);
-        setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to load dashboard');
-      })
-      .finally(() => setLoading(false));
-  }, [selectedQ, selectedYear, user?.id]);
+  const { data, isLoading: loading, error: queryError } = useBDDashboard(selectedQ, selectedYear, user?.id);
+  const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || 'Failed to load dashboard' : null;
 
   if (loading) {
     return (
