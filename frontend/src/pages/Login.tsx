@@ -34,97 +34,98 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb] flex">
-      {/* Left panel - branding */}
-      <div className="hidden lg:flex flex-col justify-between w-[480px] bg-[#f0f2f8] border-r border-[#e2e6f0] p-12 flex-shrink-0">
-        <div>
-          <div className="w-12 h-12 rounded-2xl bg-[#3d5af1] flex items-center justify-center mb-8">
-            <span className="text-white font-bold font-display text-xl">S</span>
-          </div>
-          <h1 className="font-bold text-4xl font-display text-[#1a1d2e] leading-tight mb-4">
-            Sales CRM
-          </h1>
-          <p className="text-[#4a5068] text-base leading-relaxed">
-            Pipeline visibility, win/loss intelligence, and automated alerts — everything your BD team needs to hit quota.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {[
-            { stat: '₱22.6M', label: 'Annual team quota' },
-            { stat: '7 stages', label: 'Pipeline tracking' },
-            { stat: '6 alerts', label: 'Automated notifications' },
-          ].map(item => (
-            <div key={item.stat} className="flex items-center gap-4 p-4 bg-white border border-[#e2e6f0] rounded-xl">
-              <div className="text-2xl font-bold font-display text-accent-gradient">{item.stat}</div>
-              <div className="text-sm text-[#4a5068]">{item.label}</div>
-            </div>
-          ))}
-        </div>
+    <div className="min-h-screen overflow-hidden bg-[#faf9fe] text-[#2f323a] antialiased">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[-12%] top-[-8%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,_rgba(0,122,255,0.18)_0%,_rgba(0,122,255,0.03)_52%,_transparent_72%)]" />
+        <div className="absolute bottom-[-18%] right-[-8%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,_rgba(191,219,254,0.45)_0%,_rgba(255,255,255,0)_70%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(243,243,250,0.84)_100%)]" />
       </div>
 
-      {/* Right panel - login form */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold font-display text-[#1a1d2e] mb-1">Welcome back</h2>
-            <p className="text-sm text-[#4a5068]">Sign in to your account to continue</p>
-          </div>
+      <div className="relative flex min-h-screen items-center justify-center p-5 sm:p-8 lg:p-10">
+        <div className="grid w-full max-w-[1320px] overflow-hidden rounded-[28px] bg-[rgba(255,255,255,0.74)] shadow-[0_30px_80px_rgba(47,50,58,0.08)] backdrop-blur-[20px] lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="relative flex min-h-[420px] items-center bg-[linear-gradient(180deg,rgba(255,255,255,0.76)_0%,rgba(243,243,250,0.92)_100%)] p-8 sm:p-10 lg:p-14">
+            <div className="max-w-[580px]">
+              <h1 className="max-w-[12ch] text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-[#2f323a] sm:text-5xl lg:text-6xl">
+                Welcome to a calmer way to run your pipeline.
+              </h1>
+              <p className="mt-5 max-w-[48ch] text-base leading-7 text-[#5c5f68] sm:text-lg">
+                Keep every relationship, next step, and revenue signal in one focused workspace designed for fast daily decision-making.
+              </p>
+            </div>
+          </section>
 
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <Input
-              label="Email address"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              required
-            />
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-[#4a5068] uppercase tracking-wider">Password</label>
-              <div className="relative">
-                <input
-                  type={showPass ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full h-9 bg-white border border-[#e2e6f0] rounded-[10px] px-3 pr-10 text-sm text-[#1a1d2e] placeholder-[#8b90a8] focus:outline-none focus:border-[#3d5af1] focus:ring-2 focus:ring-[#4f6ef720] transition-all"
-                  placeholder="Password"
+          <section className="flex items-center justify-center bg-[rgba(255,255,255,0.58)] p-8 sm:p-10 lg:p-14">
+            <div className="w-full max-w-md">
+              <div className="mb-8">
+                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-[#2f323a]">Welcome back</h2>
+                <p className="mt-2 text-sm leading-6 text-[#5c5f68]">
+                  Sign in to continue to your dashboard, pipeline, and team workspace.
+                </p>
+              </div>
+
+              <form onSubmit={handleLogin} className="flex flex-col gap-4">
+                <Input
+                  label="Email address"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com"
                   required
                 />
-                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4a5068] hover:text-[#4a5068]">
-                  {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium uppercase tracking-wider text-[#5c5f68]">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className="h-11 w-full rounded-xl border border-[rgba(176,177,187,0.2)] bg-[rgba(255,255,255,0.95)] px-3 pr-10 text-sm text-[#2f323a] placeholder-[#8b90a8] outline-none transition-all focus:border-[#007aff] focus:ring-4 focus:ring-[rgba(0,122,255,0.14)]"
+                      placeholder="Password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] transition-colors hover:text-[#2f323a]"
+                    >
+                      {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <p className="rounded-xl bg-[#fff1f2] px-3 py-2 text-xs text-[#e11d48]">
+                    {error}
+                  </p>
+                )}
+
+                <Button type="submit" loading={loading} className="mt-2 h-11">
+                  Sign in
+                  <ArrowRight size={14} />
+                </Button>
+              </form>
+
+              <div className="mt-8">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-[rgba(176,177,187,0.24)]" />
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-[#5c5f68]">Demo accounts</span>
+                  <div className="h-px flex-1 bg-[rgba(176,177,187,0.24)]" />
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {DEMO_USERS.map(user => (
+                    <button
+                      key={user.email}
+                      onClick={() => { setEmail(user.email); setPassword(user.password); }}
+                      className="rounded-2xl bg-[rgba(243,243,250,0.88)] p-3 text-left transition-all hover:bg-[rgba(231,231,240,0.96)]"
+                    >
+                      <div className="text-xs font-semibold text-[#2f323a]">{user.label}</div>
+                      <div className="mt-1 truncate text-[11px] text-[#5c5f68]">{user.email}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-
-            {error && <p className="text-xs text-[#e11d48] bg-[#fff1f2] border border-[#fecdd3] rounded-lg px-3 py-2">{error}</p>}
-
-            <Button type="submit" loading={loading} className="mt-1">
-              Sign in
-              <ArrowRight size={14} />
-            </Button>
-          </form>
-
-          {/* Demo accounts */}
-          <div className="mt-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px flex-1 bg-[#ffffff0a]" />
-              <span className="text-xs text-[#4a5068]">Demo accounts</span>
-              <div className="h-px flex-1 bg-[#ffffff0a]" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_USERS.map(user => (
-                <button
-                  key={user.email}
-                  onClick={() => { setEmail(user.email); setPassword(user.password); }}
-                  className="text-left p-2.5 bg-white border border-[#e2e6f0] rounded-xl hover:border-[#a5b4fc] transition-all"
-                >
-                  <div className="text-xs font-medium text-[#4a5068]">{user.label}</div>
-                  <div className="text-[10px] text-[#4a5068] truncate mt-0.5">{user.email}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>
