@@ -29,18 +29,14 @@ export const handler: Handlers<typeof config> = async (input) => {
     const data = dealCreatedSchema.parse(input)
     const { dealId, bdId, dealName, revenue, expectedCloseDate } = data
 
-    // 1. Create DealProjection with initial 10% probability
-    const probabilityPct = 10
+    // 1. Create DealProjection with the deal's starting projected amount
     const projectedAmount = revenue || 0
-    const weightedValue = projectedAmount * (probabilityPct / 100)
 
     await prisma.dealProjection.create({
       data: {
         dealId,
         bdId,
         projectedAmount,
-        probabilityPct,
-        weightedValue,
       },
       // Safely ignore if projection already exists somehow
     }).catch(e => logger.warn('Projection might already exist', { e }))

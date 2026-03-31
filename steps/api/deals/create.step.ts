@@ -79,6 +79,19 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 },
                 service: true,
                 bundle: true,
+                auditLogs: {
+                    where: { exitedAt: null },
+                    take: 1,
+                    orderBy: { enteredAt: 'desc' },
+                    select: {
+                        id: true,
+                        enteredAt: true,
+                        remarks: true,
+                        actionPlan: true,
+                        actionPlanDueDate: true,
+                        notes: true,
+                    },
+                },
             }
         })
 

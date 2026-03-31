@@ -19,6 +19,7 @@ function daysBetween(from: string | Date): number {
 
 export function mapDealToFrontend(d: any): Deal {
   const stageName = (d.stage?.name ?? 'Inquiry') as PipelineStage
+  const currentAuditLog = d.auditLogs?.[0]
   return {
     id: d.id,
     deal_name: d.dealName,
@@ -28,8 +29,8 @@ export function mapDealToFrontend(d: any): Deal {
     stage: stageName,
     stage_id: d.stageId,
     is_closed: d.isClosed ?? false,
-    remarks: d.remarks ?? '',
-    action_plan: d.actionPlan ?? '',
+    remarks: currentAuditLog?.remarks ?? d.remarks ?? '',
+    action_plan: currentAuditLog?.actionPlan ?? d.actionPlan ?? '',
     proposal_revision_count: d.proposalRevisionCount ?? 0,
     proposal_link: d.proposalLink ?? undefined,
     contract_link: d.contractLink ?? undefined,
@@ -42,7 +43,7 @@ export function mapDealToFrontend(d: any): Deal {
     last_stage_update_at: d.lastStageUpdateAt,
     last_follow_up_at: d.lastFollowUpAt ?? undefined,
     initial_meeting_date: d.initialMeetingDate ?? undefined,
-    action_plan_due_date: d.actionPlanDueDate ?? undefined,
+    action_plan_due_date: currentAuditLog?.actionPlanDueDate ?? d.actionPlanDueDate ?? undefined,
     bd_id: d.bdId,
     service_id: d.serviceId ?? undefined,
     bundle_id: d.bundleId ?? undefined,
@@ -59,6 +60,7 @@ export function mapDealToFrontend(d: any): Deal {
     } : undefined,
     service: d.service ?? undefined,
     bundle: d.bundle ?? undefined,
+    auditLogs: d.auditLogs,
     probability_pct: STAGE_PROBABILITY[stageName] ?? 0,
     days_in_stage: d.lastStageUpdateAt ? daysBetween(d.lastStageUpdateAt) : 0,
   }

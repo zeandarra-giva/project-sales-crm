@@ -10,6 +10,7 @@ import { getDeals } from '../api/deals';
 import { useAuthStore } from '../store/authStore';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types/index';
+import { AlertTriangle } from 'lucide-react';
 
 const LEAD_SOURCES = ['All', 'Inbound', 'Outbound', 'Referral'];
 
@@ -21,9 +22,10 @@ export default function PipelinePage() {
   const [sourceFilter, setSourceFilter] = useState('All');
   const [showClosed, setShowClosed] = useState(false);
 
-  const { data: allDeals = [], isLoading } = useQuery({
+  const { data: allDeals = [], isLoading, error } = useQuery({
     queryKey: ['deals'],
     queryFn: getDeals,
+    retry: 1,
   });
 
   const filteredDeals = allDeals.filter(deal => {
@@ -43,6 +45,32 @@ export default function PipelinePage() {
         <Header title="Pipeline" action={{ label: 'New Deal', to: '/deals/new' }} />
         <div className="flex-1 flex items-center justify-center">
           <p className="text-[#8b90a8]">Loading pipeline...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    const message =
+      (error as any)?.response?.data?.error ||
+      (error as Error)?.message ||
+      'Failed to load pipeline';
+
+    return (
+      <div className="flex flex-col h-full">
+        <Header title="Pipeline" action={{ label: 'New Deal', to: '/deals/new' }} />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <Card className="p-8 text-center max-w-md">
+            <AlertTriangle size={24} className="text-[#d97706] mx-auto mb-3" />
+            <div className="text-sm font-semibold text-[#1a1d2e] mb-1">Failed to load pipeline</div>
+            <div className="text-xs text-[#8b90a8]">{message}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 text-xs font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors"
+            >
+              Retry
+            </button>
+          </Card>
         </div>
       </div>
     );

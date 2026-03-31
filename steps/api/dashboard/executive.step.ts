@@ -64,16 +64,20 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         })
         const teamQuota = allTargets.reduce((sum, t) => sum + Number(t.quota), 0)
 
-        // ── 3. Team forecast (actual + weighted open pipeline) ─────────────
-        const allProjections = await prisma.dealProjection.findMany({
-            where: { deal: { isClosed: false } },
+        // ── 3. Team forecast: Closed Won + 80% of Negotiation pipeline (Rev 5) ──
+        const negotiationStage = await prisma.pipelineStage.findFirst({
+            where: { name: 'Negotiation' },
         })
-        const weightedPipeline = allProjections.reduce(
-            (sum, p) =>
-                sum + Number(p.projectedAmount) * (Number(p.probabilityPct) / 100),
+        const negotiationDeals = negotiationStage
+            ? await prisma.deal.findMany({
+                  where: { stageId: negotiationStage.id, isClosed: false },
+              })
+            : []
+        const negotiationRevenue = negotiationDeals.reduce(
+            (sum, d) => sum + Number(d.revenue ?? 0),
             0
         )
-        const teamForecast = teamActual + weightedPipeline
+        const teamForecast = teamActual + 0.8 * negotiationRevenue
 
         // ── 4. Attainment ─────────────────────────────────────────────────
         const attainment =
@@ -212,6 +216,25 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             ORDER BY revenue DESC
         `
 
+        // ── 10. Client revenue ranking — top clients by closed won revenue (Rev 7) ──
+        const clientRevRanking = await prisma.$queryRaw<
+            { clientId: string; clientName: string; accountType: string; dealCount: number; revenue: number }[]
+        >`
+            SELECT c.id AS "clientId",
+                   c.name AS "clientName",
+                   c.account_type AS "accountType",
+                   COUNT(d.id)::int AS "dealCount",
+                   COALESCE(SUM(d.revenue), 0)::float AS revenue
+            FROM deal d
+            JOIN client c ON d.client_id = c.id
+            WHERE d.stage_id = ${closedWonStage.id}
+              AND d.closed_date >= ${qStart}
+              AND d.closed_date <= ${qEnd}
+            GROUP BY c.id, c.name, c.account_type
+            ORDER BY revenue DESC
+            LIMIT 10
+        `
+
         return {
             status: 200,
             body: {
@@ -227,6 +250,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                     leaderboard,
                     dealsByAccountType,
                     servicePerformance,
+                    clientRevRanking,
                 },
             },
         }

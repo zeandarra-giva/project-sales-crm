@@ -1,6 +1,19 @@
 import { type Handlers, type StepConfig, logger } from 'motia'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
+
+const currentAuditLogSelect = Prisma.validator<Prisma.DealAuditLogSelect>()({
+    id: true,
+    enteredAt: true,
+    remarks: true,
+    actionPlan: true,
+    actionPlanDueDate: true,
+    notes: true,
+    changedBy: {
+        select: { id: true, firstName: true, lastName: true },
+    },
+})
 
 export const config = {
     name: 'GetDeal',
@@ -12,7 +25,7 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, ctx) => {
+export const handler: Handlers<typeof config> = async (req, _ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
@@ -54,10 +67,16 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                     },
                     orderBy: { isPrimary: 'desc' },
                 },
+                // Current stage audit log — provides remarks/actionPlan (Rev 1–3)
+                auditLogs: {
+                    where: { exitedAt: null },
+                    take: 1,
+                    orderBy: { enteredAt: 'desc' },
+                    select: currentAuditLogSelect,
+                },
                 _count: {
                     select: { auditLogs: true, dealContacts: true },
                 },
-
             },
         })
 

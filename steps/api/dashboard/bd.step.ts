@@ -93,16 +93,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 ? Math.round((closedRevenue / quarterlyTarget) * 100 * 10) / 10
                 : 0
 
-        // ── 6. Weighted pipeline for forecast ─────────────────────────────
-        const projections = await prisma.dealProjection.findMany({
-            where: { bdId, deal: { isClosed: false } },
+        // ── 6. Forecast: Closed Won + 80% of Negotiation pipeline (Rev 5) ──
+        // Formula: Closed Won revenue + 80% × active Negotiation deal revenue
+        const negotiationStage = await prisma.pipelineStage.findFirst({
+            where: { name: 'Negotiation' },
         })
-        const weightedPipeline = projections.reduce(
-            (sum, p) =>
-                sum + Number(p.projectedAmount) * (Number(p.probabilityPct) / 100),
-            0
-        )
-        const salesForecast = closedRevenue + weightedPipeline
+        const negotiationRevenue = negotiationStage
+            ? openDealsRaw
+                .filter(d => d.stage.name === 'Negotiation')
+                .reduce((sum, d) => sum + Number(d.revenue ?? 0), 0)
+            : 0
+        const salesForecast = closedRevenue + 0.8 * negotiationRevenue
 
         // ── 7. Sales variance (how far from quota) ────────────────────────
         const salesVariance = quarterlyTarget - closedRevenue

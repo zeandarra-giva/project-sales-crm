@@ -99,16 +99,12 @@ var handler2 = async (input) => {
   try {
     const data = dealCreatedSchema.parse(input);
     const { dealId, bdId, dealName, revenue, expectedCloseDate } = data;
-    const probabilityPct = 10;
     const projectedAmount = revenue || 0;
-    const weightedValue = projectedAmount * (probabilityPct / 100);
     await prisma.dealProjection.create({
       data: {
         dealId,
         bdId,
-        projectedAmount,
-        probabilityPct,
-        weightedValue
+        projectedAmount
       }
       // Safely ignore if projection already exists somehow
     }).catch((e) => logger2.warn("Projection might already exist", { e }));
@@ -529,15 +525,6 @@ var handler10 = async (req, ctx) => {
 import { logger as logger11, enqueue } from "motia";
 import { z as z4 } from "zod";
 import { Prisma } from "@prisma/client";
-var STAGE_PROBABILITY = {
-  "Inquiry": 10,
-  "Prospecting": 20,
-  "Discovery": 40,
-  "Proposal Sent": 60,
-  "Negotiation": 75,
-  "Closed Won": 100,
-  "Closed Lost": 0
-};
 var config11 = {
   name: "UpdateDealStage",
   description: "Move a deal to a new pipeline stage with atomic audit log tracking (FR-D07 to FR-D11)",
@@ -550,6 +537,7 @@ var config11 = {
         stageId: z4.string().uuid(),
         remarks: z4.string().min(1, "Remarks are required when moving a deal"),
         actionPlan: z4.string().min(1, "Action plan is required when moving a deal"),
+        actionPlanDueDate: z4.string().datetime().optional(),
         notes: z4.string().optional()
       })
     }
@@ -561,7 +549,7 @@ var handler11 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
-    const { stageId, remarks, actionPlan, notes } = req.request.body;
+    const { stageId, remarks, actionPlan, actionPlanDueDate, notes } = req.request.body;
     const deal = await prisma.deal.findUnique({
       where: { id },
       include: { stage: true }
@@ -589,31 +577,34 @@ var handler11 = async (req, ctx) => {
         }
       };
     }
+    if (targetStage.name === "Closed Won" && !deal.contractLink) {
+      return {
+        status: 400,
+        body: {
+          error: "A contract link must be attached to the deal before marking it as Closed Won."
+        }
+      };
+    }
     const isClosed = ["Closed Won", "Closed Lost"].includes(targetStage.name);
-    const newProbability = STAGE_PROBABILITY[targetStage.name] ?? 0;
     const updatedDeal = await prisma.$transaction(async (tx) => {
       await tx.dealAuditLog.updateMany({
         where: { dealId: id, exitedAt: null },
         data: { exitedAt: /* @__PURE__ */ new Date() }
       });
-      const auditNote = [
-        notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
-        `Remarks: ${remarks}`,
-        `Action Plan: ${actionPlan}`
-      ].join("\n");
       await tx.dealAuditLog.create({
         data: {
           dealId: id,
           stageId,
           changedById: user.id,
           enteredAt: /* @__PURE__ */ new Date(),
-          notes: auditNote
+          notes: notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
+          remarks,
+          actionPlan,
+          actionPlanDueDate: actionPlanDueDate ? new Date(actionPlanDueDate) : null
         }
       });
       const dealUpdateData = {
         stage: { connect: { id: stageId } },
-        remarks,
-        actionPlan,
         lastStageUpdateAt: /* @__PURE__ */ new Date(),
         isClosed,
         ...isClosed && { closedDate: /* @__PURE__ */ new Date() },
@@ -630,14 +621,12 @@ var handler11 = async (req, ctx) => {
           bd: { select: { id: true, firstName: true, lastName: true } },
           client: true,
           service: true,
-          bundle: true
-        }
-      });
-      await tx.dealProjection.updateMany({
-        where: { dealId: id },
-        data: {
-          probabilityPct: newProbability,
-          weightedValue: Number(deal.revenue || 0) * (newProbability / 100)
+          bundle: true,
+          auditLogs: {
+            where: { exitedAt: null },
+            take: 1,
+            orderBy: { enteredAt: "desc" }
+          }
         }
       });
       return updated;
@@ -684,7 +673,7 @@ import { z as z5 } from "zod";
 import { Prisma as Prisma2 } from "@prisma/client";
 var config12 = {
   name: "UpdateDeal",
-  description: "Update an existing deal",
+  description: "Update an existing deal (fields only \u2014 stage transitions go through /stage endpoint)",
   triggers: [
     {
       type: "http",
@@ -695,8 +684,11 @@ var config12 = {
         monthlySubscription: z5.number().min(0).optional(),
         duration: z5.number().min(1).optional(),
         stageId: z5.string().uuid().optional(),
+        // remarks/actionPlan now live on DealAuditLog (Rev 1–2)
+        // These update the CURRENT open audit log entry (exitedAt IS NULL)
         remarks: z5.string().optional(),
         actionPlan: z5.string().optional(),
+        actionPlanDueDate: z5.string().datetime().optional(),
         dueDate: z5.string().datetime().optional(),
         proposalLink: z5.string().url().optional(),
         contractLink: z5.string().url().optional()
@@ -710,13 +702,24 @@ var handler12 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
-    const { stageId, remarks, monthlySubscription, duration, ...rest } = req.request.body;
+    const {
+      stageId,
+      remarks,
+      actionPlan,
+      actionPlanDueDate,
+      monthlySubscription,
+      duration,
+      ...rest
+    } = req.request.body;
     const deal = await prisma.deal.findUnique({
       where: { id },
       include: { stage: true }
     });
     if (!deal) {
       return { status: 404, body: { error: "Deal not found" } };
+    }
+    if (user.role !== "SALES_MANAGER" && deal.bdId !== user.id) {
+      return { status: 403, body: { error: "You can only manage your own deals" } };
     }
     let targetStageName = "";
     if (stageId && stageId !== deal.stageId) {
@@ -728,16 +731,19 @@ var handler12 = async (req, ctx) => {
       }
       targetStageName = targetStage.name;
     }
-    if (targetStageName === "Closed Lost" && !remarks && !deal.remarks) {
-      return {
-        status: 400,
-        body: { error: "Remarks (Loss Reason) are required when closing a deal as lost" }
-      };
+    if (targetStageName === "Closed Lost" && !remarks) {
+      const currentLog = await prisma.dealAuditLog.findFirst({
+        where: { dealId: id, exitedAt: null },
+        orderBy: { enteredAt: "desc" }
+      });
+      if (!currentLog?.remarks) {
+        return {
+          status: 400,
+          body: { error: "Remarks (Loss Reason) are required when closing a deal as lost" }
+        };
+      }
     }
-    const updateData = {
-      ...rest,
-      remarks: remarks || deal.remarks
-    };
+    const updateData = { ...rest };
     if (monthlySubscription !== void 0 || duration !== void 0) {
       const newMonthly = monthlySubscription ?? Number(deal.monthlySubscription);
       const newDuration = duration ?? deal.duration;
@@ -765,9 +771,26 @@ var handler12 = async (req, ctx) => {
           client: true,
           bd: {
             select: { id: true, firstName: true, lastName: true }
+          },
+          auditLogs: {
+            where: { exitedAt: null },
+            take: 1,
+            orderBy: { enteredAt: "desc" }
           }
         }
       });
+      if (remarks !== void 0 || actionPlan !== void 0 || actionPlanDueDate !== void 0) {
+        await tx.dealAuditLog.updateMany({
+          where: { dealId: id, exitedAt: null },
+          data: {
+            ...remarks !== void 0 && { remarks },
+            ...actionPlan !== void 0 && { actionPlan },
+            ...actionPlanDueDate !== void 0 && {
+              actionPlanDueDate: new Date(actionPlanDueDate)
+            }
+          }
+        });
+      }
       if (stageId && stageId !== deal.stageId) {
         await tx.dealAuditLog.updateMany({
           where: { dealId: id, exitedAt: null },
@@ -779,7 +802,10 @@ var handler12 = async (req, ctx) => {
             stageId,
             changedById: user.id,
             enteredAt: /* @__PURE__ */ new Date(),
-            notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
+            notes: `Moved from ${deal.stage.name} to ${targetStageName}`,
+            remarks,
+            actionPlan,
+            actionPlanDueDate: actionPlanDueDate ? new Date(actionPlanDueDate) : null
           }
         });
       }
@@ -807,6 +833,14 @@ var handler12 = async (req, ctx) => {
 
 // steps/api/deals/list.step.ts
 import { logger as logger13 } from "motia";
+import { Prisma as Prisma3 } from "@prisma/client";
+var currentAuditLogSelect = Prisma3.validator()({
+  id: true,
+  enteredAt: true,
+  remarks: true,
+  actionPlan: true,
+  actionPlanDueDate: true
+});
 var config13 = {
   name: "ListDeals",
   description: "Get list of all deals",
@@ -816,7 +850,7 @@ var config13 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler13 = async (req, ctx) => {
+var handler13 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     logger13.info("Listing deals", { userId: user.id });
@@ -840,6 +874,13 @@ var handler13 = async (req, ctx) => {
         },
         service: true,
         bundle: true,
+        // Current stage audit log for remarks/actionPlanDueDate (Rev 1–3)
+        auditLogs: {
+          where: { exitedAt: null },
+          take: 1,
+          orderBy: { enteredAt: "desc" },
+          select: currentAuditLogSelect
+        },
         _count: {
           select: {
             auditLogs: true,
@@ -921,6 +962,18 @@ var handler14 = async (req, ctx) => {
 
 // steps/api/deals/get.step.ts
 import { logger as logger15 } from "motia";
+import { Prisma as Prisma4 } from "@prisma/client";
+var currentAuditLogSelect2 = Prisma4.validator()({
+  id: true,
+  enteredAt: true,
+  remarks: true,
+  actionPlan: true,
+  actionPlanDueDate: true,
+  notes: true,
+  changedBy: {
+    select: { id: true, firstName: true, lastName: true }
+  }
+});
 var config15 = {
   name: "GetDeal",
   description: "Get a single deal by ID with full details (supports DealDetail page)",
@@ -930,7 +983,7 @@ var config15 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler15 = async (req, ctx) => {
+var handler15 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -971,6 +1024,13 @@ var handler15 = async (req, ctx) => {
           },
           orderBy: { isPrimary: "desc" }
         },
+        // Current stage audit log — provides remarks/actionPlan (Rev 1–3)
+        auditLogs: {
+          where: { exitedAt: null },
+          take: 1,
+          orderBy: { enteredAt: "desc" },
+          select: currentAuditLogSelect2
+        },
         _count: {
           select: { auditLogs: true, dealContacts: true }
         }
@@ -995,7 +1055,7 @@ var handler15 = async (req, ctx) => {
 // steps/api/deals/create.step.ts
 import { logger as logger16, enqueue as enqueue2 } from "motia";
 import { z as z6 } from "zod";
-import { Prisma as Prisma3 } from "@prisma/client";
+import { Prisma as Prisma5 } from "@prisma/client";
 var config16 = {
   name: "CreateDeal",
   description: "Create a new deal",
@@ -1065,7 +1125,20 @@ var handler16 = async (req, ctx) => {
           }
         },
         service: true,
-        bundle: true
+        bundle: true,
+        auditLogs: {
+          where: { exitedAt: null },
+          take: 1,
+          orderBy: { enteredAt: "desc" },
+          select: {
+            id: true,
+            enteredAt: true,
+            remarks: true,
+            actionPlan: true,
+            actionPlanDueDate: true,
+            notes: true
+          }
+        }
       }
     });
     logger16.info("Created new deal", { dealId: newDeal.id, bdId: user.id });
@@ -1093,7 +1166,7 @@ var handler16 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma3.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma5.PrismaClientKnownRequestError && error.code === "P2025") {
       return {
         status: 400,
         body: { error: "Related record not found \u2014 check bdMemberId, clientId, serviceIds, etc." }
@@ -1151,14 +1224,17 @@ var handler17 = async (req, ctx) => {
       }
     });
     const teamQuota = allTargets.reduce((sum, t) => sum + Number(t.quota), 0);
-    const allProjections = await prisma.dealProjection.findMany({
-      where: { deal: { isClosed: false } }
+    const negotiationStage = await prisma.pipelineStage.findFirst({
+      where: { name: "Negotiation" }
     });
-    const weightedPipeline = allProjections.reduce(
-      (sum, p) => sum + Number(p.projectedAmount) * (Number(p.probabilityPct) / 100),
+    const negotiationDeals = negotiationStage ? await prisma.deal.findMany({
+      where: { stageId: negotiationStage.id, isClosed: false }
+    }) : [];
+    const negotiationRevenue = negotiationDeals.reduce(
+      (sum, d) => sum + Number(d.revenue ?? 0),
       0
     );
-    const teamForecast = teamActual + weightedPipeline;
+    const teamForecast = teamActual + 0.8 * negotiationRevenue;
     const attainment = teamQuota > 0 ? Math.round(teamActual / teamQuota * 100 * 10) / 10 : 0;
     const pipelineByStage = await prisma.$queryRaw`
             SELECT ps.name AS stage,
@@ -1253,6 +1329,21 @@ var handler17 = async (req, ctx) => {
             GROUP BY s.name
             ORDER BY revenue DESC
         `;
+    const clientRevRanking = await prisma.$queryRaw`
+            SELECT c.id AS "clientId",
+                   c.name AS "clientName",
+                   c.account_type AS "accountType",
+                   COUNT(d.id)::int AS "dealCount",
+                   COALESCE(SUM(d.revenue), 0)::float AS revenue
+            FROM deal d
+            JOIN client c ON d.client_id = c.id
+            WHERE d.stage_id = ${closedWonStage.id}
+              AND d.closed_date >= ${qStart}
+              AND d.closed_date <= ${qEnd}
+            GROUP BY c.id, c.name, c.account_type
+            ORDER BY revenue DESC
+            LIMIT 10
+        `;
     return {
       status: 200,
       body: {
@@ -1267,7 +1358,8 @@ var handler17 = async (req, ctx) => {
           stuckDeals,
           leaderboard,
           dealsByAccountType,
-          servicePerformance
+          servicePerformance,
+          clientRevRanking
         }
       }
     };
@@ -1343,14 +1435,11 @@ var handler18 = async (req, ctx) => {
     });
     const quarterlyTarget = Number(targetRecord?.quota ?? 0);
     const quotaAttainment = quarterlyTarget > 0 ? Math.round(closedRevenue / quarterlyTarget * 100 * 10) / 10 : 0;
-    const projections = await prisma.dealProjection.findMany({
-      where: { bdId, deal: { isClosed: false } }
+    const negotiationStage = await prisma.pipelineStage.findFirst({
+      where: { name: "Negotiation" }
     });
-    const weightedPipeline = projections.reduce(
-      (sum, p) => sum + Number(p.projectedAmount) * (Number(p.probabilityPct) / 100),
-      0
-    );
-    const salesForecast = closedRevenue + weightedPipeline;
+    const negotiationRevenue = negotiationStage ? openDealsRaw.filter((d) => d.stage.name === "Negotiation").reduce((sum, d) => sum + Number(d.revenue ?? 0), 0) : 0;
+    const salesForecast = closedRevenue + 0.8 * negotiationRevenue;
     const salesVariance = quarterlyTarget - closedRevenue;
     const monthsElapsed = now.getFullYear() === year && Math.floor(now.getMonth() / 3) + 1 === quarter ? now.getMonth() - (quarter - 1) * 3 + 1 : 3;
     const expectedByNow = quarterlyTarget > 0 ? quarterlyTarget / 3 * monthsElapsed : 0;
@@ -1413,7 +1502,7 @@ var handler18 = async (req, ctx) => {
 // steps/api/contacts/update.step.ts
 import { logger as logger19 } from "motia";
 import { z as z7 } from "zod";
-import { Prisma as Prisma4 } from "@prisma/client";
+import { Prisma as Prisma6 } from "@prisma/client";
 var config19 = {
   name: "UpdateContact",
   description: "Update an existing contact",
@@ -1471,7 +1560,7 @@ var handler19 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma4.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma6.PrismaClientKnownRequestError && error.code === "P2025") {
       return { status: 404, body: { error: "Contact not found" } };
     }
     logger19.error("Failed to update contact", { error });
@@ -1522,7 +1611,7 @@ var handler20 = async (req, ctx) => {
 // steps/api/contacts/create.step.ts
 import { logger as logger21 } from "motia";
 import { z as z8 } from "zod";
-import { Prisma as Prisma5 } from "@prisma/client";
+import { Prisma as Prisma7 } from "@prisma/client";
 var config21 = {
   name: "CreateContact",
   description: "Create a new contact",
@@ -1597,10 +1686,10 @@ var handler21 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma5.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma7.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Client not found \u2014 check clientId" } };
     }
-    if (error instanceof Prisma5.PrismaClientValidationError || error instanceof Prisma5.PrismaClientKnownRequestError && error.code === "P2000") {
+    if (error instanceof Prisma7.PrismaClientValidationError || error instanceof Prisma7.PrismaClientKnownRequestError && error.code === "P2000") {
       return { status: 400, body: { error: "Invalid input \u2014 check field lengths and types" } };
     }
     logger21.error("Failed to create contact", { error });
@@ -1611,7 +1700,7 @@ var handler21 = async (req, ctx) => {
 // steps/api/clients/update.step.ts
 import { logger as logger22 } from "motia";
 import { z as z9 } from "zod";
-import { Prisma as Prisma6 } from "@prisma/client";
+import { Prisma as Prisma8 } from "@prisma/client";
 var config22 = {
   name: "UpdateClient",
   description: "Update an existing client",
@@ -1663,7 +1752,7 @@ var handler22 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma8.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return {
         status: 400,
         body: { error: "Record not found or related ID is invalid" }
@@ -1770,7 +1859,7 @@ var handler24 = async (req, ctx) => {
 // steps/api/clients/create.step.ts
 import { logger as logger25 } from "motia";
 import { z as z10 } from "zod";
-import { Prisma as Prisma7 } from "@prisma/client";
+import { Prisma as Prisma9 } from "@prisma/client";
 var config25 = {
   name: "CreateClient",
   description: "Create a new client",
@@ -1806,7 +1895,7 @@ var handler25 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma7.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma9.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
     }
     logger25.error("Failed to create client", { error });

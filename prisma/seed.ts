@@ -209,9 +209,8 @@ async function main() {
         closedDate?: Date
         startDate: Date
         isClosed: boolean
-        remarks?: string
         // Projection (open deals only)
-        projection?: { probabilityPct: number; projectedAmount: number }
+        projection?: { projectedAmount: number }
     }
 
     const deals: DealSeed[] = [
@@ -236,7 +235,7 @@ async function main() {
             serviceKey: 'SHAREDVIEW', monthlySubscription: 45000, duration: 24,
             leadSource: 'OUTBOUND', isClosed: false,
             startDate: new Date('2026-01-20'),
-            projection: { probabilityPct: 75, projectedAmount: 1080000 },
+            projection: { projectedAmount: 1080000 },
         },
         {
             id: 'deal-henne-op2', dealName: 'BigBrand – Reports Package',
@@ -244,7 +243,7 @@ async function main() {
             serviceKey: 'REPORTS', monthlySubscription: 20000, duration: 12,
             leadSource: 'INBOUND', isClosed: false,
             startDate: new Date('2026-02-05'),
-            projection: { probabilityPct: 50, projectedAmount: 240000 },
+            projection: { projectedAmount: 240000 },
         },
         {
             id: 'deal-henne-op3', dealName: 'TechStart – Locobuzz SMB',
@@ -252,7 +251,7 @@ async function main() {
             serviceKey: 'LOCOBUZZ', monthlySubscription: 12000, duration: 12,
             leadSource: 'OUTBOUND', isClosed: false,
             startDate: new Date('2026-02-20'),
-            projection: { probabilityPct: 25, projectedAmount: 144000 },
+            projection: { projectedAmount: 144000 },
         },
 
         // ── Isten: 2 Closed Won + 3 Open ──────────────────────────────────
@@ -276,7 +275,7 @@ async function main() {
             serviceKey: 'SHAREDVIEW', monthlySubscription: 40000, duration: 12,
             leadSource: 'REFERRAL', isClosed: false,
             startDate: new Date('2026-01-10'),
-            projection: { probabilityPct: 80, projectedAmount: 480000 },
+            projection: { projectedAmount: 480000 },
         },
         {
             id: 'deal-isten-op2', dealName: 'Digital Agency – Locobuzz Pro',
@@ -284,7 +283,7 @@ async function main() {
             serviceKey: 'LOCOBUZZ', monthlySubscription: 18000, duration: 12,
             leadSource: 'INBOUND', isClosed: false,
             startDate: new Date('2026-02-15'),
-            projection: { probabilityPct: 40, projectedAmount: 216000 },
+            projection: { projectedAmount: 216000 },
         },
         {
             id: 'deal-isten-op3', dealName: 'FinTech – Mediawatch Pilot',
@@ -292,7 +291,7 @@ async function main() {
             serviceKey: 'MEDIAWATCH', monthlySubscription: 22000, duration: 12,
             leadSource: 'OUTBOUND', isClosed: false,
             startDate: new Date('2026-03-01'),
-            projection: { probabilityPct: 55, projectedAmount: 264000 },
+            projection: { projectedAmount: 264000 },
         },
 
         // ── Brian: 1 Closed Won + 4 Open (lower attainment, for variance) ──
@@ -309,7 +308,7 @@ async function main() {
             serviceKey: 'LOCOBUZZ', monthlySubscription: 48000, duration: 24,
             leadSource: 'OUTBOUND', isClosed: false,
             startDate: new Date('2026-01-05'),
-            projection: { probabilityPct: 70, projectedAmount: 1152000 },
+            projection: { projectedAmount: 1152000 },
         },
         {
             id: 'deal-brian-op2', dealName: 'Government – SharedView Tender',
@@ -317,7 +316,7 @@ async function main() {
             serviceKey: 'SHAREDVIEW', monthlySubscription: 60000, duration: 12,
             leadSource: 'OUTBOUND', isClosed: false,
             startDate: new Date('2026-01-25'),
-            projection: { probabilityPct: 45, projectedAmount: 720000 },
+            projection: { projectedAmount: 720000 },
         },
         {
             id: 'deal-brian-op3', dealName: 'TechStart – Reports Starter',
@@ -325,7 +324,7 @@ async function main() {
             serviceKey: 'REPORTS', monthlySubscription: 10000, duration: 12,
             leadSource: 'INBOUND', isClosed: false,
             startDate: new Date('2026-02-10'),
-            projection: { probabilityPct: 35, projectedAmount: 120000 },
+            projection: { projectedAmount: 120000 },
         },
         {
             id: 'deal-brian-op4', dealName: 'Digital Agency – Mediawatch',
@@ -333,7 +332,7 @@ async function main() {
             serviceKey: 'MEDIAWATCH', monthlySubscription: 15000, duration: 12,
             leadSource: 'INBOUND', isClosed: false,
             startDate: new Date('2026-03-10'),
-            projection: { probabilityPct: 20, projectedAmount: 180000 },
+            projection: { projectedAmount: 180000 },
         },
     ]
 
@@ -366,14 +365,35 @@ async function main() {
                 startDate: d.startDate,
                 closedDate: d.closedDate ?? null,
                 lastStageUpdateAt: d.startDate,
+            },
+        })
+
+        await prisma.dealAuditLog.upsert({
+            where: { id: `audit-${d.id}-current` },
+            update: {
+                stageId: stage.id,
+                changedById: bd.id,
+                enteredAt: d.startDate,
+                exitedAt: null,
+                notes: d.isClosed ? 'Closed and signed.' : 'Seeded current deal stage.',
                 remarks: d.isClosed ? 'Closed and signed.' : 'In progress.',
+                actionPlan: d.isClosed ? 'Completed successfully.' : 'Continue progressing the deal.',
+            },
+            create: {
+                id: `audit-${d.id}-current`,
+                dealId: d.id,
+                stageId: stage.id,
+                changedById: bd.id,
+                enteredAt: d.startDate,
+                notes: d.isClosed ? 'Closed and signed.' : 'Seeded current deal stage.',
+                remarks: d.isClosed ? 'Closed and signed.' : 'In progress.',
+                actionPlan: d.isClosed ? 'Completed successfully.' : 'Continue progressing the deal.',
             },
         })
 
         // Seed DealProjection for open deals
         if (d.projection) {
-            const { probabilityPct, projectedAmount } = d.projection
-            const weightedValue = projectedAmount * (probabilityPct / 100)
+            const { projectedAmount } = d.projection
             await prisma.dealProjection.upsert({
                 where: { id: `proj-${d.id}` },
                 update: {},
@@ -382,8 +402,6 @@ async function main() {
                     dealId: d.id,
                     bdId: bd.id,
                     projectedAmount,
-                    probabilityPct,
-                    weightedValue,
                 },
             })
         }

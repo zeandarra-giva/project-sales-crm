@@ -2,7 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3111',
+  baseURL: '',
   headers: {
     'Content-Type': 'application/json',
   },

@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client'
 
 export const config = {
     name: 'UpdateDeal',
-    description: 'Update an existing deal',
+    description: 'Update an existing deal (fields only — stage transitions go through /stage endpoint)',
     triggers: [
         {
             type: 'http' as const,
@@ -17,8 +17,11 @@ export const config = {
                 monthlySubscription: z.number().min(0).optional(),
                 duration: z.number().min(1).optional(),
                 stageId: z.string().uuid().optional(),
+                // remarks/actionPlan now live on DealAuditLog (Rev 1–2)
+                // These update the CURRENT open audit log entry (exitedAt IS NULL)
                 remarks: z.string().optional(),
                 actionPlan: z.string().optional(),
+                actionPlanDueDate: z.string().datetime().optional(),
                 dueDate: z.string().datetime().optional(),
                 proposalLink: z.string().url().optional(),
                 contractLink: z.string().url().optional(),
@@ -33,7 +36,15 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
-        const { stageId, remarks, monthlySubscription, duration, ...rest } = req.request.body
+        const {
+            stageId,
+            remarks,
+            actionPlan,
+            actionPlanDueDate,
+            monthlySubscription,
+            duration,
+            ...rest
+        } = req.request.body
 
         // 1. Fetch current deal + target stage if changing
         const deal = await prisma.deal.findUnique({
@@ -45,7 +56,12 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             return { status: 404, body: { error: 'Deal not found' } }
         }
 
-        let targetStageName = ""
+        // BD Reps can only edit their own deals
+        if (user.role !== 'SALES_MANAGER' && deal.bdId !== user.id) {
+            return { status: 403, body: { error: 'You can only manage your own deals' } }
+        }
+
+        let targetStageName = ''
         if (stageId && stageId !== deal.stageId) {
             const targetStage = await prisma.pipelineStage.findUnique({
                 where: { id: stageId }
@@ -56,19 +72,23 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             targetStageName = targetStage.name
         }
 
-        // 2. Business rule: If moving to Closed Lost, require remarks
-        if (targetStageName === 'Closed Lost' && !remarks && !deal.remarks) {
-            return {
-                status: 400,
-                body: { error: 'Remarks (Loss Reason) are required when closing a deal as lost' }
+        // 2. Business rule: If moving to Closed Lost, require remarks on current audit log
+        if (targetStageName === 'Closed Lost' && !remarks) {
+            // Check if there's already a remark on the current audit log
+            const currentLog = await prisma.dealAuditLog.findFirst({
+                where: { dealId: id, exitedAt: null },
+                orderBy: { enteredAt: 'desc' },
+            })
+            if (!currentLog?.remarks) {
+                return {
+                    status: 400,
+                    body: { error: 'Remarks (Loss Reason) are required when closing a deal as lost' }
+                }
             }
         }
 
-        // 3. Prepare Update Data
-        const updateData: any = {
-            ...rest,
-            remarks: remarks || deal.remarks,
-        }
+        // 3. Prepare Deal update data (no remarks/actionPlan — those are on audit log)
+        const updateData: any = { ...rest }
 
         // Handle computed revenue if fields changed
         if (monthlySubscription !== undefined || duration !== undefined) {
@@ -92,7 +112,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             }
         }
 
-        // 4. Update deal + audit logs atomically
+        // 4. Update deal + audit log atomically
         const updatedDeal = await prisma.$transaction(async (tx) => {
             const updated = await tx.deal.update({
                 where: { id },
@@ -102,13 +122,31 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                     client: true,
                     bd: {
                         select: { id: true, firstName: true, lastName: true }
-                    }
+                    },
+                    auditLogs: {
+                        where: { exitedAt: null },
+                        take: 1,
+                        orderBy: { enteredAt: 'desc' },
+                    },
                 }
             })
 
-            // 5. Record history in DealAuditLog if stage changed
+            // 5. Update remarks/actionPlan on current open audit log row (Rev 1–3)
+            if (remarks !== undefined || actionPlan !== undefined || actionPlanDueDate !== undefined) {
+                await tx.dealAuditLog.updateMany({
+                    where: { dealId: id, exitedAt: null },
+                    data: {
+                        ...(remarks !== undefined && { remarks }),
+                        ...(actionPlan !== undefined && { actionPlan }),
+                        ...(actionPlanDueDate !== undefined && {
+                            actionPlanDueDate: new Date(actionPlanDueDate),
+                        }),
+                    },
+                })
+            }
+
+            // 6. Record history in DealAuditLog if stage changed via this endpoint
             if (stageId && stageId !== deal.stageId) {
-                // Close out the previous audit log entry
                 await tx.dealAuditLog.updateMany({
                     where: { dealId: id, exitedAt: null },
                     data: { exitedAt: new Date() }
@@ -120,7 +158,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                         stageId: stageId,
                         changedById: user.id,
                         enteredAt: new Date(),
-                        notes: remarks || `Moved from ${deal.stage.name} to ${targetStageName}`
+                        notes: `Moved from ${deal.stage.name} to ${targetStageName}`,
+                        remarks: remarks,
+                        actionPlan: actionPlan,
+                        actionPlanDueDate: actionPlanDueDate ? new Date(actionPlanDueDate) : null,
                     }
                 })
             }

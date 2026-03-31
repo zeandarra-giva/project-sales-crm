@@ -74,11 +74,16 @@ export default function BDDashboard() {
   const [selectedQ, setSelectedQ] = useState(currentQuarter);
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
+  // All 4 quarters of current year + all 4 of prior year (Rev — quarter selector)
   const quarters = [
+    { label: `Q4 ${currentYear}`, q: 4, y: currentYear },
+    { label: `Q3 ${currentYear}`, q: 3, y: currentYear },
+    { label: `Q2 ${currentYear}`, q: 2, y: currentYear },
     { label: `Q1 ${currentYear}`, q: 1, y: currentYear },
     { label: `Q4 ${currentYear - 1}`, q: 4, y: currentYear - 1 },
     { label: `Q3 ${currentYear - 1}`, q: 3, y: currentYear - 1 },
     { label: `Q2 ${currentYear - 1}`, q: 2, y: currentYear - 1 },
+    { label: `Q1 ${currentYear - 1}`, q: 1, y: currentYear - 1 },
   ];
 
   const { data, isLoading: loading, error: queryError } = useBDDashboard(selectedQ, selectedYear, user?.id);

@@ -7,8 +7,8 @@ interface DealHistoryProps {
   logs: DealAuditLog[];
 }
 
-const stageColor = (stage: PipelineStage) =>
-  PIPELINE_STAGES.find(s => s.name === stage)?.color ?? '#8b90a8';
+const stageColor = (stage: PipelineStage | undefined) =>
+  stage ? (PIPELINE_STAGES.find(s => s.name === stage)?.color ?? '#8b90a8') : '#8b90a8';
 
 export default function DealHistory({ logs }: DealHistoryProps) {
   if (logs.length === 0) {

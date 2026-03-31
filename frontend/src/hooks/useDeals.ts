@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Deal } from '../types'
 import {
   getDeals, getDeal, createDeal, updateDeal,
   getPipelineStages, updateDealStage, getDealHistory,
@@ -24,8 +25,14 @@ export function useCreateDeal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: CreateDealPayload) => createDeal(data),
-    onSuccess: () => {
+    onSuccess: (createdDeal) => {
+      qc.setQueryData<Deal[]>(['deals'], (existing) => {
+        const deals = Array.isArray(existing) ? existing : []
+        const withoutDuplicate = deals.filter((deal) => deal.id !== createdDeal.id)
+        return [createdDeal, ...withoutDuplicate]
+      })
       qc.invalidateQueries({ queryKey: ['deals'] })
+      qc.invalidateQueries({ queryKey: ['pipeline-stages'] })
     },
   })
 }

@@ -18,11 +18,22 @@ export interface Deal {
   stage: PipelineStage;
   stage_id: string;
   is_closed: boolean;
-  remarks: string;
-  action_plan: string;
+  /**
+   * @deprecated Moved to DealAuditLog (Rev 1). Access via deal.auditLogs?.[0]?.remarks
+   * Kept optional for mock data and backward compatibility during migration.
+   */
+  remarks?: string;
+  /**
+   * @deprecated Moved to DealAuditLog (Rev 2). Access via deal.auditLogs?.[0]?.actionPlan
+   */
+  action_plan?: string;
+  /**
+   * @deprecated Moved to DealAuditLog (Rev 3). Access via deal.auditLogs?.[0]?.actionPlanDueDate
+   */
+  action_plan_due_date?: string;
   proposal_revision_count: number;
   proposal_link?: string;
-  contract_link?: string;
+  contract_link?: string; // Required on Closed Won (Rev 8)
   lead_source: LeadSource;
   final_proposed_value?: number;
   sales_cycle_days?: number;
@@ -32,7 +43,6 @@ export interface Deal {
   last_stage_update_at: string;
   last_follow_up_at?: string;
   initial_meeting_date?: string;
-  action_plan_due_date?: string;
   bd_id: string;
   service_id?: string;
   bundle_id?: string;
@@ -41,6 +51,8 @@ export interface Deal {
   client?: import('./client').Client;
   service?: import('./service').Service;
   bundle?: import('./service').Bundle;
+  // Current stage audit log entry (exitedAt IS NULL)
+  auditLogs?: DealAuditLog[];
   dealContacts?: {
     id: string;
     isPrimary: boolean;
@@ -59,13 +71,21 @@ export interface Deal {
 
 export interface DealAuditLog {
   id: string;
-  deal_id: string;
-  stage: PipelineStage;
+  deal_id?: string;
+  stage?: PipelineStage;
+  stage_id?: string;
   entered_at: string;
   exited_at?: string;
   days_in_stage?: number;
-  changed_by: string;
+  changed_by?: string;
+  changedBy?: { id: string; firstName: string; lastName: string };
   notes?: string;
+  // Migrated from Deal (Rev 1–3)
+  remarks?: string;
+  actionPlan?: string;
+  action_plan?: string;
+  actionPlanDueDate?: string;
+  action_plan_due_date?: string;
 }
 
 export interface DealProjection {
@@ -73,6 +93,6 @@ export interface DealProjection {
   deal_id: string;
   bd_id: string;
   projected_amount: number;
-  probability_pct: number;
-  weighted_value: number;
+  // probabilityPct and weightedValue removed (Rev 5)
+  // Forecast now uses Closed Won + 80% Negotiation formula
 }

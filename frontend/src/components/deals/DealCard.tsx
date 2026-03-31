@@ -35,7 +35,9 @@ function DealAvatar({ name }: { name: string }) {
 
 export default function DealCard({ deal, compact = false }: DealCardProps) {
   const isStuck = (deal.days_in_stage || 0) > 3 && !deal.is_closed;
-  const isOverdue = deal.action_plan_due_date && new Date(deal.action_plan_due_date) < new Date() && !deal.is_closed;
+  // action_plan_due_date now lives on current DealAuditLog (Rev 3)
+  const auditDueDate = deal.auditLogs?.[0]?.actionPlanDueDate || deal.auditLogs?.[0]?.action_plan_due_date;
+  const isOverdue = auditDueDate && new Date(auditDueDate) < new Date() && !deal.is_closed;
   const badge = getDealBadge(deal);
 
   return (

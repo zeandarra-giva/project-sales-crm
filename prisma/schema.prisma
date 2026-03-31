@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 //datasource db {
@@ -290,11 +291,9 @@ model Deal {
   revenue               Decimal? // COMPUTED: monthly_subscription x duration
   duration              Int      // Contract length in months
   isClosed              Boolean  @default(false) @map("is_closed")
-  remarks               String?  // Running BD notes. Required — blocks Closed Lost if empty
-  actionPlan            String?  @map("action_plan") // Next planned steps
   proposalRevisionCount Int      @default(0) @map("proposal_revision_count")
   proposalLink          String?  @map("proposal_link")
-  contractLink          String?  @map("contract_link")
+  contractLink          String?  @map("contract_link") // Required on Closed Won (Rev 8)
   leadSource            LeadSource @map("lead_source")
   finalProposedValue    Decimal?   @map("final_proposed_value") // Last price before Closed Lost
   salesCycleDays        Int?       @map("sales_cycle_days") // COMPUTED: start_date to closed_date
@@ -315,7 +314,6 @@ model Deal {
   lastStageUpdateAt  DateTime? @map("last_stage_update_at")
   lastFollowUpAt     DateTime? @map("last_follow_up_at")
   initialMeetingDate DateTime? @map("initial_meeting_date")
-  actionPlanDueDate  DateTime? @map("action_plan_due_date")
 
   // Relations
   stage   PipelineStage @relation(fields: [stageId], references: [id])
@@ -343,14 +341,17 @@ model Deal {
 // ============================================================
 
 model DealAuditLog {
-  id          String    @id @default(uuid())
-  dealId      String    @map("deal_id")
-  stageId     String    @map("stage_id")
-  enteredAt   DateTime  @map("entered_at")
-  exitedAt    DateTime? @map("exited_at") // NULL means this is the current stage
-  daysInStage Int?      @map("days_in_stage") // COMPUTED: exited_at - entered_at
-  changedById String    @map("changed_by")
-  notes       String?   // Why the stage changed. Primary source for loss analysis
+  id              String    @id @default(uuid())
+  dealId          String    @map("deal_id")
+  stageId         String    @map("stage_id")
+  enteredAt       DateTime  @map("entered_at")
+  exitedAt        DateTime? @map("exited_at") // NULL means this is the current stage
+  daysInStage     Int?      @map("days_in_stage") // COMPUTED: exited_at - entered_at
+  changedById     String    @map("changed_by")
+  notes           String?   // Why the stage changed. Primary source for loss analysis
+  remarks         String?   // BD notes captured at time of stage entry (Rev 1)
+  actionPlan      String?   @map("action_plan") // Next planned steps for this stage (Rev 2)
+  actionPlanDueDate DateTime? @map("action_plan_due_date") // Target completion date for action plan (Rev 3)
 
   // Relations
   deal      Deal          @relation(fields: [dealId], references: [id])
@@ -371,8 +372,6 @@ model DealProjection {
   dealId          String  @unique @map("deal_id") // 1:1 with Deal
   bdId            String  @map("bd_id")
   projectedAmount Decimal @map("projected_amount")
-  probabilityPct  Decimal @map("probability_pct") // 0-100
-  weightedValue   Decimal? @map("weighted_value") // COMPUTED: projected_amount x (probability_pct / 100)
   dateId          String? @map("date_id")
 
   // Relations
@@ -510,5 +509,3 @@ model Payment {
 
   @@map("payment")
 }
-
-

@@ -77,9 +77,15 @@ export default function DealDetail() {
   const getStageId = (name: PipelineStage): string | undefined =>
     stages.find(s => s.name === name)?.id;
 
+  // Current stage audit log entry carries remarks/actionPlan (Rev 1–3)
+  const currentAuditLog = deal.auditLogs?.[0];
+  const currentRemarks   = currentAuditLog?.remarks || '';
+  const currentActionPlan = currentAuditLog?.actionPlan || currentAuditLog?.action_plan || '';
+  const currentActionPlanDueDate = currentAuditLog?.actionPlanDueDate || currentAuditLog?.action_plan_due_date;
+
   const startEdit = () => {
-    setEditRemarks(deal.remarks);
-    setEditActionPlan(deal.action_plan);
+    setEditRemarks(currentRemarks);
+    setEditActionPlan(currentActionPlan);
     setContractLink(deal.contract_link || '');
     setEditing(true);
   };
@@ -99,8 +105,8 @@ export default function DealDetail() {
   // Every stage click shows a confirmation modal with mandatory fields
   const handleStageClick = (stage: PipelineStage) => {
     if (stage === currentStage || isClosed || stageMutation.isPending) return;
-    setStageRemarks(deal.remarks || '');
-    setStageActionPlan(deal.action_plan || '');
+    setStageRemarks(currentRemarks);
+    setStageActionPlan(currentActionPlan);
     setContractLink(deal.contract_link || '');
     setStageConfirm(stage);
   };
@@ -122,7 +128,8 @@ export default function DealDetail() {
       return;
     }
 
-    // Save contract link if provided for Closed Won
+    // For Closed Won: save contract link first (backend requires it on Deal before stage move)
+    // The updateMutation resolves quickly; backend reads contractLink from DB on stage change
     if (stageConfirm === 'Closed Won' && contractLink) {
       updateMutation.mutate({ id: deal.id, data: { contractLink } });
     }
@@ -301,10 +308,18 @@ export default function DealDetail() {
                     )}
                   </div>
 
-                  {/* Contract link for Closed Won */}
+                  {/* Contract link — required for Closed Won (Rev 8) */}
                   {stageConfirm === 'Closed Won' && (
                     <div className="mb-3">
-                      <Input label="Contract Link (recommended)" value={contractLink} onChange={e => setContractLink(e.target.value)} placeholder="https://..." />
+                      <Input
+                        label="Contract Link *"
+                        value={contractLink}
+                        onChange={e => setContractLink(e.target.value)}
+                        placeholder="https://..."
+                      />
+                      {!contractLink.trim() && (
+                        <p className="text-[10px] text-[#E11D48] mt-1">Required — attach the signed contract before marking as Closed Won</p>
+                      )}
                     </div>
                   )}
 
@@ -314,7 +329,12 @@ export default function DealDetail() {
                       variant={stageConfirm === 'Closed Lost' ? 'danger' : stageConfirm === 'Closed Won' ? 'success' : 'primary'}
                       size="sm"
                       onClick={confirmStageChange}
-                      disabled={stageMutation.isPending || !stageRemarks.trim() || !stageActionPlan.trim()}
+                      disabled={
+                        stageMutation.isPending ||
+                        !stageRemarks.trim() ||
+                        !stageActionPlan.trim() ||
+                        (stageConfirm === 'Closed Won' && !contractLink.trim())
+                      }
                     >
                       {stageMutation.isPending ? 'Saving...' : `Confirm — ${stageConfirm}`}
                     </Button>
@@ -323,32 +343,32 @@ export default function DealDetail() {
               </div>
             )}
 
-            {/* Remarks */}
+            {/* Remarks — sourced from current DealAuditLog (Rev 1) */}
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
                 <FileText size={14} className="text-[#3d5af1]" />
                 <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Remarks</span>
-                {!deal.remarks.trim() && !isClosed && <Badge variant="danger" size="sm">Required for Closed Lost</Badge>}
+                {!currentRemarks.trim() && !isClosed && <Badge variant="danger" size="sm">Required for Closed Lost</Badge>}
               </div>
               {editing ? (
                 <Textarea value={editRemarks} onChange={e => setEditRemarks(e.target.value)} rows={4} placeholder="Add deal notes, client context, and progress updates..." />
               ) : (
                 <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {deal.remarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
+                  {currentRemarks || <span className="text-[#8b90a8] italic">No remarks yet</span>}
                 </p>
               )}
             </Card>
 
-            {/* Action Plan */}
+            {/* Action Plan — sourced from current DealAuditLog (Rev 2) */}
             <Card className="p-5">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                   <CheckCircle size={14} className="text-[#059669]" />
                   <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Action Plan</span>
                 </div>
-                {deal.action_plan_due_date && (
-                  <Badge variant={new Date(deal.action_plan_due_date) < new Date() ? 'danger' : 'neutral'} size="sm">
-                    Due {formatDate(deal.action_plan_due_date)}
+                {currentActionPlanDueDate && (
+                  <Badge variant={new Date(currentActionPlanDueDate) < new Date() ? 'danger' : 'neutral'} size="sm">
+                    Due {formatDate(currentActionPlanDueDate)}
                   </Badge>
                 )}
               </div>
@@ -356,7 +376,7 @@ export default function DealDetail() {
                 <Textarea value={editActionPlan} onChange={e => setEditActionPlan(e.target.value)} rows={3} placeholder="Next steps, action items..." />
               ) : (
                 <p className="text-sm text-[#4a5068] leading-relaxed whitespace-pre-wrap">
-                  {deal.action_plan || <span className="text-[#8b90a8] italic">No action plan set</span>}
+                  {currentActionPlan || <span className="text-[#8b90a8] italic">No action plan set</span>}
                 </p>
               )}
             </Card>
@@ -390,10 +410,10 @@ export default function DealDetail() {
                   { label: 'Deal Created',     date: deal.start_date,           icon: <Calendar size={12} /> },
                   deal.due_date && { label: 'Expected Close', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
-                  deal.action_plan_due_date && {
-                    label: 'Action Plan Due', date: deal.action_plan_due_date,
+                  currentActionPlanDueDate && {
+                    label: 'Action Plan Due', date: currentActionPlanDueDate,
                     icon: <Clock size={12} />,
-                    warning: new Date(deal.action_plan_due_date) < new Date(),
+                    warning: new Date(currentActionPlanDueDate) < new Date(),
                   },
                 ].filter(Boolean).map((item: any, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
