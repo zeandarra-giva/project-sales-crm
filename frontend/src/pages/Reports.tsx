@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line,
@@ -9,6 +9,7 @@ import { Card, Badge, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useAuthStore } from '../store/authStore';
 import { reportsApi } from '../api/reports';
+import { useReportData, useBDList } from '../hooks/useReports';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -44,108 +45,24 @@ export default function ReportsPage() {
   const TABS = ALL_TABS;
 
   const [tab, setTab] = useState('Pipeline');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // BD filter
-  const [bdList, setBdList] = useState<BDOption[]>([]);
   const [selectedBD, setSelectedBD] = useState<string>('');
-
-  // Data state for each report
-  const [pipelineData, setPipelineData] = useState<any>(null);
-  const [quotaData, setQuotaData] = useState<any>(null);
-  const [winRateData, setWinRateData] = useState<any>(null);
-  const [salesCycleData, setSalesCycleData] = useState<any>(null);
-  const [lossData, setLossData] = useState<any>(null);
-  const [execData, setExecData] = useState<any>(null);
 
   const now = new Date();
   const year = now.getFullYear();
   const quarter = Math.floor(now.getMonth() / 3) + 1;
 
-  // Load BD list on mount
-  useEffect(() => {
-    reportsApi.listBDs().then(res => {
-      setBdList(res.data.bds || []);
-    }).catch(err => {
-      console.error('Failed to load BD list:', err);
-    });
-  }, []);
+  const { data: bdList = [] } = useBDList();
+  const { data, isLoading: loading, error: queryError, refetch } = useReportData(tab, year, quarter, selectedBD);
 
-  // Clear cached data when BD filter changes and reload current tab
-  useEffect(() => {
-    setPipelineData(null);
-    setQuotaData(null);
-    setWinRateData(null);
-    setSalesCycleData(null);
-    setLossData(null);
-    setExecData(null);
-    loadTabData(tab, true);
-  }, [selectedBD]);
+  const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || `Failed to load ${tab} report` : null;
 
-  useEffect(() => {
-    loadTabData(tab);
-  }, [tab]);
-
-  const dataForTab = (t: string) => {
-    switch (t) {
-      case 'Pipeline': return pipelineData;
-      case 'Quota Performance': return quotaData;
-      case 'Win/Loss': return winRateData;
-      case 'Sales Cycle': return salesCycleData;
-      case 'Loss Analysis': return lossData;
-      case 'Executive': return execData;
-      default: return null;
-    }
-  };
-
-  const loadTabData = useCallback(async (currentTab: string, force = false) => {
-    if (!force && dataForTab(currentTab)) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const params: any = { year, quarter };
-      if (selectedBD) params.bd_id = selectedBD;
-
-      switch (currentTab) {
-        case 'Pipeline': {
-          const res = await reportsApi.pipeline(params);
-          setPipelineData(res.data);
-          break;
-        }
-        case 'Quota Performance': {
-          const res = await reportsApi.quota(params);
-          setQuotaData(res.data);
-          break;
-        }
-        case 'Win/Loss': {
-          const res = await reportsApi.winRate(params);
-          setWinRateData(res.data);
-          break;
-        }
-        case 'Sales Cycle': {
-          const res = await reportsApi.salesCycle(params);
-          setSalesCycleData(res.data);
-          break;
-        }
-        case 'Loss Analysis': {
-          const res = await reportsApi.lossAnalysis(params);
-          setLossData(res.data);
-          break;
-        }
-        case 'Executive': {
-          const res = await reportsApi.executiveDashboard({ year, quarter });
-          setExecData(res.data);
-          break;
-        }
-      }
-    } catch (err: any) {
-      console.error(`Failed to load ${currentTab}:`, err);
-      setError(err.response?.data?.detail || err.response?.data?.error || `Failed to load ${currentTab} report`);
-    } finally {
-      setLoading(false);
-    }
-  }, [year, quarter, selectedBD]);
+  // Shim variables pointing to current tab's data
+  const pipelineData = tab === 'Pipeline' ? data : null;
+  const quotaData = tab === 'Quota Performance' ? data : null;
+  const winRateData = tab === 'Win/Loss' ? data : null;
+  const salesCycleData = tab === 'Sales Cycle' ? data : null;
+  const lossData = tab === 'Loss Analysis' ? data : null;
+  const execData = tab === 'Executive' ? data : null;
 
   const handleExport = async (reportType: string) => {
     try {
@@ -201,7 +118,7 @@ export default function ReportsPage() {
               className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white text-[#1a1d2e] focus:outline-none focus:ring-2 focus:ring-[#3d5af1] focus:border-transparent"
             >
               <option value="">All BDs</option>
-              {bdList.map(bd => (
+              {bdList.map((bd: BDOption) => (
                 <option key={bd.id} value={bd.id}>{bd.first_name} {bd.last_name}</option>
               ))}
             </select>
@@ -241,7 +158,7 @@ export default function ReportsPage() {
               <div className="text-xs text-[#8b90a8] mb-1">{error}</div>
               <div className="text-xs text-[#8b90a8]">Make sure the analytics service is running on port 8001.</div>
               <button
-                onClick={() => { setError(null); loadTabData(tab, true); }}
+                onClick={() => refetch()}
                 className="mt-4 px-4 py-2 text-xs font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors"
               >
                 Retry
@@ -937,7 +854,7 @@ export default function ReportsPage() {
           )}
 
           {/* Empty state */}
-          {!loading && !error && !dataForTab(tab) && (
+          {!loading && !error && !data && (
             <div className="flex items-center justify-center py-20">
               <div className="text-sm text-[#8b90a8]">No data loaded yet</div>
             </div>

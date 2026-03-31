@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig, logger } from 'motia'
+import { type Handlers, type StepConfig, logger, enqueue } from 'motia'
 import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
@@ -83,6 +83,18 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         })
 
         logger.info('Created new deal', { dealId: newDeal.id, bdId: user.id })
+
+        await enqueue({
+            topic: 'deal.created',
+            data: {
+                dealId: newDeal.id,
+                dealName: newDeal.dealName,
+                bdId: newDeal.bdId,
+                stageId: newDeal.stageId,
+                revenue: newDeal.revenue,
+                expectedCloseDate: newDeal.startDate, // using startDate as a fallback
+            },
+        })
 
         return {
             status: 201,

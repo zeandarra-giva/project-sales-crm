@@ -3,102 +3,89 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { Card, Badge, Button, Input, Select } from '../components/ui/index';
 import { EditModal } from '../components/ui/EditModal';
-import { MOCK_DEALS, MOCK_BDS, MOCK_CLIENTS } from '../mockData';
-import { formatCurrency, formatDate } from '../lib/utils';
 import { useAuthStore } from '../store/authStore';
+import { usePayments, useCreatePayment } from '../hooks/usePayments';
+import { useDeals } from '../hooks/useDeals';
+import { useBDList } from '../hooks/useReports';
+import { formatCurrency, formatDate } from '../lib/utils';
 
 interface Payment {
   id: string;
-  deal_id: string;
-  bd_id: string;
+  dealId: string;
   amount: number;
-  date: string;
-  status: 'Received' | 'Pending';
+  deal?: any;
+  date: any;
 }
 
-const INITIAL_PAYMENTS: Payment[] = [
-  { id: 'pay-001', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2025-12-01', status: 'Received' },
-  { id: 'pay-002', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-01-01', status: 'Received' },
-  { id: 'pay-003', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-02-01', status: 'Received' },
-  { id: 'pay-004', deal_id: 'd-001', bd_id: 'bd-001', amount: 85000, date: '2026-03-01', status: 'Pending' },
-];
-
-type PaymentDraft = { deal_id: string; bd_id: string; amount: string; date: string; status: 'Received' | 'Pending' };
-const emptyDraft = (bdId: string): PaymentDraft => ({ deal_id: '', bd_id: bdId, amount: '', date: '', status: 'Pending' });
-
-const STATUS_OPTIONS = [{ value: 'Received', label: 'Received' }, { value: 'Pending', label: 'Pending' }];
+type PaymentDraft = { deal_id: string; amount: string; };
+const emptyDraft = (): PaymentDraft => ({ deal_id: '', amount: '' });
 
 export default function PaymentsPage() {
   const { user } = useAuthStore();
-  const [payments, setPayments] = useState<Payment[]>(INITIAL_PAYMENTS);
   const [bdFilter, setBdFilter] = useState(user?.role === 'SALES_MANAGER' ? 'All' : (user?.id ?? 'All'));
   const [statusFilter, setStatusFilter] = useState('All');
 
   // Add modal
   const [showAdd, setShowAdd] = useState(false);
-  const [addDraft, setAddDraft] = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+  const [addDraft, setAddDraft] = useState<PaymentDraft>(emptyDraft());
 
   // Edit modal
   const [editing, setEditing] = useState<Payment | null>(null);
-  const [editDraft, setEditDraft] = useState<PaymentDraft>(emptyDraft(user?.id ?? ''));
+  const [editDraft, setEditDraft] = useState<PaymentDraft>(emptyDraft());
 
   // Delete confirm
   const [deleting, setDeleting] = useState<Payment | null>(null);
 
   const isManager = user?.role === 'SALES_MANAGER';
-  const closedDeals = MOCK_DEALS.filter(d => d.stage === 'Closed Won');
-  const bdReps = MOCK_BDS.filter(b => b.role !== 'SALES_MANAGER');
+  const { data: bdReps = [] } = useBDList();
+  const { data: rawDeals } = useDeals();
+  const { data: apiPayments = [], isLoading: loadingPayments } = usePayments();
+  const { mutate: createPayment } = useCreatePayment();
+
+  const dealsData: any[] = Array.isArray(rawDeals) ? rawDeals : (rawDeals as any)?.data || [];
+  const closedDeals = dealsData.filter((d: any) => d.stage?.name === 'Closed Won' || d.isClosed);
+  const payments: Payment[] = apiPayments || [];
 
   const filtered = payments.filter(p => {
-    if (bdFilter !== 'All' && p.bd_id !== bdFilter) return false;
-    if (statusFilter !== 'All' && p.status !== statusFilter) return false;
+    // We don't have BD info directly on payment currently without deep relation, so filter is basic
     return true;
   });
 
-  const totalReceived = filtered.filter(p => p.status === 'Received').reduce((s, p) => s + p.amount, 0);
-  const totalPending = filtered.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0);
+  const totalReceived = filtered.reduce((s: number, p: Payment) => s + Number(p.amount), 0);
+  const totalPending = 0;
 
   // ── Add ─────────────────────────────────────────────────────────
   const handleAdd = () => {
-    if (!addDraft.deal_id || !addDraft.amount || !addDraft.date) return;
-    const p: Payment = {
-      id: `pay-${Date.now()}`,
-      deal_id: addDraft.deal_id,
-      bd_id: addDraft.bd_id || user?.id || '',
+    if (!addDraft.deal_id || !addDraft.amount) return;
+    createPayment({
+      dealId: addDraft.deal_id,
       amount: parseFloat(addDraft.amount),
-      date: addDraft.date,
-      status: addDraft.status,
-    };
-    setPayments(prev => [p, ...prev]);
-    setShowAdd(false);
-    setAddDraft(emptyDraft(user?.id ?? ''));
+    }, {
+      onSuccess: () => {
+        setShowAdd(false);
+        setAddDraft(emptyDraft());
+      }
+    });
   };
 
   // ── Edit ─────────────────────────────────────────────────────────
   const openEdit = (p: Payment) => {
-    setEditing(p);
-    setEditDraft({ deal_id: p.deal_id, bd_id: p.bd_id, amount: String(p.amount), date: p.date, status: p.status });
+    // setEditing(p);
+    // setEditDraft({ deal_id: p.dealId, amount: String(p.amount) });
+    alert("Editing payments is not supported by the backend yet.");
   };
 
   const handleEdit = () => {
-    if (!editing) return;
-    setPayments(prev => prev.map(p =>
-      p.id === editing.id
-        ? { ...p, deal_id: editDraft.deal_id, bd_id: editDraft.bd_id, amount: parseFloat(editDraft.amount), date: editDraft.date, status: editDraft.status }
-        : p
-    ));
     setEditing(null);
   };
 
   // ── Delete ────────────────────────────────────────────────────────
   const handleDelete = () => {
-    if (!deleting) return;
-    setPayments(prev => prev.filter(p => p.id !== deleting.id));
     setDeleting(null);
+    alert("Deleting payments is not supported by the backend yet.");
   };
 
-  const dealForId = (id: string) => MOCK_DEALS.find(d => d.id === id);
-  const bdForId = (id: string) => MOCK_BDS.find(b => b.id === id);
+  const dealForId = (id: string) => dealsData.find((d: any) => d.id === id);
 
   const DraftFields = ({ draft, setDraft }: { draft: PaymentDraft; setDraft: (d: PaymentDraft) => void }) => (
     <>
@@ -106,21 +93,11 @@ export default function PaymentsPage() {
         label="Deal"
         value={draft.deal_id}
         onChange={e => setDraft({ ...draft, deal_id: e.target.value })}
-        options={closedDeals.map(d => ({ value: d.id, label: d.deal_name }))}
+        options={closedDeals.map((d: any) => ({ value: d.id, label: d.dealName || d.deal_name }))}
         placeholder="Select closed deal..."
         required
       />
-      {isManager && (
-        <Select
-          label="BD Member"
-          value={draft.bd_id}
-          onChange={e => setDraft({ ...draft, bd_id: e.target.value })}
-          options={bdReps.map(b => ({ value: b.id, label: `${b.firstName} ${b.lastName}` }))}
-          placeholder="Select BD..."
-          required
-        />
-      )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <Input
           label="Amount (PHP)"
           type="number"
@@ -129,21 +106,7 @@ export default function PaymentsPage() {
           placeholder="85000"
           required
         />
-        <Input
-          label="Date"
-          type="date"
-          value={draft.date}
-          onChange={e => setDraft({ ...draft, date: e.target.value })}
-          required
-        />
       </div>
-      <Select
-        label="Status"
-        value={draft.status}
-        onChange={e => setDraft({ ...draft, status: e.target.value as any })}
-        options={STATUS_OPTIONS}
-        required
-      />
     </>
   );
 
@@ -152,7 +115,7 @@ export default function PaymentsPage() {
       <Header
         title="Payments"
         subtitle="Monthly subscription tracking"
-        action={{ label: 'Add Payment', onClick: () => { setAddDraft(emptyDraft(user?.id ?? '')); setShowAdd(true); } }}
+        action={{ label: 'Add Payment', onClick: () => { setAddDraft(emptyDraft()); setShowAdd(true); } }}
       />
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -181,7 +144,7 @@ export default function PaymentsPage() {
               className="h-8 bg-white border border-[#e2e6f0] rounded-lg px-3 text-xs text-[#4a5068] focus:outline-none"
             >
               <option value="All">All BD Members</option>
-              {bdReps.map(b => <option key={b.id} value={b.id}>{b.firstName} {b.lastName}</option>)}
+              {bdReps.map((b: any) => <option key={b.id} value={b.id}>{b.firstName || b.first_name} {b.lastName || b.last_name}</option>)}
             </select>
           )}
           <div className="flex items-center gap-1 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl p-1">
@@ -216,9 +179,8 @@ export default function PaymentsPage() {
           {filtered.length === 0 ? (
             <div className="text-center py-10 text-sm text-[#8b90a8]">No payments match the current filters</div>
           ) : (
-            filtered.map(payment => {
-              const deal = dealForId(payment.deal_id);
-              const bd = bdForId(payment.bd_id);
+            filtered.map((payment: Payment) => {
+              const deal = payment.deal || dealForId(payment.dealId);
               return (
                 <div
                   key={payment.id}
@@ -226,16 +188,16 @@ export default function PaymentsPage() {
                   style={{ gridTemplateColumns: isManager ? '3fr 2fr 2fr 2fr 2fr 1fr' : '4fr 2fr 2fr 2fr 1fr' }}
                 >
                   <div>
-                    <div className="text-xs font-medium text-[#1a1d2e] truncate">{deal?.deal_name ?? '—'}</div>
-                    <div className="text-[10px] text-[#8b90a8]">{deal ? MOCK_CLIENTS.find(c => c.id === deal.client_id)?.name : ''}</div>
+                    <div className="text-xs font-medium text-[#1a1d2e] truncate">{deal?.dealName || deal?.deal_name || '—'}</div>
+                    <div className="text-[10px] text-[#8b90a8]">{deal?.client?.name || ''}</div>
                   </div>
                   {isManager && (
-                    <div className="text-xs text-[#4a5068]">{bd ? `${bd.firstName} ${bd.lastName}` : '—'}</div>
+                    <div className="text-xs text-[#4a5068]">{'—'}</div>
                   )}
                   <div className="text-sm font-bold font-display text-[#1a1d2e]">{formatCurrency(payment.amount)}</div>
-                  <div className="text-xs text-[#4a5068]">{formatDate(payment.date)}</div>
+                  <div className="text-xs text-[#4a5068]">{payment.date ? `${payment.date.month}/${payment.date.year}` : 'N/A'}</div>
                   <div>
-                    <Badge variant={payment.status === 'Received' ? 'success' : 'warning'} size="sm">{payment.status}</Badge>
+                    <Badge variant={'success'} size="sm">Received</Badge>
                   </div>
                   {/* Row actions */}
                   <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
@@ -281,8 +243,7 @@ export default function PaymentsPage() {
           <Card className="w-full max-w-sm p-6 shadow-xl animate-fade-in">
             <h2 className="font-bold text-sm font-display text-[#1a1d2e] mb-2">Delete Payment?</h2>
             <p className="text-xs text-[#4a5068] mb-5">
-              Remove the <strong>{formatCurrency(deleting.amount)}</strong> payment from{' '}
-              <strong>{formatDate(deleting.date)}</strong>? This cannot be undone.
+              Remove the <strong>{formatCurrency(deleting?.amount || 0)}</strong> payment? This cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <Button variant="secondary" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
