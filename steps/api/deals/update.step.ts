@@ -17,6 +17,7 @@ export const config = {
                 monthlySubscription: z.number().min(0).optional(),
                 duration: z.number().min(1).optional(),
                 stageId: z.string().uuid().optional(),
+                startDate: z.string().datetime().optional(),
                 // remarks/actionPlan now live on DealAuditLog (Rev 1–2)
                 // These update the CURRENT open audit log entry (exitedAt IS NULL)
                 remarks: z.string().optional(),

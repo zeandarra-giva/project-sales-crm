@@ -48,20 +48,20 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
           e.dataTransfer.setData('dealId', String(deal.id));
         }}
         className={cn(
-          'group bg-white border rounded-[8px] transition-all duration-150 cursor-grab active:cursor-grabbing',
-          'hover:shadow-[0_4px_16px_rgba(15,23,42,0.10)] hover:-translate-y-[2px]',
+          'group cursor-grab rounded-[8px] border bg-white transition-all duration-150 active:cursor-grabbing',
+          'hover:-translate-y-[2px] hover:shadow-md',
           isStuck
             ? 'border-[rgba(245,158,11,0.30)]'
             : 'border-[rgba(0,0,0,0.06)]',
           compact ? 'p-3' : 'p-3.5'
         )}
-        style={{ boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
+        style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
       >
         {/* ── Badge row ──────────────────────────────────── */}
         {badge && (
-          <div className="mb-2.5">
+          <div className="mb-3">
             <span
-              className="inline-flex items-center gap-1 rounded-full text-[10px] font-medium px-2 py-[2px] border"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-medium"
               style={{ color: badge.color, background: badge.bg, borderColor: badge.border }}
             >
               {badge.label}
@@ -70,21 +70,21 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
         )}
 
         {/* ── Title + Client ─────────────────────────────── */}
-        <div className="mb-2">
-          <h3 className="text-[13px] font-semibold text-[#0F172A] truncate leading-tight group-hover:text-[#007AFF] transition-colors">
+        <div className="mb-2.5">
+          <h3 className="truncate text-[14px] font-semibold leading-tight text-[#0F172A] transition-colors group-hover:text-[#007AFF]">
             {deal.deal_name}
           </h3>
-          <p className="text-[11px] text-[#64748B] truncate mt-[2px]">{deal.client?.name}</p>
+          <p className="mt-[3px] truncate text-[12px] text-[#64748B]">{deal.client?.name}</p>
         </div>
 
         {/* ── Value ─────────────────────────────────────── */}
-        <div className={cn('mb-2.5', compact && 'mb-2')}>
-          <div className="text-[14px] font-semibold text-[#0F172A] leading-none">
+        <div className={cn('mb-3', compact && 'mb-2.5')}>
+          <div className="text-[14px] font-semibold leading-none text-[#0F172A]">
             {formatCurrency(deal.revenue, true)}
           </div>
           {!compact && (
-            <div className="text-[11px] text-[#94A3B8] mt-1">
-              ₱{(deal.monthly_subscription / 1000).toFixed(0)}K/mo · {deal.duration}mo
+            <div className="mt-1 text-[12px] text-[#94A3B8]">
+              {deal.lead_source} · {deal.duration}mo
             </div>
           )}
         </div>
@@ -92,15 +92,15 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
         {/* ── Stage + Probability bar ────────────────────── */}
         {!compact && (
           <>
-            <div className="mb-2.5">
+            <div className="mb-3">
               <StagePill stage={deal.stage} daysInStage={deal.days_in_stage} size="sm" />
             </div>
 
             {!deal.is_closed && (
-              <div className="mb-2.5">
-                <div className="flex justify-between text-[10px] mb-1">
+              <div className="mb-3">
+                <div className="mb-1 flex justify-between text-[10px]">
                   <span className="text-[#94A3B8]">Win probability</span>
-                  <span className="text-[#475569] font-medium">{deal.probability_pct}%</span>
+                  <span className="font-medium text-[#475569]">{deal.probability_pct}%</span>
                 </div>
                 <div className="h-[3px] bg-[rgba(0,0,0,0.06)] rounded-full overflow-hidden">
                   <div
@@ -128,7 +128,7 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
               <DealAvatar name={`${deal.bd.firstName} ${deal.bd.lastName}`} />
             )}
             {deal.due_date && !compact && (
-              <div className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+              <div className="flex items-center gap-1 text-[12px] text-[#94A3B8]">
                 <Calendar size={9} />
                 <span>{formatDate(deal.due_date)}</span>
               </div>
@@ -145,7 +145,7 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
               </span>
             )}
             {!isStuck && !isOverdue && (
-              <span className="text-[10px] text-[#CBD5E1]">{deal.lead_source}</span>
+              <span className="text-[12px] text-[#CBD5E1]">{deal.last_stage_update_at ? formatDate(deal.last_stage_update_at) : deal.lead_source}</span>
             )}
           </div>
         </div>

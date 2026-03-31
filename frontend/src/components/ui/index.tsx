@@ -24,11 +24,11 @@ export function Button({
 
   const variants = {
     primary:
-      'text-white border-transparent',
+      'border border-transparent bg-[#007AFF] text-white shadow-md hover:bg-[#0066D6]',
     secondary:
-      'bg-white border border-[rgba(0,0,0,0.08)] text-[#0F172A] hover:bg-[#F8FAFC] shadow-[0_1px_3px_rgba(15,23,42,0.06)]',
+      'bg-white border border-[#E2E8F0] text-[#0F172A] hover:bg-[#F8FAFC] shadow-sm',
     ghost:
-      'bg-transparent border border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-[rgba(0,0,0,0.04)]',
+      'bg-transparent border border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-[rgba(248,250,252,0.96)]',
     danger:
       'bg-[rgba(244,63,94,0.06)] border border-[rgba(244,63,94,0.18)] text-[#E11D48] hover:bg-[rgba(244,63,94,0.10)]',
     success:
@@ -37,23 +37,14 @@ export function Button({
 
   const sizes = {
     sm: 'h-7 px-3 text-[12px]',
-    md: 'h-8 px-4 text-[13px]',
+    md: 'h-9 px-4 text-[13px]',
     lg: 'h-10 px-5 text-[14px]',
   };
-
-  const primaryStyle =
-    variant === 'primary'
-      ? {
-          background: 'linear-gradient(135deg, #007AFF 0%, #0055D4 100%)',
-          boxShadow: '0 1px 3px rgba(0,122,255,0.28)',
-          ...style,
-        }
-      : style;
 
   return (
     <button
       className={cn(base, variants[variant], sizes[size], className)}
-      style={primaryStyle}
+      style={style}
       disabled={disabled || loading}
       {...props}
     >
@@ -108,7 +99,7 @@ export function Input({ label, error, icon, className, ...props }: InputProps) {
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider">
+        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
           {label}
         </label>
       )}
@@ -118,7 +109,7 @@ export function Input({ label, error, icon, className, ...props }: InputProps) {
         )}
         <input
           className={cn(
-            'w-full h-9 bg-white border border-[rgba(0,0,0,0.08)] rounded-[8px] px-3 text-[13px] text-[#0F172A] placeholder-[#94A3B8]',
+            'w-full h-10 bg-white border border-[#E2E8F0] rounded-[8px] px-3 text-[13px] text-[#0F172A] placeholder-[#94A3B8] shadow-sm',
             'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all',
             icon && 'pl-9',
             error && 'border-[#F43F5E] focus:border-[#F43F5E] focus:ring-[rgba(244,63,94,0.12)]',
@@ -144,13 +135,13 @@ export function Select({ label, error, options, placeholder, className, ...props
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider">
+        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
           {label}
         </label>
       )}
       <select
         className={cn(
-          'w-full h-9 bg-white border border-[rgba(0,0,0,0.08)] rounded-[8px] px-3 text-[13px] text-[#0F172A]',
+          'w-full h-10 bg-white border border-[#E2E8F0] rounded-[8px] px-3 text-[13px] text-[#0F172A] shadow-sm',
           'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all',
           'appearance-none cursor-pointer',
           error && 'border-[#F43F5E]',
@@ -178,13 +169,13 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider">
+        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
           {label}
         </label>
       )}
       <textarea
         className={cn(
-          'w-full bg-white border border-[rgba(0,0,0,0.08)] rounded-[8px] px-3 py-2.5 text-[13px] text-[#0F172A] placeholder-[#94A3B8]',
+          'w-full bg-white border border-[#E2E8F0] rounded-[8px] px-3 py-2.5 text-[13px] text-[#0F172A] placeholder-[#94A3B8] shadow-sm',
           'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all resize-none',
           error && 'border-[#F43F5E]',
           className
@@ -205,7 +196,7 @@ export function Card({ children, className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'bg-white border border-[rgba(0,0,0,0.05)] rounded-[8px] shadow-[0_1px_4px_rgba(15,23,42,0.06)]',
+        'bg-white border border-[rgba(0,0,0,0.05)] rounded-[8px] shadow-sm',
         className
       )}
       {...props}
@@ -242,7 +233,7 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        'bg-white border border-[rgba(0,0,0,0.05)] rounded-[8px] shadow-[0_1px_4px_rgba(15,23,42,0.06)] p-5 flex flex-col gap-3 animate-fade-in',
+        'animate-fade-in flex flex-col gap-3 rounded-[8px] border border-[rgba(0,0,0,0.05)] bg-white p-5 shadow-sm',
         className
       )}
       style={{ animationDelay: `${delay}ms`, opacity: 0, animationFillMode: 'forwards' }}
@@ -259,7 +250,7 @@ export function MetricCard({
         )}
       </div>
       <div>
-        <div className="text-[22px] font-semibold tracking-tight" style={{ color: accent }}>
+        <div className="text-[22px] font-semibold tracking-tight text-[#0F172A]">
           {value}
         </div>
         {sub && <div className="text-[11px] text-[#94A3B8] mt-1">{sub}</div>}

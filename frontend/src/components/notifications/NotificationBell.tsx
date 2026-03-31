@@ -26,8 +26,8 @@ export default function NotificationBell() {
       <button
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'relative w-8 h-8 flex items-center justify-center rounded-xl transition-all',
-          open ? 'bg-[#eef1fe] text-[#3d5af1]' : 'text-[#8b90a8] hover:text-[#1a1d2e] hover:bg-[#f4f6fb]'
+          'relative flex h-9 w-9 items-center justify-center rounded-[8px] border border-transparent transition-all',
+          open ? 'border-[rgba(0,122,255,0.12)] bg-[rgba(0,122,255,0.08)] text-[#007AFF]' : 'text-[#64748B] hover:border-[#E2E8F0] hover:bg-white hover:text-[#0F172A]'
         )}
       >
         <Bell size={16} />
@@ -39,11 +39,11 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#e2e6f0] rounded-2xl shadow-lg z-40 overflow-hidden animate-fade-in">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#f0f2f8]">
+        <div className="glass absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.05)] shadow-md animate-fade-in">
+          <div className="flex items-center justify-between px-4 py-3">
             <span className="text-xs font-semibold font-display text-[#1a1d2e]">Notifications</span>
             {unreadCount > 0 && (
-              <span className="text-[10px] bg-[#eef1fe] text-[#3d5af1] px-2 py-0.5 rounded-full border border-[#c7d0fb]">
+              <span className="rounded-full border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] px-2 py-0.5 text-[10px] text-[#007AFF]">
                 {unreadCount} new
               </span>
             )}
@@ -58,8 +58,8 @@ export default function NotificationBell() {
                   key={n.id}
                   onClick={() => markRead(n.id)}
                   className={cn(
-                    'w-full text-left px-4 py-3 border-b border-[#f4f6fb] hover:bg-[#f4f6fb] transition-colors',
-                    !n.is_read && 'bg-[#fafbff]'
+                    'w-full px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.92)]',
+                    !n.is_read && 'bg-[rgba(255,255,255,0.72)]'
                   )}
                 >
                   {!n.is_read && (
@@ -74,11 +74,11 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="px-4 py-2.5 border-t border-[#f0f2f8]">
+          <div className="px-4 py-2.5">
             <Link
               to="/notifications"
               onClick={() => setOpen(false)}
-              className="text-xs text-[#3d5af1] hover:underline font-medium"
+              className="text-xs font-medium text-[#007AFF] hover:underline"
             >
               View all notifications →
             </Link>

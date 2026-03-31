@@ -18,6 +18,7 @@ export interface DealFormState {
   monthly_subscription: string;
   duration: string;
   lead_source: string;
+  start_date: string;
   due_date: string;
   action_plan_due_date: string;
   proposal_link: string;
@@ -29,7 +30,7 @@ export interface DealFormState {
 export const defaultDealForm = (): DealFormState => ({
   deal_name: '', client_id: '', service_id: '', bundle_id: '',
   dealType: 'service', monthly_subscription: '', duration: '12',
-  lead_source: 'Outbound', due_date: '', action_plan_due_date: '',
+  lead_source: 'Outbound', start_date: '', due_date: '', action_plan_due_date: '',
   proposal_link: '', contract_link: '', remarks: '', action_plan: '',
 });
 
@@ -112,7 +113,11 @@ export default function DealForm({ form, update }: DealFormProps) {
         options={LEAD_SOURCES} required />
 
       <div className="grid grid-cols-2 gap-4">
-        <Input label="Expected Close Date" type="date" value={form.due_date} onChange={e => update('due_date', e.target.value)} required />
+        <Input label="Contract Start Date" type="date" value={form.start_date} onChange={e => update('start_date', e.target.value)} required />
+        <Input label="Contract End Date" type="date" value={form.due_date} onChange={e => update('due_date', e.target.value)} required />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <Input label="Action Plan Due Date" type="date" value={form.action_plan_due_date} onChange={e => update('action_plan_due_date', e.target.value)} />
       </div>
 

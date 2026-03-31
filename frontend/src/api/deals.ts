@@ -106,9 +106,12 @@ export interface CreateDealPayload {
   monthlySubscription: number
   duration: number
   leadSource: 'INBOUND' | 'OUTBOUND' | 'REFERRAL'
+  contractStartDate: string
+  contractEndDate: string
   serviceId?: string
   bundleId?: string
   proposalLink?: string
+  contractLink?: string
 }
 
 export async function createDeal(data: CreateDealPayload): Promise<Deal> {
@@ -121,6 +124,7 @@ export interface UpdateDealPayload {
   monthlySubscription?: number
   duration?: number
   stageId?: string
+  startDate?: string
   remarks?: string
   actionPlan?: string
   dueDate?: string

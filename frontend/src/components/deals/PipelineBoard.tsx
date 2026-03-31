@@ -108,7 +108,7 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
   return (
     <div className="flex flex-col h-full">
       {/* ── Kanban board ─────────────────────────────────────────────────────── */}
-      <div className="flex gap-3 overflow-x-auto flex-1 min-h-0 pb-4">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-5">
         {activeStages.map((stage) => {
           const stageDeals = getDealsByStage(stage.name);
           const stageValue = stageDeals.reduce((sum, d) => sum + d.revenue, 0);
@@ -123,16 +123,16 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
               onDragLeave={() => { if (dragOverStage === stage.name) setDragOverStage(null); }}
               onDrop={(e) => handleDrop(e, stage.name)}
               className={cn(
-                'flex flex-col gap-2 flex-shrink-0 transition-all rounded-[8px]',
+                'flex flex-shrink-0 flex-col gap-3 rounded-[12px] transition-all',
                 isDragTarget ? 'ring-2 ring-[#007AFF]/40 ring-offset-1' : '',
                 updateStageMut.isPending ? 'pointer-events-none opacity-60' : ''
               )}
-              style={{ width: '320px', minWidth: '320px' }}
+              style={{ width: '332px', minWidth: '332px' }}
             >
               {/* ── Column header ─────────────────────────────── */}
               <div
-                className="flex-shrink-0 px-3 py-2.5 rounded-[8px]"
-                style={{ background: isDragTarget ? 'rgba(0,122,255,0.04)' : 'rgba(248,250,252,0.90)' }}
+                className="glass flex-shrink-0 rounded-[12px] border border-[rgba(0,0,0,0.04)] px-4 py-3"
+                style={{ background: isDragTarget ? 'rgba(240,249,255,0.92)' : 'rgba(248,250,252,0.88)' }}
               >
                 {/* Top row: dot + name + count */}
                 <div className="flex items-center justify-between mb-[3px]">
@@ -141,7 +141,7 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
                       className="w-[7px] h-[7px] rounded-full flex-shrink-0"
                       style={{ background: dotColor }}
                     />
-                    <span className="text-[11px] font-semibold text-[#0F172A] uppercase tracking-wider">
+                    <span className="text-[12px] font-semibold text-[#0F172A] uppercase tracking-[0.12em]">
                       {stage.name}
                     </span>
                   </div>
@@ -155,7 +155,7 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
                 </div>
 
                 {/* Summary line — "INQUIRY 4 • ₱142K" style */}
-                <div className="text-[11px] text-[#64748B] font-medium">
+                <div className="text-[11px] font-medium text-[#64748B]">
                   {stageDeals.length} deal{stageDeals.length !== 1 ? 's' : ''}
                   {stageValue > 0 && (
                     <span className="text-[#94A3B8]"> · {formatCurrency(stageValue, true)}</span>
@@ -163,7 +163,7 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
                 </div>
 
                 {/* Stage progress bar — tonal fill */}
-                <div className="h-[2px] rounded-full mt-2 bg-[rgba(0,0,0,0.06)] overflow-hidden">
+                <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-[rgba(0,0,0,0.06)]">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
@@ -176,11 +176,11 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
               </div>
 
               {/* ── Deal cards list ───────────────────────────── */}
-              <div className="flex flex-col gap-2 flex-1 overflow-y-auto max-h-[calc(100vh-310px)]">
+              <div className="flex max-h-[calc(100vh-312px)] flex-1 flex-col gap-3 overflow-y-auto pr-1">
                 {stageDeals.length === 0 ? (
                   <div
                     className={cn(
-                      'rounded-[8px] border border-dashed',
+                      'rounded-[12px] border border-dashed',
                       isDragTarget
                         ? 'border-[#007AFF]/30 bg-[rgba(0,122,255,0.03)]'
                         : 'border-[rgba(0,0,0,0.07)]'
@@ -201,9 +201,9 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
 
       {/* ── Sticky footer stats bar ──────────────────────────────────────────── */}
       <div
-        className="flex-shrink-0 flex items-center justify-center gap-10 px-6 py-3 border-t border-[rgba(0,0,0,0.05)]"
+        className="glass flex flex-shrink-0 items-center justify-center gap-10 border-t border-[rgba(0,0,0,0.05)] px-6 py-3"
         style={{
-          background: 'rgba(248,250,252,0.90)',
+          background: 'rgba(248,250,252,0.88)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
         }}

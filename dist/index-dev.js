@@ -946,6 +946,7 @@ var config16 = {
         monthlySubscription: z7.number().min(0).optional(),
         duration: z7.number().min(1).optional(),
         stageId: z7.string().uuid().optional(),
+        startDate: z7.string().datetime().optional(),
         // remarks/actionPlan now live on DealAuditLog (Rev 1–2)
         // These update the CURRENT open audit log entry (exitedAt IS NULL)
         remarks: z7.string().optional(),
@@ -1350,9 +1351,12 @@ var config20 = {
         monthlySubscription: z8.number().min(0),
         duration: z8.number().min(1),
         leadSource: z8.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
+        contractStartDate: z8.string().min(1),
+        contractEndDate: z8.string().min(1),
         serviceId: z8.string().optional(),
         bundleId: z8.string().optional(),
-        proposalLink: z8.string().optional()
+        proposalLink: z8.string().optional(),
+        contractLink: z8.string().optional()
       })
     }
   ],
@@ -1362,7 +1366,19 @@ var config20 = {
 var handler20 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
-    const { dealName, clientId, monthlySubscription, duration, leadSource, serviceId, bundleId, proposalLink } = req.request.body;
+    const {
+      dealName,
+      clientId,
+      monthlySubscription,
+      duration,
+      leadSource,
+      contractStartDate,
+      contractEndDate,
+      serviceId,
+      bundleId,
+      proposalLink,
+      contractLink
+    } = req.request.body;
     const inquiryStage = await prisma.pipelineStage.findUnique({
       where: { name: "Inquiry" }
     });
@@ -1383,7 +1399,9 @@ var handler20 = async (req, ctx) => {
         serviceId,
         bundleId,
         proposalLink,
-        startDate: /* @__PURE__ */ new Date(),
+        contractLink,
+        startDate: new Date(contractStartDate),
+        dueDate: new Date(contractEndDate),
         lastStageUpdateAt: /* @__PURE__ */ new Date(),
         auditLogs: {
           create: {
@@ -1430,8 +1448,7 @@ var handler20 = async (req, ctx) => {
         bdId: newDeal.bdId,
         stageId: newDeal.stageId,
         revenue: newDeal.revenue,
-        expectedCloseDate: newDeal.startDate
-        // using startDate as a fallback
+        expectedCloseDate: newDeal.dueDate ?? newDeal.startDate
       }
     });
     return {

@@ -20,14 +20,8 @@ const NAV_ITEMS = [
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   return (
-    <div
-      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-      style={{
-        background: 'rgba(255,255,255,0.12)',
-        border: '1.5px solid rgba(255,255,255,0.18)',
-      }}
-    >
-      <span className="text-[10px] font-semibold text-white">{initials}</span>
+    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.08)] text-[10px] font-semibold text-white">
+      <span>{initials}</span>
     </div>
   );
 }
@@ -48,40 +42,40 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="relative flex flex-col h-screen flex-shrink-0 border-r border-[rgba(255,255,255,0.12)]"
+      className="relative flex h-screen flex-shrink-0 flex-col border-r border-[rgba(255,255,255,0.08)]"
       style={{
         width: '250px',
         minWidth: '250px',
-        background: 'linear-gradient(160deg, #0A1628 0%, #0D1F3C 40%, #0F2952 75%, #0A1E45 100%)',
+        background: 'linear-gradient(180deg, #0F172A 0%, #132238 48%, #1A2E4A 100%)',
         backdropFilter: 'blur(20px) saturate(180%)',
         WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       }}
     >
       {/* ── Logo / Brand ────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 h-[60px] border-b border-[rgba(255,255,255,0.07)] flex-shrink-0">
+      <div className="flex h-[68px] flex-shrink-0 items-center gap-3 px-5">
         <div
-          className="w-[28px] h-[28px] rounded-[8px] flex items-center justify-center flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #007AFF 0%, #3BABFF 100%)', boxShadow: '0 2px 8px rgba(0,122,255,0.40)' }}
+          className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[8px]"
+          style={{ background: 'linear-gradient(135deg, #007AFF 0%, #3BABFF 100%)', boxShadow: '0 8px 18px rgba(0,122,255,0.18)' }}
         >
           <span className="text-white font-semibold text-[11px]">S</span>
         </div>
         <div>
-          <div className="text-[13px] font-semibold text-white leading-none tracking-tight">SalesCRM</div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.40)] mt-[2px]">BD Team</div>
+          <div className="text-[13px] font-semibold leading-none tracking-tight text-white">SalesCRM</div>
+          <div className="mt-[2px] text-[10px] text-[rgba(255,255,255,0.48)]">BD Team</div>
         </div>
       </div>
 
       {/* ── Navigation ──────────────────────────────────── */}
-      <nav className="flex-1 py-3 flex flex-col gap-[2px] px-3 overflow-y-auto">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) => cn(
-              'flex items-center gap-3 h-9 px-3 rounded-[8px] transition-all duration-150 group',
+              'group flex h-10 items-center gap-3 rounded-[8px] px-3 transition-all duration-150',
               isActive
-                ? 'bg-[rgba(255,255,255,0.12)] text-white'
-                : 'text-[rgba(255,255,255,0.50)] hover:text-[rgba(255,255,255,0.85)] hover:bg-[rgba(255,255,255,0.06)]'
+                ? 'bg-[rgba(0,122,255,0.18)] text-[#93C5FD]'
+                : 'text-[rgba(255,255,255,0.64)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
             )}
           >
             {({ isActive }) => (
@@ -91,17 +85,17 @@ export default function Sidebar() {
                   className={cn(
                     'flex-shrink-0 transition-colors',
                     isActive
-                      ? 'text-white'
-                      : 'text-[rgba(255,255,255,0.45)] group-hover:text-[rgba(255,255,255,0.80)]'
+                      ? 'text-[#93C5FD]'
+                      : 'text-[rgba(255,255,255,0.56)] group-hover:text-white'
                   )}
-                  strokeWidth={isActive ? 2.2 : 1.8}
+                  strokeWidth={isActive ? 2.15 : 1.85}
                 />
                 <span className={cn(
                   'text-[13px] font-medium',
-                  isActive ? 'text-white' : ''
+                  isActive ? 'text-[#93C5FD]' : ''
                 )}>{item.label}</span>
                 {isActive && (
-                  <span className="ml-auto w-1 h-4 rounded-full bg-[#007AFF]" />
+                  <span className="ml-auto h-2 w-2 rounded-full bg-[#007AFF]" />
                 )}
               </>
             )}
@@ -112,10 +106,10 @@ export default function Sidebar() {
         <NavLink
           to="/notifications"
           className={({ isActive }) => cn(
-            'flex items-center gap-3 h-9 px-3 rounded-[8px] transition-all duration-150 relative group',
+            'group relative flex h-10 items-center gap-3 rounded-[8px] px-3 transition-all duration-150',
             isActive
-              ? 'bg-[rgba(255,255,255,0.12)] text-white'
-              : 'text-[rgba(255,255,255,0.50)] hover:text-[rgba(255,255,255,0.85)] hover:bg-[rgba(255,255,255,0.06)]'
+              ? 'bg-[rgba(0,122,255,0.18)] text-[#93C5FD]'
+              : 'text-[rgba(255,255,255,0.64)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
           )}
         >
           {({ isActive }) => (
@@ -125,12 +119,12 @@ export default function Sidebar() {
                 className={cn(
                   'flex-shrink-0 transition-colors',
                   isActive
-                    ? 'text-white'
-                    : 'text-[rgba(255,255,255,0.45)] group-hover:text-[rgba(255,255,255,0.80)]'
+                    ? 'text-[#93C5FD]'
+                    : 'text-[rgba(255,255,255,0.56)] group-hover:text-white'
                 )}
-                strokeWidth={isActive ? 2.2 : 1.8}
+                strokeWidth={isActive ? 2.15 : 1.85}
               />
-              <span className={cn('text-[13px] font-medium', isActive ? 'text-white' : '')}>
+              <span className={cn('text-[13px] font-medium', isActive ? 'text-[#93C5FD]' : '')}>
                 Notifications
               </span>
               {unreadCount > 0 && (
@@ -139,7 +133,7 @@ export default function Sidebar() {
                 </span>
               )}
               {!unreadCount && isActive && (
-                <span className="ml-auto w-1 h-4 rounded-full bg-[#007AFF]" />
+                <span className="ml-auto h-2 w-2 rounded-full bg-[#007AFF]" />
               )}
             </>
           )}
@@ -147,20 +141,20 @@ export default function Sidebar() {
       </nav>
 
       {/* ── User footer ─────────────────────────────────── */}
-      <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-3 flex-shrink-0">
+      <div className="px-4 py-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <Avatar name={`${user?.firstName} ${user?.lastName}`} />
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-semibold text-white truncate leading-none">
+            <div className="truncate text-[12px] font-semibold leading-none text-white">
               {user?.firstName} {user?.lastName}
             </div>
-            <div className="text-[10px] text-[rgba(255,255,255,0.38)] mt-[2px] truncate">
+            <div className="mt-[2px] truncate text-[10px] text-[rgba(255,255,255,0.48)]">
               {user?.role?.replace('_', ' ')}
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="text-[rgba(255,255,255,0.35)] hover:text-[#F43F5E] transition-colors p-1 rounded-[6px] hover:bg-[rgba(244,63,94,0.12)]"
+            className="rounded-[8px] p-1.5 text-[rgba(255,255,255,0.46)] transition-colors hover:bg-[rgba(244,63,94,0.14)] hover:text-[#F43F5E]"
             title="Sign out"
           >
             <LogOut size={13} />

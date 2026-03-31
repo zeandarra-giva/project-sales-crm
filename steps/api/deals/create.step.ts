@@ -18,9 +18,12 @@ export const config = {
                 monthlySubscription: z.number().min(0),
                 duration: z.number().min(1),
                 leadSource: z.enum(['INBOUND', 'OUTBOUND', 'REFERRAL']),
+                contractStartDate: z.string().min(1),
+                contractEndDate: z.string().min(1),
                 serviceId: z.string().optional(),
                 bundleId: z.string().optional(),
                 proposalLink: z.string().optional(),
+                contractLink: z.string().optional(),
             }),
         },
     ],
@@ -32,7 +35,19 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
     try {
         const user = await authenticate(req.request)
 
-        const { dealName, clientId, monthlySubscription, duration, leadSource, serviceId, bundleId, proposalLink } = req.request.body
+        const {
+            dealName,
+            clientId,
+            monthlySubscription,
+            duration,
+            leadSource,
+            contractStartDate,
+            contractEndDate,
+            serviceId,
+            bundleId,
+            proposalLink,
+            contractLink,
+        } = req.request.body
 
         // First stage should be 'Inquiry' (s-1)
         const inquiryStage = await prisma.pipelineStage.findUnique({
@@ -56,7 +71,9 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 serviceId,
                 bundleId,
                 proposalLink,
-                startDate: new Date(),
+                contractLink,
+                startDate: new Date(contractStartDate),
+                dueDate: new Date(contractEndDate),
                 lastStageUpdateAt: new Date(),
                 auditLogs: {
                     create: {
@@ -105,7 +122,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 bdId: newDeal.bdId,
                 stageId: newDeal.stageId,
                 revenue: newDeal.revenue,
-                expectedCloseDate: newDeal.startDate, // using startDate as a fallback
+                expectedCloseDate: newDeal.dueDate ?? newDeal.startDate,
             },
         })
 

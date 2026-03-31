@@ -444,8 +444,8 @@ export default function DealDetail() {
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Key Dates</div>
               <div className="flex flex-col gap-2.5">
                 {[
-                  { label: 'Deal Created',     date: deal.start_date,           icon: <Calendar size={12} /> },
-                  deal.due_date && { label: 'Expected Close', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
+                  { label: 'Contract Start',   date: deal.start_date,           icon: <Calendar size={12} /> },
+                  deal.due_date && { label: 'Contract End', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
                   currentActionPlanDueDate && {
                     label: 'Action Plan Due', date: currentActionPlanDueDate,
@@ -506,7 +506,7 @@ export default function DealDetail() {
 
             {(deal.proposal_link || deal.contract_link) && (
               <Card className="p-5">
-                <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Documents</div>
+                <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Contract</div>
                 <div className="flex flex-col gap-2">
                   {deal.proposal_link && (
                     <a href={deal.proposal_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-[#3d5af1] transition-colors">

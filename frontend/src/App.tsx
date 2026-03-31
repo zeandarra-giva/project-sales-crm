@@ -22,9 +22,10 @@ const queryClient = new QueryClient();
 function ProtectedLayout() {
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
+      <div className="relative flex h-screen overflow-hidden bg-[#FFFFFF]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,122,255,0.08),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.32),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8FAFC_100%)]" />
         <Sidebar />
-        <main className="flex-1 overflow-hidden flex flex-col min-w-0">
+        <main className="relative flex min-w-0 flex-1 overflow-hidden flex-col">
           <Outlet />
         </main>
       </div>

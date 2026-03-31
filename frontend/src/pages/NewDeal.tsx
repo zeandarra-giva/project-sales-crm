@@ -25,7 +25,10 @@ export default function NewDealPage() {
     duration: '12',
     lead_source: 'OUTBOUND',
     client_id: prefillClientId,
+    contract_start_date: '',
+    contract_end_date: '',
     proposal_link: '',
+    contract_link: '',
   });
 
   const clientOptions = clients.map(c => ({ value: c.id, label: c.name }));
@@ -34,16 +37,24 @@ export default function NewDealPage() {
     form.monthly_subscription && form.duration
       ? parseFloat(form.monthly_subscription) * parseFloat(form.duration)
       : 0;
+  const invalidContractRange =
+    !!form.contract_start_date &&
+    !!form.contract_end_date &&
+    new Date(form.contract_end_date) < new Date(form.contract_start_date);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (invalidContractRange) return;
     createDeal.mutate({
       dealName: form.deal_name,
       clientId: form.client_id,
       monthlySubscription: parseFloat(form.monthly_subscription),
       duration: parseInt(form.duration),
       leadSource: form.lead_source as 'INBOUND' | 'OUTBOUND' | 'REFERRAL',
+      contractStartDate: form.contract_start_date,
+      contractEndDate: form.contract_end_date,
       proposalLink: form.proposal_link || undefined,
+      contractLink: form.contract_link || undefined,
     }, {
       onSuccess: () => navigate('/pipeline'),
     });
@@ -80,17 +91,41 @@ export default function NewDealPage() {
                 </div>
               )}
               <Select label="Lead Source" value={form.lead_source} onChange={e => update('lead_source', e.target.value)} options={LEAD_SOURCES} required />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Contract Start Date"
+                  type="date"
+                  value={form.contract_start_date}
+                  onChange={e => update('contract_start_date', e.target.value)}
+                  required
+                />
+                <Input
+                  label="Contract End Date"
+                  type="date"
+                  value={form.contract_end_date}
+                  onChange={e => update('contract_end_date', e.target.value)}
+                  required
+                />
+              </div>
+              {invalidContractRange && (
+                <div className="rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-xs text-[#e11d48]">
+                  Contract end date must be on or after the contract start date.
+                </div>
+              )}
             </div>
           </Card>
 
           <Card className="p-6">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Documents</div>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Contract</div>
             <Input label="Proposal Link" type="url" value={form.proposal_link} onChange={e => update('proposal_link', e.target.value)} placeholder="https://drive.google.com/..." />
+            <div className="mt-4">
+              <Input label="Contract Link" type="url" value={form.contract_link} onChange={e => update('contract_link', e.target.value)} placeholder="https://drive.google.com/..." />
+            </div>
           </Card>
 
           <div className="flex gap-3 justify-end">
             <Button type="button" variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
-            <Button type="submit" disabled={createDeal.isPending}>{createDeal.isPending ? 'Creating...' : 'Create Deal'}</Button>
+            <Button type="submit" disabled={createDeal.isPending || invalidContractRange}>{createDeal.isPending ? 'Creating...' : 'Create Deal'}</Button>
           </div>
           {createDeal.isError && (
             <div className="p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">Failed to create deal. Please check all fields and try again.</div>

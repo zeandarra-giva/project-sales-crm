@@ -84,21 +84,21 @@ export default function PipelinePage() {
         action={{ label: 'New Deal', to: '/deals/new' }}
       />
 
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-[#e2e6f0] bg-white flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="glass flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e6f0] px-6 py-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Stage filter pills */}
-            <div className="flex items-center gap-1 bg-[#f4f6fb] border border-[#e2e6f0] rounded-xl p-1">
+            <div className="flex items-center gap-1 rounded-[8px] border border-[#e2e6f0] bg-[rgba(248,250,252,0.92)] p-1 shadow-sm">
               {(['All', 'Inquiry', 'Prospecting', 'Discovery', 'Proposal Sent', 'Negotiation'] as const).map(s => (
                 <button
                   key={s}
                   onClick={() => setStageFilter(s as any)}
                   className={cn(
-                    'px-2.5 py-1 rounded-lg text-xs transition-all whitespace-nowrap',
+                    'whitespace-nowrap rounded-[8px] px-2.5 py-1 text-xs transition-all',
                     stageFilter === s
-                      ? 'bg-white text-[#3d5af1] border border-[#c7d0fb] shadow-sm'
-                      : 'text-[#8b90a8] hover:text-[#4a5068]'
+                      ? 'border border-[rgba(0,122,255,0.12)] bg-white text-[#007AFF] shadow-sm'
+                      : 'text-[#64748B] hover:text-[#0F172A]'
                   )}
                 >
                   {s}
@@ -109,7 +109,7 @@ export default function PipelinePage() {
             <select
               value={sourceFilter}
               onChange={e => setSourceFilter(e.target.value)}
-              className="h-8 bg-white border border-[#e2e6f0] rounded-lg px-2.5 text-xs text-[#4a5068] cursor-pointer focus:outline-none"
+              className="h-9 cursor-pointer rounded-[8px] border border-[#E2E8F0] bg-white px-3 text-xs text-[#475569] shadow-sm focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)]"
             >
               {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -117,10 +117,10 @@ export default function PipelinePage() {
             <button
               onClick={() => setShowClosed(!showClosed)}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-xs border transition-all',
+                'rounded-[8px] border px-3 py-2 text-xs transition-all',
                 showClosed
                   ? 'bg-[#d1fae5] border-[#34d399] text-[#059669]'
-                  : 'bg-white border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
+                  : 'bg-white border-[#E2E8F0] text-[#64748B] shadow-sm hover:text-[#0F172A]'
               )}
             >
               Show closed
@@ -128,21 +128,21 @@ export default function PipelinePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-[#8b90a8]">
+            <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
               <span>Weighted:</span>
-              <span className="text-[#4a5068] font-semibold">{formatCurrency(weightedValue, true)}</span>
+              <span className="font-semibold text-[#0F172A]">{formatCurrency(weightedValue, true)}</span>
             </div>
             {/* View toggle */}
-            <div className="flex items-center bg-[#f4f6fb] border border-[#e2e6f0] rounded-lg p-0.5">
+            <div className="flex items-center rounded-[8px] border border-[#E2E8F0] bg-[rgba(248,250,252,0.92)] p-0.5 shadow-sm">
               <button
                 onClick={() => setView('board')}
-                className={cn('p-1.5 rounded-md transition-all', view === 'board' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}
+                className={cn('rounded-[8px] p-1.5 transition-all', view === 'board' ? 'bg-white text-[#007AFF] shadow-sm' : 'text-[#64748B] hover:text-[#0F172A]')}
               >
                 <LayoutGrid size={14} />
               </button>
               <button
                 onClick={() => setView('list')}
-                className={cn('p-1.5 rounded-md transition-all', view === 'list' ? 'bg-white text-[#3d5af1] shadow-sm' : 'text-[#8b90a8] hover:text-[#4a5068]')}
+                className={cn('rounded-[8px] p-1.5 transition-all', view === 'list' ? 'bg-white text-[#007AFF] shadow-sm' : 'text-[#64748B] hover:text-[#0F172A]')}
               >
                 <List size={14} />
               </button>
