@@ -331,13 +331,13 @@ export const MOCK_BD_DASHBOARD: BDDashboard = {
 };
 
 export const PIPELINE_STAGES = [
-  { id: 's-1', name: 'Inquiry' as const, duration: 3, probability: 10, color: '#4a4f6b' },
-  { id: 's-2', name: 'Prospecting' as const, duration: 3, probability: 20, color: '#4f6ef7' },
-  { id: 's-3', name: 'Discovery' as const, duration: 3, probability: 40, color: '#10b981' },
-  { id: 's-4', name: 'Proposal Sent' as const, duration: 3, probability: 60, color: '#8b5cf6' },
-  { id: 's-5', name: 'Negotiation' as const, duration: 3, probability: 75, color: '#f59e0b' },
-  { id: 's-6', name: 'Closed Won' as const, duration: null, probability: 100, color: '#10b981' },
-  { id: 's-7', name: 'Closed Lost' as const, duration: null, probability: 0, color: '#f43f5e' },
+  { id: 's-1', name: 'Inquiry' as const,       duration: 3,    probability: 10,  color: '#94A3B8' },
+  { id: 's-2', name: 'Prospecting' as const,   duration: 3,    probability: 20,  color: '#007AFF' },
+  { id: 's-3', name: 'Discovery' as const,     duration: 3,    probability: 40,  color: '#F59E0B' },
+  { id: 's-4', name: 'Proposal Sent' as const, duration: 3,    probability: 60,  color: '#8B5CF6' },
+  { id: 's-5', name: 'Negotiation' as const,   duration: 3,    probability: 75,  color: '#10B981' },
+  { id: 's-6', name: 'Closed Won' as const,    duration: null, probability: 100, color: '#10B981' },
+  { id: 's-7', name: 'Closed Lost' as const,   duration: null, probability: 0,   color: '#F43F5E' },
 ];
 
 export const INDUSTRIES = [

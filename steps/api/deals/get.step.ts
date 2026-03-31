@@ -57,6 +57,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 _count: {
                     select: { auditLogs: true, dealContacts: true },
                 },
+
             },
         })
 

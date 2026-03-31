@@ -4,7 +4,7 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { PIPELINE_STAGES } from '../../mockData';
 import DealCard from './DealCard';
 import { EmptyState, Button, Textarea } from '../ui/index';
-import { Package } from 'lucide-react';
+import { Package, TrendingUp, BarChart2, Zap } from 'lucide-react';
 import { usePipelineStages, useUpdateDealStage } from '../../hooks/useDeals';
 
 interface PipelineBoardProps {
@@ -22,12 +22,22 @@ interface PendingMove {
   currentActionPlan: string;
 }
 
+/** Colored dot per stage — per design spec */
+const STAGE_DOT_COLORS: Record<string, string> = {
+  'Inquiry':       '#94A3B8',  // Gray
+  'Prospecting':   '#007AFF',  // Blue
+  'Discovery':     '#F59E0B',  // Orange
+  'Proposal Sent': '#8B5CF6',  // Purple
+  'Negotiation':   '#10B981',  // Green
+  'Closed Won':    '#10B981',
+  'Closed Lost':   '#F43F5E',
+};
+
 export default function PipelineBoard({ deals, showClosed = false }: PipelineBoardProps) {
   const { data: dbStages = [] } = usePipelineStages();
   const updateStageMut = useUpdateDealStage();
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
 
-  // Modal state for drag-and-drop confirmation
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [moveRemarks, setMoveRemarks] = useState('');
   const [moveActionPlan, setMoveActionPlan] = useState('');
@@ -47,17 +57,12 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
   const handleDrop = (e: React.DragEvent, targetStageName: string) => {
     e.preventDefault();
     setDragOverStage(null);
-
     const dealId = e.dataTransfer.getData('dealId');
     if (!dealId) return;
-
     const targetStageId = dbStages.find(s => s.name === targetStageName)?.id;
     if (!targetStageId) return;
-
     const deal = deals.find(d => d.id === dealId);
     if (!deal || deal.stage === targetStageName) return;
-
-    // Open modal instead of moving immediately
     setPendingMove({
       dealId,
       dealName: deal.deal_name,
@@ -91,67 +96,97 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
     setMoveActionPlan('');
   };
 
+  // ── Footer stats ────────────────────────────────────────────────────────────
+  const activeDeals = deals.filter(d => !d.is_closed);
+  const totalValue = activeDeals.reduce((s, d) => s + d.revenue, 0);
+  const avgDealSize = activeDeals.length > 0 ? totalValue / activeDeals.length : 0;
+  const avgDaysInStage =
+    activeDeals.length > 0
+      ? activeDeals.reduce((s, d) => s + (d.days_in_stage || 0), 0) / activeDeals.length
+      : 0;
+
   return (
-    <>
-      <div className="flex gap-3 overflow-x-auto pb-4 min-h-0">
+    <div className="flex flex-col h-full">
+      {/* ── Kanban board ─────────────────────────────────────────────────────── */}
+      <div className="flex gap-3 overflow-x-auto flex-1 min-h-0 pb-4">
         {activeStages.map((stage) => {
           const stageDeals = getDealsByStage(stage.name);
-          const totalValue = stageDeals.reduce((sum, d) => sum + d.revenue, 0);
+          const stageValue = stageDeals.reduce((sum, d) => sum + d.revenue, 0);
           const stuckCount = stageDeals.filter(d => (d.days_in_stage || 0) > 3).length;
+          const dotColor = STAGE_DOT_COLORS[stage.name] ?? '#94A3B8';
+          const isDragTarget = dragOverStage === stage.name;
 
           return (
             <div
               key={stage.id}
               onDragOver={(e) => handleDragOver(e, stage.name)}
-              onDragLeave={(e) => {
-                if (dragOverStage === stage.name) setDragOverStage(null);
-              }}
+              onDragLeave={() => { if (dragOverStage === stage.name) setDragOverStage(null); }}
               onDrop={(e) => handleDrop(e, stage.name)}
               className={cn(
-                "flex flex-col gap-2 min-w-[260px] w-[260px] flex-shrink-0 transition-opacity rounded-xl",
-                dragOverStage === stage.name ? "opacity-75 ring-2 ring-indigo-400 ring-offset-2" : "",
-                updateStageMut.isPending ? "pointer-events-none" : ""
+                'flex flex-col gap-2 flex-shrink-0 transition-all rounded-[8px]',
+                isDragTarget ? 'ring-2 ring-[#007AFF]/40 ring-offset-1' : '',
+                updateStageMut.isPending ? 'pointer-events-none opacity-60' : ''
               )}
+              style={{ width: '320px', minWidth: '320px' }}
             >
-              {/* Column header */}
-              <div className="bg-white border border-[#e2e6f0] rounded-xl px-3 py-2.5">
-                <div className="flex items-center justify-between mb-1.5">
+              {/* ── Column header ─────────────────────────────── */}
+              <div
+                className="flex-shrink-0 px-3 py-2.5 rounded-[8px]"
+                style={{ background: isDragTarget ? 'rgba(0,122,255,0.04)' : 'rgba(248,250,252,0.90)' }}
+              >
+                {/* Top row: dot + name + count */}
+                <div className="flex items-center justify-between mb-[3px]">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: stage.color }} />
-                    <span className="text-xs font-semibold font-display text-[#1a1d2e]">{stage.name}</span>
+                    <span
+                      className="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                      style={{ background: dotColor }}
+                    />
+                    <span className="text-[11px] font-semibold text-[#0F172A] uppercase tracking-wider">
+                      {stage.name}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {stuckCount > 0 && (
-                      <span className="text-[10px] text-[#d97706] bg-[#fffbeb] border border-[#fde68a] px-1.5 py-0.5 rounded-md">
+                      <span className="text-[10px] text-[#D97706] bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.20)] px-1.5 py-[2px] rounded-full">
                         {stuckCount} stuck
                       </span>
                     )}
-                    <span className="text-[10px] text-[#4a5068] bg-[#f4f6fb] px-1.5 py-0.5 rounded-md border border-[#e2e6f0]">
-                      {stageDeals.length}
-                    </span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#4a5068]">{stage.probability}% avg probability</span>
-                  <span className="text-xs font-semibold text-[#4a5068]">{formatCurrency(totalValue, true)}</span>
+
+                {/* Summary line — "INQUIRY 4 • ₱142K" style */}
+                <div className="text-[11px] text-[#64748B] font-medium">
+                  {stageDeals.length} deal{stageDeals.length !== 1 ? 's' : ''}
+                  {stageValue > 0 && (
+                    <span className="text-[#94A3B8]"> · {formatCurrency(stageValue, true)}</span>
+                  )}
                 </div>
-                <div className="h-0.5 rounded-full mt-2" style={{ background: `${stage.color}30` }}>
+
+                {/* Stage progress bar — tonal fill */}
+                <div className="h-[2px] rounded-full mt-2 bg-[rgba(0,0,0,0.06)] overflow-hidden">
                   <div
-                    className="h-full rounded-full"
+                    className="h-full rounded-full transition-all duration-500"
                     style={{
                       width: stageDeals.length > 0 ? '100%' : '0%',
-                      background: stage.color,
-                      transition: 'width 0.5s ease',
+                      background: dotColor,
+                      opacity: 0.5,
                     }}
                   />
                 </div>
               </div>
 
-              {/* Deal cards */}
-              <div className="flex flex-col gap-2 flex-1 overflow-y-auto max-h-[calc(100vh-280px)]">
+              {/* ── Deal cards list ───────────────────────────── */}
+              <div className="flex flex-col gap-2 flex-1 overflow-y-auto max-h-[calc(100vh-310px)]">
                 {stageDeals.length === 0 ? (
-                  <div className="border border-dashed border-[#e2e6f0] rounded-xl p-4">
-                    <EmptyState title="No deals" icon={<Package size={20} />} />
+                  <div
+                    className={cn(
+                      'rounded-[8px] border border-dashed',
+                      isDragTarget
+                        ? 'border-[#007AFF]/30 bg-[rgba(0,122,255,0.03)]'
+                        : 'border-[rgba(0,0,0,0.07)]'
+                    )}
+                  >
+                    <EmptyState title="Drop deals here" icon={<Package size={18} />} />
                   </div>
                 ) : (
                   stageDeals.map(deal => (
@@ -164,61 +199,127 @@ export default function PipelineBoard({ deals, showClosed = false }: PipelineBoa
         })}
       </div>
 
-      {/* Drag-and-drop confirmation modal */}
+      {/* ── Sticky footer stats bar ──────────────────────────────────────────── */}
+      <div
+        className="flex-shrink-0 flex items-center justify-center gap-10 px-6 py-3 border-t border-[rgba(0,0,0,0.05)]"
+        style={{
+          background: 'rgba(248,250,252,0.90)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
+      >
+        {/* Total Value */}
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-[7px] bg-[rgba(0,122,255,0.08)] flex items-center justify-center">
+            <TrendingUp size={13} className="text-[#007AFF]" strokeWidth={2} />
+          </div>
+          <div>
+            <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider leading-none">Total Value</div>
+            <div className="text-[14px] font-semibold text-[#0F172A] leading-tight mt-[1px]">
+              {formatCurrency(totalValue, true)}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-6 w-px bg-[rgba(0,0,0,0.06)]" />
+
+        {/* Avg Deal Size */}
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-[7px] bg-[rgba(139,92,246,0.08)] flex items-center justify-center">
+            <BarChart2 size={13} className="text-[#7C3AED]" strokeWidth={2} />
+          </div>
+          <div>
+            <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider leading-none">Avg Deal Size</div>
+            <div className="text-[14px] font-semibold text-[#0F172A] leading-tight mt-[1px]">
+              {formatCurrency(avgDealSize, true)}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-6 w-px bg-[rgba(0,0,0,0.06)]" />
+
+        {/* Velocity */}
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-[7px] bg-[rgba(16,185,129,0.08)] flex items-center justify-center">
+            <Zap size={13} className="text-[#059669]" strokeWidth={2} />
+          </div>
+          <div>
+            <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider leading-none">Velocity</div>
+            <div className="text-[14px] font-semibold text-[#0F172A] leading-tight mt-[1px]">
+              {avgDaysInStage.toFixed(1)}d avg
+            </div>
+          </div>
+        </div>
+
+        <div className="h-6 w-px bg-[rgba(0,0,0,0.06)]" />
+
+        {/* Deal count */}
+        <div>
+          <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider leading-none">Active Deals</div>
+          <div className="text-[14px] font-semibold text-[#0F172A] leading-tight mt-[1px]">
+            {activeDeals.length}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Drag-and-drop confirmation modal ─────────────────────────────────── */}
       {pendingMove && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-lg w-full">
-            <h3 className="font-bold font-display text-[#1a1d2e] mb-1">
-              Move "{pendingMove.dealName}" to {pendingMove.toStage}?
+        <div className="fixed inset-0 bg-[rgba(15,23,42,0.35)] backdrop-blur-[6px] flex items-center justify-center z-50 p-4">
+          <div
+            className="glass-modal border border-[rgba(0,0,0,0.06)] rounded-[12px] p-6 max-w-lg w-full animate-scale-in"
+            style={{ boxShadow: '0 24px 64px rgba(15,23,42,0.12), 0 4px 16px rgba(15,23,42,0.08)' }}
+          >
+            <h3 className="text-[15px] font-semibold text-[#0F172A] mb-1 tracking-tight headline">
+              Move "{pendingMove.dealName}"
             </h3>
-            <p className="text-sm text-[#4a5068] mb-4">
-              From {pendingMove.fromStage} to {pendingMove.toStage}. Please update remarks and action plan.
+            <p className="text-[12px] text-[#64748B] mb-5">
+              {pendingMove.fromStage} → {pendingMove.toStage} · Please add context before moving.
             </p>
 
-            <div className="mb-3">
-              <label className="block text-xs font-semibold text-[#4a5068] mb-1">
-                Remarks <span className="text-[#e11d48]">*</span>
+            <div className="mb-4">
+              <label className="block text-[11px] font-medium text-[#64748B] uppercase tracking-wider mb-1.5">
+                Remarks <span className="text-[#F43F5E]">*</span>
               </label>
               <Textarea
                 value={moveRemarks}
                 onChange={e => setMoveRemarks(e.target.value)}
                 rows={3}
-                placeholder="Why is this deal moving? Key context, client feedback..."
+                placeholder="Why is this deal moving? Key context, client feedback…"
               />
               {!moveRemarks.trim() && (
-                <p className="text-[10px] text-[#e11d48] mt-1">Required — explain the reason for this stage change</p>
+                <p className="text-[10px] text-[#E11D48] mt-1">Required — explain the reason for this stage change</p>
               )}
             </div>
 
-            <div className="mb-3">
-              <label className="block text-xs font-semibold text-[#4a5068] mb-1">
-                Action Plan <span className="text-[#e11d48]">*</span>
+            <div className="mb-5">
+              <label className="block text-[11px] font-medium text-[#64748B] uppercase tracking-wider mb-1.5">
+                Action Plan <span className="text-[#F43F5E]">*</span>
               </label>
               <Textarea
                 value={moveActionPlan}
                 onChange={e => setMoveActionPlan(e.target.value)}
                 rows={3}
-                placeholder="Next steps: follow-up calls, deliverables, deadlines..."
+                placeholder="Next steps: follow-up calls, deliverables, deadlines…"
               />
               {!moveActionPlan.trim() && (
-                <p className="text-[10px] text-[#e11d48] mt-1">Required — describe the next steps for this deal</p>
+                <p className="text-[10px] text-[#E11D48] mt-1">Required — describe the next steps for this deal</p>
               )}
             </div>
 
-            <div className="flex gap-2 justify-end pt-2 border-t border-[#e2e6f0]">
-              <Button variant="secondary" size="sm" onClick={cancelMove}>Cancel</Button>
+            <div className="flex gap-2 justify-end pt-4 border-t border-[rgba(0,0,0,0.05)]">
+              <Button variant="ghost" size="sm" onClick={cancelMove}>Cancel</Button>
               <Button
                 variant="primary"
                 size="sm"
                 onClick={confirmMove}
                 disabled={updateStageMut.isPending || !moveRemarks.trim() || !moveActionPlan.trim()}
               >
-                {updateStageMut.isPending ? 'Saving...' : `Confirm — ${pendingMove.toStage}`}
+                {updateStageMut.isPending ? 'Saving…' : `Confirm → ${pendingMove.toStage}`}
               </Button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

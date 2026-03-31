@@ -42,15 +42,15 @@ export function formatRelativeDate(dateStr: string): string {
 
 export function getStageColor(stage: PipelineStage): string {
   const colors: Record<PipelineStage, string> = {
-    'Inquiry': '#4a4f6b',
-    'Prospecting': '#4f6ef7',
-    'Discovery': '#10b981',
-    'Proposal Sent': '#8b5cf6',
-    'Negotiation': '#f59e0b',
-    'Closed Won': '#10b981',
-    'Closed Lost': '#f43f5e',
+    'Inquiry':       '#94A3B8',  // Gray — matches dot spec
+    'Prospecting':   '#007AFF',  // Apple Blue
+    'Discovery':     '#F59E0B',  // Orange
+    'Proposal Sent': '#8B5CF6',  // Purple
+    'Negotiation':   '#10B981',  // Green
+    'Closed Won':    '#10B981',
+    'Closed Lost':   '#F43F5E',
   };
-  return colors[stage] || '#4a4f6b';
+  return colors[stage] || '#94A3B8';
 }
 
 export function getStageClass(stage: PipelineStage): string {
