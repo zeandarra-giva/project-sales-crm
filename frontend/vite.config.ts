@@ -13,6 +13,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api/analytics': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:3111',
         changeOrigin: true,

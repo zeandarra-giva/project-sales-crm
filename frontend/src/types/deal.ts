@@ -41,6 +41,18 @@ export interface Deal {
   client?: import('./client').Client;
   service?: import('./service').Service;
   bundle?: import('./service').Bundle;
+  dealContacts?: {
+    id: string;
+    isPrimary: boolean;
+    contact: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      number?: string;
+      designation?: string;
+    };
+  }[];
   probability_pct?: number;
   days_in_stage?: number;
 }

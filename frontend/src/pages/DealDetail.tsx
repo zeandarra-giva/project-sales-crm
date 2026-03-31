@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, History,
+  AlertTriangle, Edit2, Save, X, ChevronRight, History, User,
 } from 'lucide-react';
 import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -420,6 +420,24 @@ export default function DealDetail() {
                   </div>
                 </div>
               )}
+              {/* Primary Contact */}
+              {deal.dealContacts && deal.dealContacts.length > 0 && (() => {
+                const primary = deal.dealContacts.find((dc: any) => dc.isPrimary) || deal.dealContacts[0];
+                const contact = primary?.contact;
+                return contact ? (
+                  <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#f0f2f8]">
+                    <div className="w-8 h-8 rounded-full bg-[#eef1fe] flex items-center justify-center flex-shrink-0">
+                      <User size={14} className="text-[#3d5af1]" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[#1a1d2e]">{contact.firstName} {contact.lastName}</div>
+                      <div className="text-[10px] text-[#8b90a8]">Primary Contact{contact.designation ? ` · ${contact.designation}` : ''}</div>
+                      {contact.email && <div className="text-[10px] text-[#3d5af1] truncate">{contact.email}</div>}
+                      {contact.number && <div className="text-[10px] text-[#8b90a8]">{contact.number}</div>}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               {deal.client && (
                 <Link to={`/clients/${deal.client.id}`}>
                   <div className="text-xs font-semibold text-[#1a1d2e] hover:text-[#3d5af1] transition-colors">{deal.client.name}</div>

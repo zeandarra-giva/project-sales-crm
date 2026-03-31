@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, Legend, LineChart, Line,
 } from 'recharts';
-import { Loader2, AlertTriangle, Trophy } from 'lucide-react';
+import { Loader2, AlertTriangle, Trophy, Filter, Users } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { Card, Badge, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -13,7 +13,7 @@ import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
 const RADIAN = Math.PI / 180;
-const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value }: any) => {
+const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
   if (percent < 0.08) return null;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -25,23 +25,31 @@ const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, v
   );
 };
 
-const MANAGER_TABS = ['Pipeline', 'Quota Performance', 'Win/Loss', 'Sales Cycle', 'Loss Analysis', 'Executive'];
-const BD_TABS = ['Pipeline', 'Quota Performance', 'Win/Loss', 'Sales Cycle'];
-const COLORS = ['#3d5af1', '#059669', '#d97706', '#7c3aed', '#e11d48', '#0891b2'];
+const ALL_TABS = ['Pipeline', 'Quota Performance', 'Win/Loss', 'Sales Cycle', 'Loss Analysis', 'Executive'];
+const COLORS = ['#3d5af1', '#059669', '#d97706', '#7c3aed', '#e11d48', '#0891b2', '#6366f1', '#ec4899'];
 const TT = {
   contentStyle: { background: '#fff', border: '1px solid #e2e6f0', borderRadius: 8, fontSize: 12, color: '#1a1d2e' },
   itemStyle: { color: '#4a5068' },
   labelStyle: { color: '#1a1d2e', fontWeight: 600 },
 };
 
+interface BDOption {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
 export default function ReportsPage() {
   const { user } = useAuthStore();
-  const isManager = user?.role === 'SALES_MANAGER';
-  const TABS = isManager ? MANAGER_TABS : BD_TABS;
+  const TABS = ALL_TABS;
 
   const [tab, setTab] = useState('Pipeline');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // BD filter
+  const [bdList, setBdList] = useState<BDOption[]>([]);
+  const [selectedBD, setSelectedBD] = useState<string>('');
 
   // Data state for each report
   const [pipelineData, setPipelineData] = useState<any>(null);
@@ -54,6 +62,26 @@ export default function ReportsPage() {
   const now = new Date();
   const year = now.getFullYear();
   const quarter = Math.floor(now.getMonth() / 3) + 1;
+
+  // Load BD list on mount
+  useEffect(() => {
+    reportsApi.listBDs().then(res => {
+      setBdList(res.data.bds || []);
+    }).catch(err => {
+      console.error('Failed to load BD list:', err);
+    });
+  }, []);
+
+  // Clear cached data when BD filter changes and reload current tab
+  useEffect(() => {
+    setPipelineData(null);
+    setQuotaData(null);
+    setWinRateData(null);
+    setSalesCycleData(null);
+    setLossData(null);
+    setExecData(null);
+    loadTabData(tab, true);
+  }, [selectedBD]);
 
   useEffect(() => {
     loadTabData(tab);
@@ -71,15 +99,14 @@ export default function ReportsPage() {
     }
   };
 
-  const loadTabData = async (currentTab: string) => {
-    // Skip re-fetch if data is already cached
-    if (dataForTab(currentTab)) {
-      return;
-    }
+  const loadTabData = useCallback(async (currentTab: string, force = false) => {
+    if (!force && dataForTab(currentTab)) return;
     setLoading(true);
     setError(null);
     try {
-      const params = { year, quarter };
+      const params: any = { year, quarter };
+      if (selectedBD) params.bd_id = selectedBD;
+
       switch (currentTab) {
         case 'Pipeline': {
           const res = await reportsApi.pipeline(params);
@@ -107,7 +134,7 @@ export default function ReportsPage() {
           break;
         }
         case 'Executive': {
-          const res = await reportsApi.executiveDashboard(params);
+          const res = await reportsApi.executiveDashboard({ year, quarter });
           setExecData(res.data);
           break;
         }
@@ -118,11 +145,13 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [year, quarter, selectedBD]);
 
   const handleExport = async (reportType: string) => {
     try {
-      const res = await reportsApi.exportExcel(reportType, { year, quarter });
+      const params: any = { year, quarter };
+      if (selectedBD) params.bd_id = selectedBD;
+      const res = await reportsApi.exportExcel(reportType, params);
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -150,7 +179,7 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col h-full">
       <Header
-        title="Reports"
+        title="Executive Reports"
         subtitle={`Analytics and performance insights · Q${quarter} ${year}`}
         action={canExport ? {
           label: 'Export Excel',
@@ -158,12 +187,41 @@ export default function ReportsPage() {
         } : undefined}
       />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex gap-1 px-6 pt-4 pb-0 overflow-x-auto border-b border-[#e2e6f0]">
-          {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 text-xs font-medium whitespace-nowrap transition-all border-b-2 -mb-px', tab === t ? 'text-[#3d5af1] border-[#3d5af1]' : 'text-[#8b90a8] border-transparent hover:text-[#4a5068]')}>
-              {t}
-            </button>
-          ))}
+        {/* Global BD Filter + Tab Navigation */}
+        <div className="px-6 pt-4 pb-0 border-b border-[#e2e6f0]">
+          {/* BD Filter */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Filter size={14} className="text-[#8b90a8]" />
+              <span className="text-xs font-medium text-[#4a5068]">Filter by BD:</span>
+            </div>
+            <select
+              value={selectedBD}
+              onChange={e => setSelectedBD(e.target.value)}
+              className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white text-[#1a1d2e] focus:outline-none focus:ring-2 focus:ring-[#3d5af1] focus:border-transparent"
+            >
+              <option value="">All BDs</option>
+              {bdList.map(bd => (
+                <option key={bd.id} value={bd.id}>{bd.first_name} {bd.last_name}</option>
+              ))}
+            </select>
+            {selectedBD && (
+              <button
+                onClick={() => setSelectedBD('')}
+                className="text-xs text-[#3d5af1] hover:text-[#2d4ad1] font-medium"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+          {/* Tabs */}
+          <div className="flex gap-1 overflow-x-auto">
+            {TABS.map(t => (
+              <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 text-xs font-medium whitespace-nowrap transition-all border-b-2 -mb-px', tab === t ? 'text-[#3d5af1] border-[#3d5af1]' : 'text-[#8b90a8] border-transparent hover:text-[#4a5068]')}>
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="p-6">
 
@@ -183,7 +241,7 @@ export default function ReportsPage() {
               <div className="text-xs text-[#8b90a8] mb-1">{error}</div>
               <div className="text-xs text-[#8b90a8]">Make sure the analytics service is running on port 8001.</div>
               <button
-                onClick={() => { setError(null); loadTabData(tab); }}
+                onClick={() => { setError(null); loadTabData(tab, true); }}
                 className="mt-4 px-4 py-2 text-xs font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors"
               >
                 Retry
@@ -191,13 +249,14 @@ export default function ReportsPage() {
             </Card>
           )}
 
-          {/* Pipeline Tab */}
+          {/* ── Pipeline Tab ── */}
           {!loading && !error && tab === 'Pipeline' && pipelineData && (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   { label: 'Total Pipeline', value: formatCurrency(pipelineData.total_pipeline_value || 0, true) },
                   { label: 'Active Deals', value: String(pipelineData.total_deals || 0) },
+                  { label: 'Services', value: String((pipelineData.by_service || []).length) },
                   { label: 'Period', value: pipelineData.period },
                 ].map(m => (
                   <Card key={m.label} className="p-4 text-center">
@@ -206,6 +265,8 @@ export default function ReportsPage() {
                   </Card>
                 ))}
               </div>
+
+              {/* Pipeline by Stage bar chart */}
               <Card className="p-5">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Pipeline Value by Stage</div>
                 <div className="h-64">
@@ -222,17 +283,111 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                 </div>
               </Card>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Services Pie Chart */}
+                <Card className="p-5">
+                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">By Service</div>
+                  {(pipelineData.by_service || []).length > 0 ? (
+                    <>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={pipelineData.by_service} dataKey="total_value" nameKey="service_name" cx="50%" cy="50%" outerRadius={80} label={renderPieLabel} labelLine={false}>
+                              {(pipelineData.by_service || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip {...TT} formatter={(val: number, name: string) => [formatCurrency(val), name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        {(pipelineData.by_service || []).map((s: any, i: number) => (
+                          <div key={s.service_name} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="text-[10px] text-[#4a5068]">{s.service_name}</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-[#1a1d2e]">{formatCurrency(s.total_value, true)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-40 text-xs text-[#8b90a8]">No data</div>
+                  )}
+                </Card>
+
+                {/* Account Type */}
+                <Card className="p-5">
+                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">By Account Type</div>
+                  <div className="flex flex-col gap-2">
+                    {(pipelineData.by_account_type || []).length > 0 ? (pipelineData.by_account_type || []).map((item: any, i: number) => (
+                      <div key={item.account_type} className="flex items-center justify-between gap-2 py-2 border-b border-[#f0f2f8]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                          <span className="text-xs text-[#4a5068]">{item.account_type}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#8b90a8]">{item.deal_count} deals</span>
+                          <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.total_value, true)}</span>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="text-center py-4 text-xs text-[#8b90a8]">No data</div>
+                    )}
+                  </div>
+                </Card>
+
+                {/* Lead Source + Contributors */}
+                <Card className="p-5">
+                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Lead Source</div>
+                  <div className="flex flex-col gap-2">
+                    {(pipelineData.by_lead_source || []).length > 0 ? (pipelineData.by_lead_source || []).map((item: any, i: number) => (
+                      <div key={item.lead_source} className="flex items-center justify-between gap-2 py-2 border-b border-[#f0f2f8]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                          <span className="text-xs text-[#4a5068]">{item.lead_source}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#8b90a8]">{item.deal_count} deals</span>
+                          <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.total_value, true)}</span>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="text-center py-4 text-xs text-[#8b90a8]">No data</div>
+                    )}
+                  </div>
+
+                  {/* Contributors / BD */}
+                  {!selectedBD && (pipelineData.by_bd || []).length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mt-5 mb-3">Contributors</div>
+                      <div className="flex flex-col gap-2">
+                        {(pipelineData.by_bd || []).map((bd: any) => (
+                          <div key={bd.bd_id} className="flex items-center justify-between gap-2 py-1.5">
+                            <span className="text-xs text-[#4a5068]">{bd.bd_name}</span>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="neutral" size="sm">{bd.deal_count}</Badge>
+                              <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(bd.total_value, true)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </div>
             </div>
           )}
 
-          {/* Quota Performance Tab */}
+          {/* ── Quota Performance Tab ── */}
           {!loading && !error && tab === 'Quota Performance' && quotaData && (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Team Quota', value: formatCurrency(quotaData.team_quota || 0, true) },
-                  { label: 'Team Actual', value: formatCurrency(quotaData.team_actual || 0, true) },
-                  { label: 'Team Attainment', value: `${quotaData.team_attainment_pct || 0}%` },
+                  { label: selectedBD ? 'BD Quota' : 'Team Quota', value: formatCurrency(quotaData.team_quota || 0, true) },
+                  { label: selectedBD ? 'BD Actual' : 'Team Actual', value: formatCurrency(quotaData.team_actual || 0, true) },
+                  { label: 'Attainment', value: `${quotaData.team_attainment_pct || 0}%` },
                 ].map(m => (
                   <Card key={m.label} className="p-4 text-center">
                     <div className="text-xs text-[#8b90a8] mb-1">{m.label}</div>
@@ -255,7 +410,6 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                 </div>
               </Card>
-              {/* Individual BD cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {(quotaData.members || []).map((member: any, i: number) => (
                   <Card key={member.name || i} className="p-4">
@@ -278,7 +432,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Win/Loss Tab */}
+          {/* ── Win/Loss Tab ── */}
           {!loading && !error && tab === 'Win/Loss' && winRateData && (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-3">
@@ -291,11 +445,105 @@ export default function ReportsPage() {
                   <div className="text-2xl font-bold font-display text-[#1a1d2e]">{winRateData.period}</div>
                 </Card>
                 <Card className="p-4 text-center">
-                  <div className="text-xs text-[#8b90a8] mb-1">Breakdown</div>
-                  <div className="text-2xl font-bold font-display text-[#1a1d2e]">{(winRateData.by_lead_source || []).length} sources</div>
+                  <div className="text-xs text-[#8b90a8] mb-1">Sources</div>
+                  <div className="text-2xl font-bold font-display text-[#1a1d2e]">{(winRateData.by_lead_source || []).length}</div>
                 </Card>
               </div>
 
+              {/* Service & Industry Pie Charts (NEW) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Service Win/Loss Distribution Pie */}
+                <Card className="p-5">
+                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Deal Status by Service</div>
+                  {(winRateData.by_service || []).length > 0 ? (
+                    <>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={(winRateData.by_service || []).map((s: any) => ({ name: s.service, value: s.won + s.lost }))}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={renderPieLabel}
+                              labelLine={false}
+                            >
+                              {(winRateData.by_service || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip {...TT} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        {(winRateData.by_service || []).map((s: any, i: number) => (
+                          <div key={s.service} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="text-[10px] text-[#4a5068]">{s.service}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-[#10b981]">{s.won}W</span>
+                              <span className="text-[10px] text-[#e11d48]">{s.lost}L</span>
+                              <Badge variant={s.win_rate > 50 ? 'success' : 'warning'} size="sm">{s.win_rate}%</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-52 text-xs text-[#8b90a8]">No data</div>
+                  )}
+                </Card>
+
+                {/* Account/Industry Win/Loss Distribution Pie */}
+                <Card className="p-5">
+                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Deal Status by Industry</div>
+                  {(winRateData.by_industry || []).length > 0 ? (
+                    <>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={(winRateData.by_industry || []).map((s: any) => ({ name: s.industry, value: s.won + s.lost }))}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={renderPieLabel}
+                              labelLine={false}
+                            >
+                              {(winRateData.by_industry || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip {...TT} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        {(winRateData.by_industry || []).map((s: any, i: number) => (
+                          <div key={s.industry} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="text-[10px] text-[#4a5068]">{s.industry}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-[#10b981]">{s.won}W</span>
+                              <span className="text-[10px] text-[#e11d48]">{s.lost}L</span>
+                              <Badge variant={s.win_rate > 50 ? 'success' : 'warning'} size="sm">{s.win_rate}%</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-52 text-xs text-[#8b90a8]">No data</div>
+                  )}
+                </Card>
+              </div>
+
+              {/* Existing breakdown lists */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* By Lead Source */}
                 <Card className="p-5">
@@ -366,7 +614,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Sales Cycle Tab */}
+          {/* ── Sales Cycle Tab ── */}
           {!loading && !error && tab === 'Sales Cycle' && salesCycleData && (
             <div className="flex flex-col gap-4">
               <Card className="p-5">
@@ -403,7 +651,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Loss Analysis Tab */}
+          {/* ── Loss Analysis Tab ── */}
           {!loading && !error && tab === 'Loss Analysis' && lossData && (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-3">
@@ -422,26 +670,14 @@ export default function ReportsPage() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* By Stage pie chart */}
                 <Card className="p-5">
                   <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Losses by Stage</div>
                   {(lossData.by_stage || []).length > 0 ? (
                     <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie
-                            data={lossData.by_stage}
-                            dataKey="lost_count"
-                            nameKey="lost_from_stage"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={90}
-                            label={renderPieLabel}
-                            labelLine={false}
-                          >
-                            {(lossData.by_stage || []).map((_: any, i: number) => (
-                              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                            ))}
+                          <Pie data={lossData.by_stage} dataKey="lost_count" nameKey="lost_from_stage" cx="50%" cy="50%" outerRadius={90} label={renderPieLabel} labelLine={false}>
+                            {(lossData.by_stage || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                           </Pie>
                           <Tooltip {...TT} formatter={(val: number, name: string) => [val, name]} />
                         </PieChart>
@@ -466,7 +702,6 @@ export default function ReportsPage() {
                   </div>
                 </Card>
 
-                {/* Lost deals list */}
                 <Card className="p-5">
                   <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Lost Deals</div>
                   <div className="flex flex-col gap-2 max-h-[450px] overflow-y-auto">
@@ -492,7 +727,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Executive Report Tab */}
+          {/* ── Executive Report Tab ── */}
           {!loading && !error && tab === 'Executive' && execData && (
             <div className="flex flex-col gap-4">
               {/* Team KPIs */}
@@ -575,7 +810,6 @@ export default function ReportsPage() {
                   <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">BD Leaderboard · Q{quarter} {year}</span>
                 </div>
                 <div className="flex flex-col gap-0">
-                  {/* Header */}
                   <div className="grid grid-cols-12 gap-4 pb-2 mb-1 border-b border-[#e2e6f0]">
                     <div className="col-span-1 text-[10px] text-[#8b90a8] uppercase tracking-wider">#</div>
                     <div className="col-span-3 text-[10px] text-[#8b90a8] uppercase tracking-wider">Member</div>
@@ -632,49 +866,77 @@ export default function ReportsPage() {
                 {/* By Account Type */}
                 <Card className="p-5">
                   <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Revenue by Account Type</div>
-                  <div className="flex flex-col gap-2">
-                    {(execData.by_account_type || []).length > 0 ? (execData.by_account_type || []).map((item: any, i: number) => (
-                      <div key={item.account_type} className="flex items-center justify-between gap-3 py-2 border-b border-[#f0f2f8]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                          <span className="text-xs text-[#4a5068]">{item.account_type}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.revenue || 0, true)}</span>
-                          <Badge variant="neutral" size="sm">{item.deal_count} deals</Badge>
-                        </div>
+                  {(execData.by_account_type || []).length > 0 ? (
+                    <>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={execData.by_account_type} dataKey="revenue" nameKey="account_type" cx="50%" cy="50%" outerRadius={70} label={renderPieLabel} labelLine={false}>
+                              {(execData.by_account_type || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip {...TT} formatter={(val: number, name: string) => [formatCurrency(val), name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                    )) : (
-                      <div className="text-center py-4 text-xs text-[#8b90a8]">No data this quarter</div>
-                    )}
-                  </div>
+                      <div className="flex flex-col gap-2 mt-2">
+                        {(execData.by_account_type || []).map((item: any, i: number) => (
+                          <div key={item.account_type} className="flex items-center justify-between gap-3 py-1.5 border-b border-[#f0f2f8]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="text-xs text-[#4a5068]">{item.account_type}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.revenue || 0, true)}</span>
+                              <Badge variant="neutral" size="sm">{item.deal_count} deals</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-4 text-xs text-[#8b90a8]">No data this quarter</div>
+                  )}
                 </Card>
 
                 {/* By Service */}
                 <Card className="p-5">
                   <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Revenue by Service</div>
-                  <div className="flex flex-col gap-2">
-                    {(execData.by_service || []).length > 0 ? (execData.by_service || []).map((item: any, i: number) => (
-                      <div key={item.service_name} className="flex items-center justify-between gap-3 py-2 border-b border-[#f0f2f8]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                          <span className="text-xs text-[#4a5068]">{item.service_name}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.revenue || 0, true)}</span>
-                          <Badge variant="neutral" size="sm">{item.deal_count} deals</Badge>
-                        </div>
+                  {(execData.by_service || []).length > 0 ? (
+                    <>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={execData.by_service} dataKey="revenue" nameKey="service_name" cx="50%" cy="50%" outerRadius={70} label={renderPieLabel} labelLine={false}>
+                              {(execData.by_service || []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip {...TT} formatter={(val: number, name: string) => [formatCurrency(val), name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                    )) : (
-                      <div className="text-center py-4 text-xs text-[#8b90a8]">No data this quarter</div>
-                    )}
-                  </div>
+                      <div className="flex flex-col gap-2 mt-2">
+                        {(execData.by_service || []).map((item: any, i: number) => (
+                          <div key={item.service_name} className="flex items-center justify-between gap-3 py-1.5 border-b border-[#f0f2f8]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="text-xs text-[#4a5068]">{item.service_name}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-[#1a1d2e]">{formatCurrency(item.revenue || 0, true)}</span>
+                              <Badge variant="neutral" size="sm">{item.deal_count} deals</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-4 text-xs text-[#8b90a8]">No data this quarter</div>
+                  )}
                 </Card>
               </div>
             </div>
           )}
 
-          {/* Empty state for tabs that haven't loaded yet */}
+          {/* Empty state */}
           {!loading && !error && !dataForTab(tab) && (
             <div className="flex items-center justify-center py-20">
               <div className="text-sm text-[#8b90a8]">No data loaded yet</div>

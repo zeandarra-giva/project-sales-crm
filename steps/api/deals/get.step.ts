@@ -39,6 +39,21 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 service: true,
                 bundle: true,
                 projection: true,
+                dealContacts: {
+                    include: {
+                        contact: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                number: true,
+                                designation: true,
+                            },
+                        },
+                    },
+                    orderBy: { isPrimary: 'desc' },
+                },
                 _count: {
                     select: { auditLogs: true, dealContacts: true },
                 },
