@@ -248,9 +248,8 @@ export default function DealDetail() {
           {!isTerminated && currentStage === 'Closed Won' && (
             <Button
               size="sm"
-              variant="ghost"
+              variant="danger"
               onClick={openTerminateModal}
-              className="border border-[rgba(244,63,94,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,241,242,0.96))] text-[#E11D48] shadow-sm hover:bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(255,228,230,0.98))] hover:text-[#BE123C]"
             >
               <ShieldAlert size={14} /> Terminate Contract
             </Button>
@@ -442,56 +441,79 @@ export default function DealDetail() {
             )}
 
             {showTerminateModal && (
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                  <h3 className="font-bold font-display text-[#1a1d2e] mb-1">Terminate contract early?</h3>
-                  <p className="text-sm text-[#4a5068] mb-4">
-                    This will mark the contract as terminated, stop future contract recognition after the effective date, and write an activity-log event for loss analysis.
-                  </p>
+              <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white border border-[#e2e6f0] rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
 
-                  <div className="mb-3">
+                  {/* Modal header */}
+                  <div className="flex items-start gap-4 px-6 pt-6 pb-4 border-b border-[#f0f2f8]">
+                    <div className="w-10 h-10 rounded-xl bg-[rgba(244,63,94,0.08)] border border-[rgba(244,63,94,0.14)] flex items-center justify-center flex-shrink-0">
+                      <ShieldAlert size={18} className="text-[#E11D48]" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold font-display text-[#1a1d2e] text-[15px] leading-snug">Terminate Contract</h3>
+                      <p className="text-[13px] text-[#8b90a8] mt-0.5">
+                        This is a permanent action and cannot be undone.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowTerminateModal(false)}
+                      className="ml-auto p-1.5 rounded-lg text-[#8b90a8] hover:text-[#1a1d2e] hover:bg-[#f4f6fb] transition-all"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="px-6 py-4 flex flex-col gap-4">
+                    {/* Impact callout */}
+                    <div className="rounded-xl border border-[rgba(244,63,94,0.16)] bg-[rgba(244,63,94,0.04)] px-4 py-3">
+                      <p className="text-[12px] text-[#be123c] leading-relaxed">
+                        Terminating this contract will stop revenue recognition after the effective date, and log a contract-termination event in the activity log for churn and loss analysis.
+                      </p>
+                    </div>
+
                     <Input
-                      label="Termination Effective Date"
+                      label="Termination Effective Date *"
                       type="date"
                       value={terminationDate}
                       onChange={e => setTerminationDate(e.target.value)}
                       required
                     />
-                  </div>
 
-                  <div className="mb-3">
                     <Input
-                      label="Termination Reason"
+                      label="Termination Reason *"
                       value={terminationReason}
                       onChange={e => setTerminationReason(e.target.value)}
-                      placeholder="Client requested cancellation"
+                      placeholder="e.g. Client requested early cancellation"
                       required
                     />
-                  </div>
 
-                  <div className="mb-3">
                     <Textarea
-                      label="Notes"
+                      label="Notes (optional)"
                       value={terminationNotes}
                       onChange={e => setTerminationNotes(e.target.value)}
                       rows={3}
                       placeholder="Additional details for churn and loss analysis..."
                     />
+
+                    {terminateMutation.isError && (
+                      <div className="rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-[12px] text-[#e11d48]">
+                        Failed to terminate this contract. Please check the date and try again.
+                      </div>
+                    )}
                   </div>
 
-                  {terminateMutation.isError && (
-                    <div className="mb-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-xs text-[#e11d48]">
-                      Failed to terminate this contract. Please check the date and try again.
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 justify-end pt-2 border-t border-[#e2e6f0]">
-                    <Button variant="secondary" size="sm" onClick={() => setShowTerminateModal(false)}>Cancel</Button>
+                  {/* Modal footer */}
+                  <div className="flex gap-2 px-6 pb-6 pt-2 border-t border-[#f0f2f8]">
+                    <Button variant="secondary" size="md" onClick={() => setShowTerminateModal(false)} className="flex-1">
+                      Cancel
+                    </Button>
                     <Button
                       variant="danger"
-                      size="sm"
+                      size="md"
                       onClick={confirmTermination}
+                      loading={terminateMutation.isPending}
                       disabled={terminateMutation.isPending || !terminationDate || !terminationReason.trim()}
+                      className="flex-1 bg-[#E11D48] border-[#E11D48] text-white hover:bg-[#BE123C] hover:border-[#BE123C]"
                     >
                       {terminateMutation.isPending ? 'Terminating...' : 'Confirm Termination'}
                     </Button>
