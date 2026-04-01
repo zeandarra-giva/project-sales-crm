@@ -71,7 +71,10 @@ html {
 
 body {
   font-family: var(--font-body);
-  background-color: var(--color-bg);
+  background:
+    radial-gradient(circle at top left, rgba(0, 122, 255, 0.07), transparent 26%),
+    radial-gradient(circle at top right, rgba(191, 219, 254, 0.30), transparent 30%),
+    linear-gradient(180deg, #FFFFFF 0%, var(--color-bg) 48%, #F3F7FB 100%);
   color: var(--color-text-primary);
   font-size: 14px;
   line-height: 1.6;
@@ -97,7 +100,7 @@ body {
 
 /* ─── Glassmorphism — used by sidebar & top bar ──────────────────────────── */
 .glass {
-  background: rgba(248, 250, 252, 0.85);
+  background: linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(248,250,252,0.58) 100%);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
@@ -110,10 +113,31 @@ body {
 
 /* ─── Card primitives ────────────────────────────────────────────────────── */
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.58) 100%),
+    radial-gradient(circle at top left, rgba(255,255,255,0.52), transparent 34%);
+  border: 1px solid rgba(255,255,255,0.42);
+  border-radius: 18px;
+  box-shadow:
+    0 20px 48px rgba(15, 23, 42, 0.08),
+    0 8px 20px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255,255,255,0.72),
+    inset 0 -1px 0 rgba(255,255,255,0.16);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.38), transparent 30%),
+    radial-gradient(circle at top right, rgba(191,219,254,0.22), transparent 28%);
+  opacity: 0.9;
 }
 
 .card-hover {
@@ -121,7 +145,108 @@ body {
 }
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    0 24px 56px rgba(15, 23, 42, 0.11),
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+.glass-card {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(248,250,252,0.5) 100%),
+    radial-gradient(circle at top left, rgba(255,255,255,0.56), transparent 32%);
+  border: 1px solid rgba(255,255,255,0.48);
+  box-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.08),
+    0 6px 16px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255,255,255,0.76);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+.soft-shell {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(248,250,252,0.82) 100%),
+    radial-gradient(circle at top left, rgba(219,234,254,0.68), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(255,255,255,0.5), transparent 26%);
+  border: 1px solid rgba(255,255,255,0.52);
+  box-shadow:
+    0 24px 64px rgba(15, 23, 42, 0.08),
+    0 10px 24px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255,255,255,0.78);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.soft-sidebar {
+  background:
+    linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(19,34,56,0.89) 54%, rgba(26,46,74,0.86) 100%);
+  border-right: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    inset -1px 0 0 rgba(255,255,255,0.04),
+    20px 0 60px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+}
+
+.soft-input,
+.soft-select,
+.soft-textarea,
+.soft-pill,
+.soft-icon-button {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(248,250,252,0.84) 100%);
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255,255,255,0.82);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.soft-input,
+.soft-select,
+.soft-textarea {
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.soft-input:focus,
+.soft-select:focus,
+.soft-textarea:focus {
+  outline: none;
+  border-color: rgba(0,122,255,0.32);
+  box-shadow:
+    0 0 0 4px rgba(0,122,255,0.10),
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255,255,255,0.82);
+}
+
+.soft-pill {
+  border-radius: 999px;
+}
+
+.soft-icon-button {
+  border-radius: 14px;
+}
+
+.soft-nav-link {
+  position: relative;
+  overflow: hidden;
+}
+
+.soft-nav-link::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.14), transparent 45%);
+  transition: opacity 150ms ease;
+}
+
+.soft-nav-link:hover::before,
+.soft-nav-link[data-active="true"]::before {
+  opacity: 1;
 }
 
 /* ─── Focus ring ─────────────────────────────────────────────────────────── */

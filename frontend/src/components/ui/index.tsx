@@ -20,19 +20,19 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-1.5 font-medium rounded-[8px] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none active:scale-[0.98]';
+    'inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none active:scale-[0.98]';
 
   const variants = {
     primary:
-      'border border-transparent bg-[#007AFF] text-white shadow-md hover:bg-[#0066D6]',
+      'rounded-full border border-transparent bg-[linear-gradient(135deg,#007AFF_0%,#005FE0_100%)] text-white shadow-[0_16px_32px_rgba(0,122,255,0.22)] hover:brightness-[0.98]',
     secondary:
-      'bg-white border border-[#E2E8F0] text-[#0F172A] hover:bg-[#F8FAFC] shadow-sm',
+      'soft-pill text-[#0F172A] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.88))]',
     ghost:
-      'bg-transparent border border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-[rgba(248,250,252,0.96)]',
+      'rounded-full bg-transparent border border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-[rgba(248,250,252,0.96)]',
     danger:
-      'bg-[rgba(244,63,94,0.06)] border border-[rgba(244,63,94,0.18)] text-[#E11D48] hover:bg-[rgba(244,63,94,0.10)]',
+      'soft-pill border-[rgba(244,63,94,0.18)] bg-[linear-gradient(180deg,rgba(255,241,242,0.88),rgba(255,228,230,0.82))] text-[#E11D48] hover:bg-[rgba(244,63,94,0.10)]',
     success:
-      'bg-[rgba(16,185,129,0.06)] border border-[rgba(16,185,129,0.18)] text-[#059669] hover:bg-[rgba(16,185,129,0.10)]',
+      'soft-pill border-[rgba(16,185,129,0.18)] bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(209,250,229,0.78))] text-[#059669] hover:bg-[rgba(16,185,129,0.10)]',
   };
 
   const sizes = {
@@ -99,7 +99,7 @@ export function Input({ label, error, icon, className, ...props }: InputProps) {
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
+          <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
           {label}
         </label>
       )}
@@ -109,8 +109,7 @@ export function Input({ label, error, icon, className, ...props }: InputProps) {
         )}
         <input
           className={cn(
-            'w-full h-10 bg-white border border-[#E2E8F0] rounded-[8px] px-3 text-[13px] text-[#0F172A] placeholder-[#94A3B8] shadow-sm',
-            'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all',
+            'soft-input h-11 w-full rounded-[14px] px-3 text-[13px] text-[#0F172A] placeholder-[#94A3B8]',
             icon && 'pl-9',
             error && 'border-[#F43F5E] focus:border-[#F43F5E] focus:ring-[rgba(244,63,94,0.12)]',
             className
@@ -141,9 +140,7 @@ export function Select({ label, error, options, placeholder, className, ...props
       )}
       <select
         className={cn(
-          'w-full h-10 bg-white border border-[#E2E8F0] rounded-[8px] px-3 text-[13px] text-[#0F172A] shadow-sm',
-          'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all',
-          'appearance-none cursor-pointer',
+          'soft-select h-11 w-full appearance-none rounded-[14px] px-3 text-[13px] text-[#0F172A] cursor-pointer',
           error && 'border-[#F43F5E]',
           className
         )}
@@ -175,8 +172,7 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
       )}
       <textarea
         className={cn(
-          'w-full bg-white border border-[#E2E8F0] rounded-[8px] px-3 py-2.5 text-[13px] text-[#0F172A] placeholder-[#94A3B8] shadow-sm',
-          'focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all resize-none',
+          'soft-textarea w-full rounded-[16px] px-3 py-3 text-[13px] text-[#0F172A] placeholder-[#94A3B8] resize-none',
           error && 'border-[#F43F5E]',
           className
         )}
@@ -196,7 +192,7 @@ export function Card({ children, className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'bg-white border border-[rgba(0,0,0,0.05)] rounded-[8px] shadow-sm',
+        'card',
         className
       )}
       {...props}
@@ -233,7 +229,7 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        'animate-fade-in flex flex-col gap-3 rounded-[8px] border border-[rgba(0,0,0,0.05)] bg-white p-5 shadow-sm',
+        'glass-card animate-fade-in flex flex-col gap-3 rounded-[18px] p-5',
         className
       )}
       style={{ animationDelay: `${delay}ms`, opacity: 0, animationFillMode: 'forwards' }}

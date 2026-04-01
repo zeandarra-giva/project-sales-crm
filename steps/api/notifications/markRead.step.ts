@@ -6,8 +6,8 @@ export const config = {
     name: 'MarkNotificationRead',
     description: 'Mark a single notification as read',
     triggers: [
-        // Path matches frontend: apiClient.patch(`/notifications/${id}/read`)
-        { type: 'http' as const, method: 'PATCH' as const, path: '/notifications/:id/read' },
+        // Path matches frontend: apiClient.patch(`/api/notifications/${id}/read`)
+        { type: 'http' as const, method: 'PATCH' as const, path: '/api/notifications/:id/read' },
     ],
     enqueues: [],
     flows: ['notification-system'],

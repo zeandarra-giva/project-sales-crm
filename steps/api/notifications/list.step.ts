@@ -6,8 +6,8 @@ export const config = {
     name: 'ListNotifications',
     description: 'List notifications for the authenticated BD member with unread count (FR-ADD-010)',
     triggers: [
-        // Path matches frontend api/notifications.ts: apiClient.get('/notifications')
-        { type: 'http' as const, method: 'GET' as const, path: '/notifications' },
+        // Path matches frontend api/notifications.ts: apiClient.get('/api/notifications')
+        { type: 'http' as const, method: 'GET' as const, path: '/api/notifications' },
     ],
     enqueues: [],
     flows: ['notification-system'],

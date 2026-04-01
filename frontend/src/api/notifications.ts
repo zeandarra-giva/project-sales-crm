@@ -7,7 +7,7 @@ export interface NotificationsListResponse {
 }
 
 export const notificationsApi = {
-  list:        ()           => apiClient.get<NotificationsListResponse>('/notifications'),
-  markRead:    (id: string) => apiClient.patch<{ success: boolean }>(`/notifications/${id}/read`),
-  markAllRead: ()           => apiClient.post<{ success: boolean; updated: number }>('/notifications/read-all'),
+  list:        ()           => apiClient.get<NotificationsListResponse>('/api/notifications'),
+  markRead:    (id: string) => apiClient.patch<{ success: boolean }>(`/api/notifications/${id}/read`),
+  markAllRead: ()           => apiClient.post<{ success: boolean; updated: number }>('/api/notifications/read-all'),
 };

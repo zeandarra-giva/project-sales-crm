@@ -24,12 +24,14 @@ const queryClient = new QueryClient();
 function ProtectedLayout() {
   return (
     <AuthGuard>
-      <div className="relative flex h-screen overflow-hidden bg-[#FFFFFF]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,122,255,0.08),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.32),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8FAFC_100%)]" />
-        <Sidebar />
-        <main className="relative flex min-w-0 flex-1 overflow-hidden flex-col">
-          <Outlet />
-        </main>
+      <div className="relative flex h-screen w-screen overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,122,255,0.07),transparent_24%),radial-gradient(circle_at_top_right,rgba(191,219,254,0.32),transparent_26%),radial-gradient(circle_at_bottom_left,rgba(226,232,240,0.48),transparent_30%),linear-gradient(180deg,#FFFFFF_0%,#F8FAFC_54%,#F2F7FB_100%)]" />
+        <div className="soft-shell relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-none border-0 shadow-none">
+          <Sidebar />
+          <main className="relative flex min-w-0 flex-1 overflow-hidden flex-col">
+            <Outlet />
+          </main>
+        </div>
       </div>
     </AuthGuard>
   );

@@ -26,30 +26,33 @@ export default function NotificationBell() {
       <button
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'relative flex h-9 w-9 items-center justify-center rounded-[8px] border border-transparent transition-all',
-          open ? 'border-[rgba(0,122,255,0.12)] bg-[rgba(0,122,255,0.08)] text-[#007AFF]' : 'text-[#64748B] hover:border-[#E2E8F0] hover:bg-white hover:text-[#0F172A]'
+          'soft-icon-button relative flex h-10 w-10 items-center justify-center transition-all',
+          open ? 'border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.10)] text-[#007AFF]' : 'text-[#64748B] hover:border-[#D7E3F0] hover:text-[#0F172A]'
         )}
       >
         <Bell size={16} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#e11d48] rounded-full text-[9px] text-white font-bold flex items-center justify-center">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-[#e11d48] text-[9px] font-bold text-white shadow-[0_10px_20px_rgba(225,29,72,0.28)]">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="glass absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.05)] shadow-md animate-fade-in">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-xs font-semibold font-display text-[#1a1d2e]">Notifications</span>
+        <div className="card absolute right-0 top-full z-40 mt-3 w-[22rem] overflow-hidden rounded-[20px] animate-fade-in">
+          <div className="flex items-center justify-between px-4 py-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[#94A3B8]">Inbox</div>
+              <span className="mt-1 block text-sm font-semibold font-display text-[#0F172A]">Notifications</span>
+            </div>
             {unreadCount > 0 && (
-              <span className="rounded-full border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] px-2 py-0.5 text-[10px] text-[#007AFF]">
+              <span className="soft-pill px-2.5 py-1 text-[10px] font-medium text-[#007AFF]">
                 {unreadCount} new
               </span>
             )}
           </div>
 
-          <div className="max-h-72 overflow-y-auto">
+          <div className="max-h-72 overflow-y-auto px-2 pb-2">
             {recent.length === 0 ? (
               <div className="text-center py-8 text-xs text-[#8b90a8]">All caught up!</div>
             ) : (
@@ -58,15 +61,15 @@ export default function NotificationBell() {
                   key={n.id}
                   onClick={() => markRead(n.id)}
                   className={cn(
-                    'w-full px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.92)]',
-                    !n.is_read && 'bg-[rgba(255,255,255,0.72)]'
+                    'mb-1.5 w-full rounded-[16px] px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.84)]',
+                    !n.is_read ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(239,246,255,0.72))] shadow-[0_10px_22px_rgba(15,23,42,0.05)]' : 'bg-[rgba(255,255,255,0.52)]'
                   )}
                 >
                   {!n.is_read && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3d5af1] float-right mt-1.5 ml-2 flex-shrink-0" />
+                    <div className="float-right ml-2 mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3d5af1]" />
                   )}
-                  <p className="text-xs text-[#1a1d2e] leading-relaxed">{n.content}</p>
-                  <p className="text-[10px] text-[#8b90a8] mt-0.5">
+                  <p className="text-xs leading-relaxed text-[#1a1d2e]">{n.content}</p>
+                  <p className="mt-1 text-[10px] text-[#8b90a8]">
                     {new Date(n.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
                   </p>
                 </button>
@@ -74,7 +77,7 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="px-4 py-2.5">
+          <div className="px-4 py-3">
             <Link
               to="/notifications"
               onClick={() => setOpen(false)}

@@ -1646,8 +1646,8 @@ var config20 = {
   name: "MarkNotificationRead",
   description: "Mark a single notification as read",
   triggers: [
-    // Path matches frontend: apiClient.patch(`/notifications/${id}/read`)
-    { type: "http", method: "PATCH", path: "/notifications/:id/read" }
+    // Path matches frontend: apiClient.patch(`/api/notifications/${id}/read`)
+    { type: "http", method: "PATCH", path: "/api/notifications/:id/read" }
   ],
   enqueues: [],
   flows: ["notification-system"]
@@ -1683,8 +1683,8 @@ var config21 = {
   name: "MarkAllNotificationsRead",
   description: "Mark all of the authenticated user's notifications as read",
   triggers: [
-    // Path matches frontend: apiClient.post('/notifications/read-all')
-    { type: "http", method: "POST", path: "/notifications/read-all" }
+    // Path matches frontend: apiClient.post('/api/notifications/read-all')
+    { type: "http", method: "POST", path: "/api/notifications/read-all" }
   ],
   enqueues: [],
   flows: ["notification-system"]
@@ -1715,8 +1715,8 @@ var config22 = {
   name: "ListNotifications",
   description: "List notifications for the authenticated BD member with unread count (FR-ADD-010)",
   triggers: [
-    // Path matches frontend api/notifications.ts: apiClient.get('/notifications')
-    { type: "http", method: "GET", path: "/notifications" }
+    // Path matches frontend api/notifications.ts: apiClient.get('/api/notifications')
+    { type: "http", method: "GET", path: "/api/notifications" }
   ],
   enqueues: [],
   flows: ["notification-system"]

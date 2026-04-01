@@ -6,8 +6,8 @@ export const config = {
     name: 'MarkAllNotificationsRead',
     description: 'Mark all of the authenticated user\'s notifications as read',
     triggers: [
-        // Path matches frontend: apiClient.post('/notifications/read-all')
-        { type: 'http' as const, method: 'POST' as const, path: '/notifications/read-all' },
+        // Path matches frontend: apiClient.post('/api/notifications/read-all')
+        { type: 'http' as const, method: 'POST' as const, path: '/api/notifications/read-all' },
     ],
     enqueues: [],
     flows: ['notification-system'],

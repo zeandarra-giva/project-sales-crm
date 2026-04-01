@@ -13,10 +13,6 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/notifications': {
-        target: 'http://localhost:3111',
-        changeOrigin: true,
-      },
       '/api/analytics': {
         target: 'http://localhost:8001',
         changeOrigin: true,

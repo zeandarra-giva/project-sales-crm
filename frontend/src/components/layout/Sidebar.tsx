@@ -43,60 +43,63 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="relative flex h-screen flex-shrink-0 flex-col border-r border-[rgba(255,255,255,0.08)]"
+      className="soft-sidebar relative flex h-full flex-shrink-0 flex-col"
       style={{
-        width: '250px',
-        minWidth: '250px',
-        background: 'linear-gradient(180deg, #0F172A 0%, #132238 48%, #1A2E4A 100%)',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        width: '268px',
+        minWidth: '268px',
       }}
     >
       {/* ── Logo / Brand ────────────────────────────────── */}
-      <div className="flex h-[68px] flex-shrink-0 items-center gap-3 px-5">
+      <div className="flex flex-shrink-0 items-center px-5 pb-2 pt-4">
+        <div className="flex w-full items-center gap-4 rounded-[20px] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
         <div
-          className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[8px]"
-          style={{ background: 'linear-gradient(135deg, #007AFF 0%, #3BABFF 100%)', boxShadow: '0 8px 18px rgba(0,122,255,0.18)' }}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[13px] border border-[rgba(255,255,255,0.22)]"
+          style={{ background: 'linear-gradient(135deg, rgba(0,122,255,0.98) 0%, rgba(59,171,255,0.88) 100%)', boxShadow: '0 12px 24px rgba(0,122,255,0.22), inset 0 1px 0 rgba(255,255,255,0.28)' }}
         >
-          <span className="text-white font-semibold text-[11px]">S</span>
+          <span className="text-[12px] font-semibold text-white">S</span>
         </div>
-        <div>
-          <div className="text-[13px] font-semibold leading-none tracking-tight text-white">SalesCRM</div>
-          <div className="mt-[2px] text-[10px] text-[rgba(255,255,255,0.48)]">BD Team</div>
+        <div className="min-w-0 flex-1 self-center text-left">
+          <div className="text-[14px] font-semibold leading-tight tracking-tight text-white">SalesCRM</div>
+          <div className="mt-1 text-[10px] leading-none tracking-[0.08em] text-[rgba(255,255,255,0.46)] whitespace-nowrap">Revenue workspace</div>
+        </div>
         </div>
       </div>
 
       {/* ── Navigation ──────────────────────────────────── */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
+      <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 py-3">
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) => cn(
-              'group flex h-10 items-center gap-3 rounded-[8px] px-3 transition-all duration-150',
+              'soft-nav-link group flex h-11 items-center gap-3 rounded-[14px] px-3.5 transition-all duration-150',
               isActive
-                ? 'bg-[rgba(0,122,255,0.18)] text-[#93C5FD]'
-                : 'text-[rgba(255,255,255,0.64)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                ? 'text-[#DBEAFE] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_30px_rgba(15,23,42,0.16)]'
+                : 'text-[rgba(255,255,255,0.64)] hover:bg-[rgba(255,255,255,0.07)] hover:text-white'
             )}
+            style={({ isActive }) => isActive ? {
+              background: 'linear-gradient(180deg, rgba(0,122,255,0.24) 0%, rgba(59,171,255,0.16) 100%)',
+              border: '1px solid rgba(147,197,253,0.22)',
+            } : undefined}
           >
             {({ isActive }) => (
               <>
                 <item.icon
-                  size={15}
+                  size={16}
                   className={cn(
                     'flex-shrink-0 transition-colors',
                     isActive
-                      ? 'text-[#93C5FD]'
+                      ? 'text-[#BFDBFE]'
                       : 'text-[rgba(255,255,255,0.56)] group-hover:text-white'
                   )}
                   strokeWidth={isActive ? 2.15 : 1.85}
                 />
                 <span className={cn(
                   'text-[13px] font-medium',
-                  isActive ? 'text-[#93C5FD]' : ''
+                  isActive ? 'text-[#DBEAFE]' : ''
                 )}>{item.label}</span>
                 {isActive && (
-                  <span className="ml-auto h-2 w-2 rounded-full bg-[#007AFF]" />
+                  <span className="ml-auto h-2.5 w-2.5 rounded-full bg-[#93C5FD] shadow-[0_0_14px_rgba(147,197,253,0.8)]" />
                 )}
               </>
             )}
@@ -107,34 +110,38 @@ export default function Sidebar() {
         <NavLink
           to="/notifications"
           className={({ isActive }) => cn(
-            'group relative flex h-10 items-center gap-3 rounded-[8px] px-3 transition-all duration-150',
+            'soft-nav-link group relative flex h-11 items-center gap-3 rounded-[14px] px-3.5 transition-all duration-150',
             isActive
-              ? 'bg-[rgba(0,122,255,0.18)] text-[#93C5FD]'
+              ? 'text-[#DBEAFE] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_30px_rgba(15,23,42,0.16)]'
               : 'text-[rgba(255,255,255,0.64)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
           )}
+          style={({ isActive }) => isActive ? {
+            background: 'linear-gradient(180deg, rgba(0,122,255,0.24) 0%, rgba(59,171,255,0.16) 100%)',
+            border: '1px solid rgba(147,197,253,0.22)',
+          } : undefined}
         >
           {({ isActive }) => (
             <>
               <Bell
-                size={15}
+                size={16}
                 className={cn(
                   'flex-shrink-0 transition-colors',
                   isActive
-                    ? 'text-[#93C5FD]'
+                    ? 'text-[#BFDBFE]'
                     : 'text-[rgba(255,255,255,0.56)] group-hover:text-white'
                 )}
                 strokeWidth={isActive ? 2.15 : 1.85}
               />
-              <span className={cn('text-[13px] font-medium', isActive ? 'text-[#93C5FD]' : '')}>
+              <span className={cn('text-[13px] font-medium', isActive ? 'text-[#DBEAFE]' : '')}>
                 Notifications
               </span>
               {unreadCount > 0 && (
-                <span className="ml-auto min-w-[18px] h-[18px] px-1 bg-[#F43F5E] text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
+                <span className="ml-auto flex h-[20px] min-w-[20px] items-center justify-center rounded-full bg-[#F43F5E] px-1.5 text-[10px] font-semibold text-white shadow-[0_10px_22px_rgba(244,63,94,0.28)]">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
               {!unreadCount && isActive && (
-                <span className="ml-auto h-2 w-2 rounded-full bg-[#007AFF]" />
+                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-[#93C5FD] shadow-[0_0_14px_rgba(147,197,253,0.8)]" />
               )}
             </>
           )}
@@ -142,8 +149,12 @@ export default function Sidebar() {
       </nav>
 
       {/* ── User footer ─────────────────────────────────── */}
-      <div className="px-4 py-4 flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex-shrink-0 px-4 py-4">
+        <div className="rounded-[18px] border border-[rgba(255,255,255,0.10)] bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[rgba(255,255,255,0.42)]">
+            Active Workspace
+          </div>
+          <div className="flex items-center gap-3">
           <Avatar name={`${user?.firstName} ${user?.lastName}`} />
           <div className="flex-1 min-w-0">
             <div className="truncate text-[12px] font-semibold leading-none text-white">
@@ -155,11 +166,12 @@ export default function Sidebar() {
           </div>
           <button
             onClick={handleLogout}
-            className="rounded-[8px] p-1.5 text-[rgba(255,255,255,0.46)] transition-colors hover:bg-[rgba(244,63,94,0.14)] hover:text-[#F43F5E]"
+            className="rounded-[12px] p-2 text-[rgba(255,255,255,0.46)] transition-colors hover:bg-[rgba(244,63,94,0.14)] hover:text-[#F43F5E]"
             title="Sign out"
           >
             <LogOut size={13} />
           </button>
+        </div>
         </div>
       </div>
     </aside>
