@@ -1,13 +1,32 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Package, Plus, Edit2, Trash2, X, Save, ChevronDown, ChevronUp,
   Tag, Layers, AlertTriangle, CheckCircle,
 } from 'lucide-react';
 import { Card, Button, Badge, Input, Textarea } from '../components/ui/index';
 import { useServices, useCreateService, useUpdateService, useDeleteService } from '../hooks/useServices';
-import { useBundles, useCreateBundle, useUpdateBundle, useDeleteBundle, useAddServiceToBundle, useRemoveServiceFromBundle } from '../hooks/useBundles';
+import { useBundles, useUpdateBundle, useDeleteBundle, useAddServiceToBundle, useRemoveServiceFromBundle } from '../hooks/useBundles';
+import { bundlesApi } from '../api/bundles';
 import { formatCurrency } from '../lib/utils';
 import type { Service, Bundle } from '../types';
+
+// Each row in the "new bundle" draft form
+interface DraftServiceRow {
+  _key: string;
+  serviceId: string;
+  displayName: string;
+  serviceValue: string;
+  revenueSharePct: string;
+}
+
+function emptyRow(): DraftServiceRow {
+  return { _key: Math.random().toString(36).slice(2), serviceId: '', displayName: '', serviceValue: '', revenueSharePct: '' };
+}
+
+function isRowComplete(row: DraftServiceRow) {
+  return row.serviceId && row.displayName.trim() && row.serviceValue && row.revenueSharePct;
+}
 
 // ── Utility ──────────────────────────────────────────────────────────────────
 function SectionHeader({ icon, title, count }: { icon: React.ReactNode; title: string; count?: number }) {
@@ -364,21 +383,69 @@ function BundleCard({ bundle, allServices }: { bundle: Bundle; allServices: Serv
 type Tab = 'services' | 'bundles';
 
 export default function ServicesPage() {
+  const qc = useQueryClient();
   const { data: services = [], isLoading: servicesLoading } = useServices();
   const { data: bundles  = [], isLoading: bundlesLoading  } = useBundles();
   const createService = useCreateService();
-  const createBundle  = useCreateBundle();
 
   const [tab, setTab] = useState<Tab>('services');
 
   // New-service form
-  const [showNewService, setShowNewService]     = useState(false);
-  const [newServiceName, setNewServiceName]     = useState('');
-  const [newServiceDesc, setNewServiceDesc]     = useState('');
+  const [showNewService, setShowNewService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceDesc, setNewServiceDesc] = useState('');
 
-  // New-bundle form
-  const [showNewBundle, setShowNewBundle]   = useState(false);
-  const [newBundleName, setNewBundleName]   = useState('');
+  // New-bundle form — richer: name + required service rows
+  const [showNewBundle, setShowNewBundle]     = useState(false);
+  const [newBundleName, setNewBundleName]     = useState('');
+  const [draftRows, setDraftRows]             = useState<DraftServiceRow[]>([emptyRow()]);
+  const [creatingBundle, setCreatingBundle]   = useState(false);
+  const [bundleCreateError, setBundleCreateError] = useState('');
+
+  const activeServices   = services.filter(s => s.is_active);
+  const inactiveServices = services.filter(s => !s.is_active);
+
+  // IDs already used in the draft (prevent duplicate service in same bundle)
+  const draftUsedIds = new Set(draftRows.map(r => r.serviceId).filter(Boolean));
+
+  const updateDraftRow = (key: string, patch: Partial<DraftServiceRow>) =>
+    setDraftRows(rows => rows.map(r => r._key === key ? { ...r, ...patch } : r));
+
+  const removeDraftRow = (key: string) =>
+    setDraftRows(rows => rows.length > 1 ? rows.filter(r => r._key !== key) : rows);
+
+  const resetBundleForm = () => {
+    setNewBundleName('');
+    setDraftRows([emptyRow()]);
+    setBundleCreateError('');
+    setShowNewBundle(false);
+  };
+
+  const completeRows = draftRows.filter(isRowComplete);
+  const canSubmitBundle = newBundleName.trim() && completeRows.length > 0;
+
+  const submitNewBundle = async () => {
+    if (!canSubmitBundle) return;
+    setCreatingBundle(true);
+    setBundleCreateError('');
+    try {
+      const bundle = await bundlesApi.create({ name: newBundleName.trim() });
+      for (const row of completeRows) {
+        await bundlesApi.addService(bundle.id, {
+          serviceId: row.serviceId,
+          name: row.displayName.trim(),
+          serviceValue: parseFloat(row.serviceValue),
+          revenueSharePct: parseFloat(row.revenueSharePct),
+        });
+      }
+      await qc.invalidateQueries({ queryKey: ['bundles'] });
+      resetBundleForm();
+    } catch (e: any) {
+      setBundleCreateError(e?.response?.data?.error || e?.message || 'Failed to create bundle. Please try again.');
+    } finally {
+      setCreatingBundle(false);
+    }
+  };
 
   const submitNewService = () => {
     if (!newServiceName.trim()) return;
@@ -387,17 +454,6 @@ export default function ServicesPage() {
       { onSuccess: () => { setNewServiceName(''); setNewServiceDesc(''); setShowNewService(false); } }
     );
   };
-
-  const submitNewBundle = () => {
-    if (!newBundleName.trim()) return;
-    createBundle.mutate(
-      { name: newBundleName.trim() },
-      { onSuccess: () => { setNewBundleName(''); setShowNewBundle(false); } }
-    );
-  };
-
-  const activeServices  = services.filter(s => s.is_active);
-  const inactiveServices = services.filter(s => !s.is_active);
 
   return (
     <div className="flex flex-col h-full">
@@ -510,23 +566,135 @@ export default function ServicesPage() {
           {/* ── Bundles Tab ──────────────────────────────────── */}
           {tab === 'bundles' && (
             <>
-              {/* New bundle form */}
+              {/* New bundle form — name + required services */}
               {showNewBundle && (
-                <Card className="p-4 border-[rgba(61,90,241,0.18)] bg-[rgba(61,90,241,0.02)]">
-                  <div className="text-xs font-semibold text-[#3d5af1] uppercase tracking-wider mb-3">New Bundle</div>
-                  <div className="flex flex-col gap-3">
+                <Card className="p-5 border-[rgba(61,90,241,0.18)] bg-[rgba(61,90,241,0.02)]">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div className="text-xs font-semibold text-[#3d5af1] uppercase tracking-wider">New Bundle</div>
+                      <div className="text-[11px] text-[#8b90a8] mt-0.5">Add a name and at least one service to create this bundle.</div>
+                    </div>
+                    <button onClick={resetBundleForm} className="p-1.5 rounded-lg text-[#8b90a8] hover:text-[#1a1d2e] hover:bg-[#f4f6fb] transition-all">
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-4">
+                    {/* Bundle name */}
                     <Input
                       label="Bundle name *"
                       value={newBundleName}
                       onChange={e => setNewBundleName(e.target.value)}
-                      placeholder="e.g. Starter Pack"
+                      placeholder="e.g. Growth Starter Pack"
                       autoFocus
                     />
-                    <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="ghost" onClick={() => { setNewBundleName(''); setShowNewBundle(false); }}>
+
+                    {/* Service rows */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em]">
+                          Services <span className="text-[#E11D48]">*</span>
+                          <span className="ml-1 normal-case text-[#8b90a8] tracking-normal">(at least one required)</span>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        {draftRows.map((row, idx) => {
+                          const availableForRow = activeServices.filter(
+                            s => s.id === row.serviceId || !draftUsedIds.has(s.id)
+                          );
+                          return (
+                            <div key={row._key} className="p-3 bg-white border border-[#e2e6f0] rounded-xl flex flex-col gap-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-semibold text-[#4a5068]">Service {idx + 1}</span>
+                                {draftRows.length > 1 && (
+                                  <button onClick={() => removeDraftRow(row._key)} className="text-[#8b90a8] hover:text-[#E11D48] transition-colors">
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Service picker */}
+                                <div className="col-span-2">
+                                  <label className="block text-[11px] font-medium text-[#64748B] uppercase tracking-[0.16em] mb-1">Service *</label>
+                                  <select
+                                    className="w-full h-10 bg-white border border-[#E2E8F0] rounded-[8px] px-3 text-[13px] text-[#0F172A] shadow-sm focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all appearance-none cursor-pointer"
+                                    value={row.serviceId}
+                                    onChange={e => {
+                                      const svc = activeServices.find(s => s.id === e.target.value);
+                                      updateDraftRow(row._key, {
+                                        serviceId: e.target.value,
+                                        displayName: row.displayName || svc?.name || '',
+                                      });
+                                    }}
+                                  >
+                                    <option value="">Select service...</option>
+                                    {availableForRow.map(s => (
+                                      <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {/* Display name */}
+                                <Input
+                                  label="Display name *"
+                                  value={row.displayName}
+                                  onChange={e => updateDraftRow(row._key, { displayName: e.target.value })}
+                                  placeholder="e.g. SEO Starter"
+                                />
+                                {/* Service value */}
+                                <Input
+                                  label="Value (₱) *"
+                                  type="number"
+                                  value={row.serviceValue}
+                                  onChange={e => updateDraftRow(row._key, { serviceValue: e.target.value })}
+                                  placeholder="0"
+                                />
+                                {/* Revenue share */}
+                                <div className="col-span-2">
+                                  <Input
+                                    label="Revenue share % *"
+                                    type="number"
+                                    value={row.revenueSharePct}
+                                    onChange={e => updateDraftRow(row._key, { revenueSharePct: e.target.value })}
+                                    placeholder="0–100"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add another service row */}
+                      {activeServices.length > draftRows.length && (
+                        <button
+                          onClick={() => setDraftRows(rows => [...rows, emptyRow()])}
+                          className="mt-2 flex items-center gap-1.5 text-[12px] text-[#3d5af1] hover:text-[#2d4ad1] font-medium transition-colors"
+                        >
+                          <Plus size={13} /> Add another service
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Validation hint */}
+                    {newBundleName.trim() && completeRows.length === 0 && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[rgba(244,63,94,0.04)] border border-[rgba(244,63,94,0.14)] rounded-lg">
+                        <AlertTriangle size={12} className="text-[#E11D48] flex-shrink-0" />
+                        <span className="text-[11px] text-[#be123c]">Complete at least one service row to create this bundle.</span>
+                      </div>
+                    )}
+
+                    {bundleCreateError && (
+                      <div className="px-3 py-2 bg-[#fff1f2] border border-[#fecdd3] rounded-lg text-[12px] text-[#e11d48]">
+                        {bundleCreateError}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 justify-end pt-1 border-t border-[#e9ecf4]">
+                      <Button size="sm" variant="ghost" onClick={resetBundleForm} disabled={creatingBundle}>
                         <X size={13} /> Cancel
                       </Button>
-                      <Button size="sm" onClick={submitNewBundle} loading={createBundle.isPending} disabled={!newBundleName.trim()}>
+                      <Button size="sm" onClick={submitNewBundle} loading={creatingBundle} disabled={!canSubmitBundle || creatingBundle}>
                         <Save size={13} /> Create bundle
                       </Button>
                     </div>
@@ -541,8 +709,8 @@ export default function ServicesPage() {
                 <Card className="p-10 flex flex-col items-center gap-3 text-center">
                   <Layers size={28} className="text-[#c8cfe8]" />
                   <p className="text-[13px] font-medium text-[#8b90a8]">No bundles yet</p>
-                  <p className="text-[12px] text-[#8b90a8]">Create a bundle and add services with their revenue-share configuration.</p>
-                  <Button size="sm" onClick={() => setShowNewBundle(true)}><Plus size={13} /> Create first bundle</Button>
+                  <p className="text-[12px] text-[#8b90a8]">Create a bundle and configure the services and revenue share inside it.</p>
+                  <Button size="sm" onClick={() => { setShowNewBundle(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Plus size={13} /> Create first bundle</Button>
                 </Card>
               ) : (
                 bundles.map(b => (
