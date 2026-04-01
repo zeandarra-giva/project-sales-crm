@@ -1357,7 +1357,13 @@ var config20 = {
         bundleId: z8.string().optional(),
         proposalLink: z8.string().optional(),
         contractLink: z8.string().optional()
-      })
+      }).refine(
+        (body) => Boolean(body.serviceId || body.bundleId),
+        {
+          message: "A deal must be tied to a service or bundle.",
+          path: ["serviceId"]
+        }
+      )
     }
   ],
   enqueues: [],

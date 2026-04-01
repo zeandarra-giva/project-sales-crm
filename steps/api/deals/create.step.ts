@@ -24,7 +24,13 @@ export const config = {
                 bundleId: z.string().optional(),
                 proposalLink: z.string().optional(),
                 contractLink: z.string().optional(),
-            }),
+            }).refine(
+                (body) => Boolean(body.serviceId || body.bundleId),
+                {
+                    message: 'A deal must be tied to a service or bundle.',
+                    path: ['serviceId'],
+                }
+            ),
         },
     ],
     enqueues: [],

@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Input, Select, Textarea, Button, Card } from '../components/ui/index';
 import { useClients } from '../hooks/useClients';
 import { useCreateDeal } from '../hooks/useDeals';
+import { useServices } from '../hooks/useServices';
 
 const LEAD_SOURCES = [
   { value: 'INBOUND', label: 'Inbound' },
@@ -17,6 +18,7 @@ export default function NewDealPage() {
   const prefillClientId = searchParams.get('client_id') ?? '';
 
   const { data: clients = [] } = useClients();
+  const { data: services = [] } = useServices();
   const createDeal = useCreateDeal();
 
   const [form, setForm] = useState({
@@ -25,6 +27,7 @@ export default function NewDealPage() {
     duration: '12',
     lead_source: 'OUTBOUND',
     client_id: prefillClientId,
+    service_id: '',
     contract_start_date: '',
     contract_end_date: '',
     proposal_link: '',
@@ -32,6 +35,7 @@ export default function NewDealPage() {
   });
 
   const clientOptions = clients.map(c => ({ value: c.id, label: c.name }));
+  const serviceOptions = services.map(service => ({ value: service.id, label: service.name }));
 
   const contractValue =
     form.monthly_subscription && form.duration
@@ -51,6 +55,7 @@ export default function NewDealPage() {
       monthlySubscription: parseFloat(form.monthly_subscription),
       duration: parseInt(form.duration),
       leadSource: form.lead_source as 'INBOUND' | 'OUTBOUND' | 'REFERRAL',
+      serviceId: form.service_id,
       contractStartDate: form.contract_start_date,
       contractEndDate: form.contract_end_date,
       proposalLink: form.proposal_link || undefined,
@@ -80,6 +85,14 @@ export default function NewDealPage() {
             <div className="flex flex-col gap-4">
               <Input label="Deal Name" value={form.deal_name} onChange={e => update('deal_name', e.target.value)} placeholder="Client Name – Service" required />
               <Select label="Client" value={form.client_id} onChange={e => update('client_id', e.target.value)} options={clientOptions} placeholder="Select client..." required />
+              <Select
+                label="Service"
+                value={form.service_id}
+                onChange={e => update('service_id', e.target.value)}
+                options={serviceOptions}
+                placeholder="Select service..."
+                required
+              />
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Monthly Subscription (PHP)" type="number" value={form.monthly_subscription} onChange={e => update('monthly_subscription', e.target.value)} placeholder="85000" required />
                 <Input label="Duration (months)" type="number" value={form.duration} onChange={e => update('duration', e.target.value)} placeholder="12" required />
@@ -128,7 +141,7 @@ export default function NewDealPage() {
             <Button type="submit" disabled={createDeal.isPending || invalidContractRange}>{createDeal.isPending ? 'Creating...' : 'Create Deal'}</Button>
           </div>
           {createDeal.isError && (
-            <div className="p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">Failed to create deal. Please check all fields and try again.</div>
+            <div className="p-3 bg-[#fff1f2] border border-[#fecdd3] rounded-xl text-xs text-[#e11d48]">Failed to create deal. Please make sure a client, service, and valid contract dates are selected.</div>
           )}
         </form>
       </div>
