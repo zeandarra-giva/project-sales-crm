@@ -21,7 +21,7 @@ export default function PipelinePage() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'All'>('All');
   const [sourceFilter, setSourceFilter] = useState('All');
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useState(true);
   const [contractStatusFilter, setContractStatusFilter] = useState<(typeof CONTRACT_STATUS_FILTERS)[number]>('Active');
 
   const { data: allDeals = [], isLoading, error } = useQuery({
@@ -135,7 +135,7 @@ export default function PipelinePage() {
                   : 'bg-white border-[#E2E8F0] text-[#64748B] shadow-sm hover:text-[#0F172A]'
               )}
             >
-              Show closed
+              {showClosed ? 'Hide closed' : 'Show closed'}
             </button>
           </div>
 

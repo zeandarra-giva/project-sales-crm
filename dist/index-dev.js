@@ -807,7 +807,7 @@ var config15 = {
   enqueues: ["deal.stage.changed"],
   flows: ["sales-pipeline"]
 };
-var handler15 = async (req, ctx) => {
+var handler15 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -850,18 +850,23 @@ var handler15 = async (req, ctx) => {
         }
       };
     }
+    const now = /* @__PURE__ */ new Date();
     const isClosed = ["Closed Won", "Closed Lost"].includes(targetStage.name);
+    const salesCycleDays = isClosed && deal.startDate ? Math.max(
+      0,
+      Math.floor((now.getTime() - deal.startDate.getTime()) / 864e5)
+    ) : null;
     const updatedDeal = await prisma.$transaction(async (tx) => {
       await tx.dealAuditLog.updateMany({
         where: { dealId: id, exitedAt: null },
-        data: { exitedAt: /* @__PURE__ */ new Date() }
+        data: { exitedAt: now }
       });
       await tx.dealAuditLog.create({
         data: {
           dealId: id,
           stageId,
           changedById: user.id,
-          enteredAt: /* @__PURE__ */ new Date(),
+          enteredAt: now,
           notes: notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
           remarks,
           actionPlan,
@@ -870,9 +875,15 @@ var handler15 = async (req, ctx) => {
       });
       const dealUpdateData = {
         stage: { connect: { id: stageId } },
-        lastStageUpdateAt: /* @__PURE__ */ new Date(),
+        lastStageUpdateAt: now,
         isClosed,
-        ...isClosed && { closedDate: /* @__PURE__ */ new Date() },
+        ...isClosed ? {
+          closedDate: now,
+          ...salesCycleDays !== null && { salesCycleDays }
+        } : {
+          closedDate: null,
+          salesCycleDays: null
+        },
         // Capture final proposed value on Closed Lost (FR-ADD-005)
         ...targetStage.name === "Closed Lost" && {
           finalProposedValue: deal.revenue
@@ -964,7 +975,7 @@ var config16 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler16 = async (req, ctx) => {
+var handler16 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -1021,14 +1032,22 @@ var handler16 = async (req, ctx) => {
       updateData.revenue = newMonthly * newDuration;
     }
     if (stageId && stageId !== deal.stageId) {
+      const now = /* @__PURE__ */ new Date();
       updateData.stageId = stageId;
-      updateData.lastStageUpdateAt = /* @__PURE__ */ new Date();
+      updateData.lastStageUpdateAt = now;
       if (targetStageName === "Closed Won" || targetStageName === "Closed Lost") {
         updateData.isClosed = true;
-        updateData.closedDate = /* @__PURE__ */ new Date();
+        updateData.closedDate = now;
+        if (deal.startDate) {
+          updateData.salesCycleDays = Math.max(
+            0,
+            Math.floor((now.getTime() - deal.startDate.getTime()) / 864e5)
+          );
+        }
       } else {
         updateData.isClosed = false;
         updateData.closedDate = null;
+        updateData.salesCycleDays = null;
       }
     }
     const updatedDeal = await prisma.$transaction(async (tx) => {

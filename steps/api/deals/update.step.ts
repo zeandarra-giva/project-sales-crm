@@ -33,7 +33,7 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, ctx) => {
+export const handler: Handlers<typeof config> = async (req, _ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
@@ -105,15 +105,23 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         }
 
         if (stageId && stageId !== deal.stageId) {
+            const now = new Date()
             updateData.stageId = stageId
-            updateData.lastStageUpdateAt = new Date()
+            updateData.lastStageUpdateAt = now
 
             if (targetStageName === 'Closed Won' || targetStageName === 'Closed Lost') {
                 updateData.isClosed = true
-                updateData.closedDate = new Date()
+                updateData.closedDate = now
+                if (deal.startDate) {
+                    updateData.salesCycleDays = Math.max(
+                        0,
+                        Math.floor((now.getTime() - deal.startDate.getTime()) / 86400000)
+                    )
+                }
             } else {
                 updateData.isClosed = false
                 updateData.closedDate = null
+                updateData.salesCycleDays = null
             }
         }
 
