@@ -62,6 +62,7 @@ export interface AnalyticsBDData {
   pipeline_by_stage: { stage_name: string; deal_count: number; total_value: number }[];
   open_deals: { deal_id: string; deal_name: string; stage_name: string; revenue: number; days_in_stage: number; client_name?: string; account_type?: string }[];
   service_revenue: { service_name: string; revenue: number; deal_count: number }[];
+  bundle_revenue: { bundle_name: string; revenue: number; deal_count: number }[];
   account_type_pipeline: { account_type: string; deal_count: number; total_value: number }[];
   lead_source: { lead_source: string; total_deals: number; won_deals: number; won_revenue: number }[];
   follow_up: { total_open: number; overdue_action_plans: number; overdue_follow_ups: number; upcoming_action_plans: number };
@@ -174,6 +175,14 @@ export default function BDDashboard() {
         })),
       },
       {
+        name: 'Bundle Revenue',
+        rows: (data.bundle_revenue || []).map(b => ({
+          'Bundle': b.bundle_name,
+          'Revenue': pesoStr(b.revenue),
+          'Deals': b.deal_count,
+        })),
+      },
+      {
         name: 'Lead Source',
         rows: (data.lead_source || []).map(ls => ({
           'Lead Source': ls.lead_source,
@@ -187,6 +196,7 @@ export default function BDDashboard() {
   };
   const openStages = (data.pipeline_by_stage || []).filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage_name));
   const totalServiceRevenue = (data.service_revenue || []).reduce((sum, s) => sum + s.revenue, 0);
+  const totalBundleRevenue = (data.bundle_revenue || []).reduce((sum, b) => sum + b.revenue, 0);
   const revenueVsQuotaData = (data.revenue_by_month || []).map((entry) => ({
     ...entry,
     deficit: Math.max((entry.quota || 0) - (entry.revenue || 0), 0),
@@ -283,7 +293,7 @@ export default function BDDashboard() {
         </Card>
 
         {/* Key metrics grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-4">
           <MetricCard
             label="Open Pipeline"
             value={formatCurrency(data.open_pipeline || 0, true)}
@@ -310,30 +320,36 @@ export default function BDDashboard() {
           />
           {/* Lead Source card */}
           <MetricCard
+            label="Bundle Revenue"
+            value={formatCurrency(totalBundleRevenue, true)}
+            sub={`${(data.bundle_revenue || []).reduce((sum, b) => sum + b.deal_count, 0)} bundle deals`}
+            accent="#0f766e"
+            icon={<Target size={16} />}
+            delay={150}
+          />
+          <MetricCard
             label="Lead Sources"
             value={String((data.lead_source || []).length)}
             sub={`${(data.lead_source || []).reduce((sum, s) => sum + s.total_deals, 0)} total deals`}
             accent="#059669"
             icon={<Layers size={16} />}
-            delay={150}
+            delay={200}
           />
-          {/* Follow-up card */}
           <MetricCard
             label="Follow-ups"
             value={String((data.follow_up?.overdue_action_plans || 0) + (data.follow_up?.overdue_follow_ups || 0))}
             sub={`overdue · ${data.follow_up?.upcoming_action_plans || 0} upcoming`}
             accent={(data.follow_up?.overdue_action_plans || 0) + (data.follow_up?.overdue_follow_ups || 0) > 0 ? '#f43f5e' : '#10b981'}
             icon={<PhoneCall size={16} />}
-            delay={200}
+            delay={250}
           />
-          {/* Account Type count */}
           <MetricCard
             label="Account Types"
             value={String((data.account_type_pipeline || []).length)}
             sub={`${(data.account_type_pipeline || []).reduce((sum, a) => sum + a.deal_count, 0)} open deals`}
             accent="#d97706"
             icon={<Users size={16} />}
-            delay={250}
+            delay={300}
           />
         </div>
 

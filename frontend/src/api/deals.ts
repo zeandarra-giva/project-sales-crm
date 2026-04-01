@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { Deal, PipelineStage, LeadSource } from '../types'
+import type { Deal, PipelineStage, LeadSource, Bundle } from '../types'
 
 function mapDecisionRank(rank?: string) {
   switch (rank) {
@@ -31,6 +31,28 @@ function daysBetween(from: string | Date): number {
 export function mapDealToFrontend(d: any): Deal {
   const stageName = (d.stage?.name ?? 'Inquiry') as PipelineStage
   const currentAuditLog = d.auditLogs?.[0]
+  const mappedBundle: Bundle | undefined = d.bundle
+    ? {
+        id: d.bundle.id,
+        name: d.bundle.name,
+        services: (d.bundle.bundleServices ?? []).map((bundleService: any) => ({
+          service_id: bundleService.serviceId ?? bundleService.service_id,
+          bundle_id: bundleService.bundleId ?? bundleService.bundle_id,
+          name: bundleService.name ?? bundleService.service?.name,
+          service_value: Number(bundleService.serviceValue ?? bundleService.service_value ?? 0),
+          revenue_share_pct: Number(bundleService.revenueSharePct ?? bundleService.revenue_share_pct ?? 0),
+          service: bundleService.service
+            ? {
+                id: bundleService.service.id,
+                name: bundleService.service.name,
+                description: bundleService.service.description ?? undefined,
+                is_active: bundleService.service.isActive ?? bundleService.service.is_active ?? true,
+              }
+            : undefined,
+        })),
+      }
+    : undefined
+
   return {
     id: d.id,
     deal_name: d.dealName,
@@ -85,7 +107,7 @@ export function mapDealToFrontend(d: any): Deal {
       })),
     } : undefined,
     service: d.service ?? undefined,
-    bundle: d.bundle ?? undefined,
+    bundle: mappedBundle,
     dealContacts: (d.dealContacts ?? []).map((dealContact: any) => ({
       id: dealContact.id,
       isPrimary: dealContact.isPrimary,

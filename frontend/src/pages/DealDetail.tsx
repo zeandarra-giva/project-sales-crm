@@ -87,6 +87,7 @@ export default function DealDetail() {
   const isClosed     = ['Closed Won', 'Closed Lost'].includes(currentStage);
   const isTerminated = deal.contract_status === 'TERMINATED';
   const currentPrimaryDealContact = deal.dealContacts?.find((dealContact: any) => dealContact.isPrimary);
+  const linkedBundleServices = deal.bundle?.services ?? [];
   const clientContactOptions = [
     { value: '__NONE__', label: 'No primary contact yet' },
     ...((deal.client?.contacts ?? []).map((contact: any) => ({
@@ -579,6 +580,69 @@ export default function DealDetail() {
                   <span className="text-[#8b90a8]">Weighted value</span>
                   <span className="font-semibold text-[#4a5068]">{formatCurrency(deal.revenue * (deal.probability_pct || 0) / 100, true)}</span>
                 </div>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Services & Bundles</div>
+              <div className="flex flex-col gap-3">
+                {deal.service && (
+                  <div className="rounded-xl border border-[#e2e6f0] bg-[#f8fafc] px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-[#1a1d2e]">{deal.service.name}</div>
+                        {deal.service.description && (
+                          <div className="text-xs text-[#8b90a8] mt-1">{deal.service.description}</div>
+                        )}
+                      </div>
+                      <Badge variant="info" size="sm">Service</Badge>
+                    </div>
+                  </div>
+                )}
+
+                {deal.bundle && (
+                  <div className="rounded-xl border border-[#e2e6f0] bg-[#f8fafc] px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-[#1a1d2e]">{deal.bundle.name}</div>
+                      <Badge variant="warning" size="sm">Bundle</Badge>
+                    </div>
+                    {linkedBundleServices.length > 0 ? (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {linkedBundleServices.map((bundleService) => (
+                          <div
+                            key={`${bundleService.bundle_id}-${bundleService.service_id}`}
+                            className="rounded-lg border border-[#eef2f7] bg-white px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-[#1a1d2e]">
+                                  {bundleService.service?.name || bundleService.name || 'Unnamed service'}
+                                </div>
+                                {bundleService.name && bundleService.service?.name !== bundleService.name && (
+                                  <div className="text-[11px] text-[#8b90a8] mt-0.5">{bundleService.name}</div>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[11px] font-semibold text-[#4a5068]">
+                                  {bundleService.revenue_share_pct}% share
+                                </div>
+                                <div className="text-[11px] text-[#8b90a8]">
+                                  {formatCurrency(bundleService.service_value, true)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-[#8b90a8]">No bundle services are linked yet.</div>
+                    )}
+                  </div>
+                )}
+
+                {!deal.service && !deal.bundle && (
+                  <div className="text-sm text-[#8b90a8]">No service or bundle is linked to this deal.</div>
+                )}
               </div>
             </Card>
 

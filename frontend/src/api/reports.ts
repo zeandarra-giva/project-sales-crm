@@ -1,4 +1,5 @@
 import analyticsClient from './analyticsClient';
+import type { GrowthComparisonResponse, GrowthComparisonSelection } from './reporting';
 
 export interface ReportParams {
   year: number;
@@ -22,6 +23,21 @@ export const reportsApi = {
 
   winRate: (params: ReportParams) =>
     analyticsClient.get('/api/analytics/reports/win-rate', { params }),
+
+  growthComparison: (params: {
+    left: GrowthComparisonSelection;
+    right: GrowthComparisonSelection;
+    bd_id?: string;
+  }) =>
+    analyticsClient.get<GrowthComparisonResponse>('/api/analytics/reports/growth-comparison', {
+      params: {
+        leftYears: params.left.years.join(','),
+        leftQuarters: params.left.quarters.join(','),
+        rightYears: params.right.years.join(','),
+        rightQuarters: params.right.quarters.join(','),
+        ...(params.bd_id ? { bd_id: params.bd_id } : {}),
+      },
+    }),
 
   // Analytics dashboard endpoints
   bdDashboard: (params: { year: number; quarter: number; bd_id: string }) =>

@@ -30,6 +30,58 @@ export interface GrowthComparison {
   growthPct: number | null
 }
 
+export interface GrowthComparisonSelection {
+  years: number[]
+  quarters: number[]
+}
+
+export interface GrowthSnapshotItem {
+  name: string
+  value: number
+  deals: number
+}
+
+export interface GrowthLeadSourceItem {
+  source: string
+  value: number
+  deals: number
+  wins: number
+  losses: number
+  winRate: number
+}
+
+export interface GrowthStageCycleItem {
+  stage: string
+  avgDays: number
+}
+
+export interface GrowthComparisonSnapshot {
+  label: string
+  periods: Array<{ year: number; quarter: number }>
+  quota: number
+  actual: number
+  attainmentPct: number
+  pipelineValue: number
+  openDeals: number
+  wins: number
+  losses: number
+  winRate: number
+  avgSalesCycleDays: number | null
+  longestCycleDays: number | null
+  sampleSize: number
+  lostDeals: number
+  lostValue: number
+  serviceRevenue: GrowthSnapshotItem[]
+  accountRevenue: GrowthSnapshotItem[]
+  leadSourcePerformance: GrowthLeadSourceItem[]
+  stageCycle: GrowthStageCycleItem[]
+}
+
+export interface GrowthComparisonResponse {
+  left: GrowthComparisonSnapshot
+  right: GrowthComparisonSnapshot
+}
+
 export interface GrowthEntriesResponse {
   entries: GrowthEntry[]
   comparison: GrowthComparison[]
@@ -60,6 +112,22 @@ export const reportingApi = {
         ...(params.quarter ? { quarter: params.quarter } : {}),
         ...(params.compareYear ? { compareYear: params.compareYear } : {}),
         ...(params.compareQuarter ? { compareQuarter: params.compareQuarter } : {}),
+      },
+    })
+    return res.data
+  },
+  growthComparison: async (params: {
+    left: GrowthComparisonSelection
+    right: GrowthComparisonSelection
+    bdId?: string
+  }) => {
+    const res = await apiClient.get<GrowthComparisonResponse>('/api/reporting/growth-comparison', {
+      params: {
+        leftYears: params.left.years.join(','),
+        leftQuarters: params.left.quarters.join(','),
+        rightYears: params.right.years.join(','),
+        rightQuarters: params.right.quarters.join(','),
+        ...(params.bdId ? { bdId: params.bdId } : {}),
       },
     })
     return res.data

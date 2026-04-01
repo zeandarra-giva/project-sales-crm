@@ -53,6 +53,11 @@ function aggregateBDYear(quarters: AnalyticsBDData[]): AnalyticsBDData {
       'service_name',
       ['revenue', 'deal_count']
     ).sort((a, b) => b.revenue - a.revenue),
+    bundle_revenue: combineByKey(
+      quarters.flatMap((quarter) => quarter.bundle_revenue || []),
+      'bundle_name',
+      ['revenue', 'deal_count']
+    ).sort((a, b) => b.revenue - a.revenue),
     lead_source: combineByKey(
       quarters.flatMap((quarter) => quarter.lead_source || []),
       'lead_source',
