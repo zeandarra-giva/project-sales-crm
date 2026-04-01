@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, History, User, Mail, Phone,
+  AlertTriangle, Edit2, Save, X, ChevronRight, History, User, Mail, Phone, ShieldAlert,
 } from 'lucide-react';
 import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -230,8 +230,13 @@ export default function DealDetail() {
             )
           )}
           {!isTerminated && currentStage === 'Closed Won' && (
-            <Button size="sm" variant="danger" onClick={openTerminateModal}>
-              Terminate Contract
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={openTerminateModal}
+              className="border border-[rgba(244,63,94,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,241,242,0.96))] text-[#E11D48] shadow-sm hover:bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(255,228,230,0.98))] hover:text-[#BE123C]"
+            >
+              <ShieldAlert size={14} /> Terminate Contract
             </Button>
           )}
         </div>

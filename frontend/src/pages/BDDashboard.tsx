@@ -72,7 +72,7 @@ export default function BDDashboard() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
-  const [selectedQ, setSelectedQ] = useState(currentQuarter);
+  const [selectedQ, setSelectedQ] = useState<number | 'ALL'>(currentQuarter);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const { data: reportingPeriods } = useReportingPeriods();
   const availableYears = reportingPeriods?.years ?? [currentYear];
@@ -125,7 +125,7 @@ export default function BDDashboard() {
     <div className="flex flex-col h-full">
       <Header
         title={`${user?.firstName}'s Dashboard`}
-        subtitle={`Q${selectedQ} ${selectedYear} · ${getQuarterRange(selectedQ, selectedYear)}`}
+        subtitle={`${getQuarterLabel(selectedQ)} ${selectedYear} · ${getQuarterRange(selectedQ, selectedYear)}`}
         action={{ label: 'New Deal', to: '/deals/new' }}
       />
 
@@ -141,7 +141,7 @@ export default function BDDashboard() {
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          {[1, 2, 3, 4].map((quarter) => (
+          {(['ALL', 1, 2, 3, 4] as const).map((quarter) => (
             <button
               key={quarter}
               onClick={() => setSelectedQ(quarter)}
@@ -152,7 +152,7 @@ export default function BDDashboard() {
                   : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
               )}
             >
-              {`Q${quarter}`}
+              {quarter === 'ALL' ? 'All' : `Q${quarter}`}
             </button>
           ))}
         </div>
@@ -162,7 +162,7 @@ export default function BDDashboard() {
           <div className="absolute inset-0 bg-gradient-to-br from-[#4f6ef708] to-transparent pointer-events-none" />
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · Q{selectedQ} {selectedYear}</div>
+              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · {getQuarterLabel(selectedQ)} {selectedYear}</div>
               <div className="flex items-baseline gap-3">
                 <span className="text-5xl font-bold font-display text-[#1a1d2e]">{formatCurrency(data.total_revenue || 0, true)}</span>
                 <div>
@@ -223,11 +223,11 @@ export default function BDDashboard() {
             delay={50}
           />
           <MetricCard
-            label="Monthly Variance"
-            value={`${(data.monthly_variance || 0) >= 0 ? '+' : ''}${formatCurrency(data.monthly_variance || 0, true)}`}
-            sub={data.monthly_excess_deficit || 'MTD'}
-            accent={(data.monthly_variance || 0) >= 0 ? '#10b981' : '#f43f5e'}
-            icon={(data.monthly_variance || 0) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+            label={selectedQ === 'ALL' ? 'Annual Variance' : 'Monthly Variance'}
+            value={`${((selectedQ === 'ALL' ? data.variance : data.monthly_variance) || 0) >= 0 ? '+' : ''}${formatCurrency(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0, true)}`}
+            sub={selectedQ === 'ALL' ? (data.excess_deficit || 'YTD') : (data.monthly_excess_deficit || 'MTD')}
+            accent={(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0) >= 0 ? '#10b981' : '#f43f5e'}
+            icon={(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
             delay={100}
           />
           {/* Lead Source card */}
@@ -263,7 +263,7 @@ export default function BDDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           {/* Revenue vs Quota bar chart */}
           <Card className="p-5">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Revenue vs Quota (Monthly)</div>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">{selectedQ === 'ALL' ? 'Revenue vs Quota (Year)' : 'Revenue vs Quota (Monthly)'}</div>
             <div className="h-64">
               {(data.revenue_by_month || []).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -463,7 +463,12 @@ export default function BDDashboard() {
   );
 }
 
-function getQuarterRange(quarter: number, year: number): string {
+function getQuarterLabel(quarter: number | 'ALL'): string {
+  return quarter === 'ALL' ? 'All Quarters' : `Q${quarter}`;
+}
+
+function getQuarterRange(quarter: number | 'ALL', year: number): string {
+  if (quarter === 'ALL') return 'Jan 1 – Dec 31';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const startMonth = (quarter - 1) * 3;
   const endMonth = startMonth + 2;

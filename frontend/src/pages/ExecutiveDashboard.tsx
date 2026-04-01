@@ -49,7 +49,7 @@ export default function ExecutiveDashboard() {
   const currentYear = now.getFullYear();
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
+  const [selectedQuarter, setSelectedQuarter] = useState<number | 'ALL'>(currentQuarter);
   const { data: reportingPeriods } = useReportingPeriods();
   const availableYears = reportingPeriods?.years ?? [currentYear];
 
@@ -95,7 +95,7 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Executive Dashboard" subtitle={`Team-wide performance · Q${selectedQuarter} ${selectedYear}`} />
+      <Header title="Executive Dashboard" subtitle={`Team-wide performance · ${selectedQuarter === 'ALL' ? 'All Quarters' : `Q${selectedQuarter}`} ${selectedYear}`} />
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="flex items-center gap-3 mb-6 flex-wrap">
@@ -108,7 +108,7 @@ export default function ExecutiveDashboard() {
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          {[1, 2, 3, 4].map((quarter) => (
+          {(['ALL', 1, 2, 3, 4] as const).map((quarter) => (
             <button
               key={quarter}
               onClick={() => setSelectedQuarter(quarter)}
@@ -119,16 +119,16 @@ export default function ExecutiveDashboard() {
                   : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
               )}
             >
-              {`Q${quarter}`}
+              {quarter === 'ALL' ? 'All' : `Q${quarter}`}
             </button>
           ))}
         </div>
         {/* Team metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <MetricCard label="Team Actual" value={formatCurrency(data.team?.total_revenue || 0, true)} sub="Closed Won" accent="#10b981" delay={0} />
-          <MetricCard label="Team Quota" value={formatCurrency(data.team?.total_quota || 0, true)} sub={`Q${selectedQuarter} ${selectedYear}`} accent="#4f6ef7" delay={50} />
-          <MetricCard label="Team Forecast" value={formatCurrency(data.team?.sales_forecast || 0, true)} sub="Won + Weighted Pipeline" accent="#8b5cf6" delay={100} />
-          <MetricCard label="Attainment" value={`${data.team?.attainment_pct || 0}%`} sub="of quarterly quota" accent="#f59e0b" delay={150} />
+          <MetricCard label="Team Quota" value={formatCurrency(data.team?.total_quota || 0, true)} sub={`${selectedQuarter === 'ALL' ? 'All Quarters' : `Q${selectedQuarter}`} ${selectedYear}`} accent="#4f6ef7" delay={50} />
+          <MetricCard label="Team Forecast" value={formatCurrency(data.team?.sales_forecast || 0, true)} sub={selectedQuarter === 'ALL' ? 'annual won + live negotiation' : 'Won + Weighted Pipeline'} accent="#8b5cf6" delay={100} />
+          <MetricCard label="Attainment" value={`${data.team?.attainment_pct || 0}%`} sub={selectedQuarter === 'ALL' ? 'of annual quota' : 'of quarterly quota'} accent="#f59e0b" delay={150} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -187,7 +187,7 @@ export default function ExecutiveDashboard() {
         <Card className="p-5 mb-4">
           <div className="flex items-center gap-2 mb-4">
             <Trophy size={14} className="text-[#d97706]" />
-            <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">BD Leaderboard · Q{selectedQuarter} {selectedYear}</span>
+            <span className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">BD Leaderboard · {selectedQuarter === 'ALL' ? 'All Quarters' : `Q${selectedQuarter}`} {selectedYear}</span>
           </div>
           <div className="flex flex-col gap-0">
             {/* Header */}
@@ -242,7 +242,7 @@ export default function ExecutiveDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Deals by account type */}
           <Card className="p-5">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Deals by Account Type · Q{selectedQuarter}</div>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Deals by Account Type · {selectedQuarter === 'ALL' ? 'Year' : `Q${selectedQuarter}`}</div>
             <div className="flex flex-col gap-2">
               {(data.by_account_type || []).length > 0 ? data.by_account_type.map((item, i) => (
                 <div key={item.account_type} className="flex items-center justify-between gap-3 py-2 border-b border-[#f0f2f8]">
