@@ -1,20 +1,21 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Users, UserCheck, Bell, BarChart3,
-  LogOut, Briefcase, CreditCard,
+  LogOut, Briefcase, CreditCard, Package,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../store/authStore';
-import { MOCK_NOTIFICATIONS } from '../../mockData';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const NAV_ITEMS = [
-  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',      roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/executive',  icon: TrendingUp,      label: 'Executive View', roles: ['SALES_MANAGER'] },
-  { to: '/pipeline',   icon: Briefcase,       label: 'Pipeline',       roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/clients',    icon: Users,           label: 'Clients',        roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/contacts',   icon: UserCheck,       label: 'Contacts',       roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/reports',    icon: BarChart3,       label: 'Reports',        roles: ['BD_REP', 'SALES_MANAGER'] },
-  { to: '/payments',   icon: CreditCard,      label: 'Payments',       roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',         roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/executive',  icon: TrendingUp,      label: 'Executive View',    roles: ['SALES_MANAGER'] },
+  { to: '/pipeline',   icon: Briefcase,       label: 'Pipeline',          roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/clients',    icon: Users,           label: 'Clients',           roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/contacts',   icon: UserCheck,       label: 'Contacts',          roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/services',   icon: Package,         label: 'Services & Bundles',roles: ['SALES_MANAGER'] },
+  { to: '/reports',    icon: BarChart3,       label: 'Reports',           roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/payments',   icon: CreditCard,      label: 'Payments',          roles: ['BD_REP', 'SALES_MANAGER'] },
 ];
 
 function Avatar({ name }: { name: string }) {
@@ -29,7 +30,7 @@ function Avatar({ name }: { name: string }) {
 export default function Sidebar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const unreadCount = MOCK_NOTIFICATIONS.filter(n => !n.is_read).length;
+  const { unreadCount } = useNotifications();
 
   const visibleItems = NAV_ITEMS.filter(item =>
     user?.role ? item.roles.includes(user.role) : false
@@ -102,7 +103,7 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Notifications */}
+        {/* Notifications — separate so the badge can show the real unread count */}
         <NavLink
           to="/notifications"
           className={({ isActive }) => cn(
@@ -128,8 +129,8 @@ export default function Sidebar() {
                 Notifications
               </span>
               {unreadCount > 0 && (
-                <span className="ml-auto w-[18px] h-[18px] bg-[#F43F5E] text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
-                  {unreadCount}
+                <span className="ml-auto min-w-[18px] h-[18px] px-1 bg-[#F43F5E] text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
               {!unreadCount && isActive && (
