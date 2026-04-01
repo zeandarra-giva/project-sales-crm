@@ -6,8 +6,9 @@ import {
 } from 'recharts';
 import {
   Target, TrendingUp, TrendingDown, Briefcase, AlertTriangle, Loader2,
-  Users, Layers, PhoneCall, Calendar,
+  Users, Layers, PhoneCall, Calendar, Download,
 } from 'lucide-react';
+import { downloadXlsx, pesoStr, pctStr } from '../lib/exportXlsx';
 import Header from '../components/layout/Header';
 import { MetricCard, Card, Badge, ProgressBar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -118,6 +119,72 @@ export default function BDDashboard() {
   const attainmentPct = Math.min(data.attainment_pct || 0, 100);
   const variance = data.variance || 0;
   const isAhead = variance >= 0;
+
+  const handleExport = () => {
+    const periodLabel = selectedQ === 'ALL' ? `${selectedYear}-All` : `${selectedYear}-Q${selectedQ}`;
+    const name = `${user?.firstName ?? 'BD'} ${user?.lastName ?? ''}`.trim();
+    downloadXlsx(`BD-Dashboard-${name}-${periodLabel}`, [
+      {
+        name: 'Summary',
+        rows: [{
+          'BD Rep': name,
+          'Period': periodLabel,
+          'Total Revenue': pesoStr(data.total_revenue),
+          'Quota': pesoStr(data.quota),
+          'Attainment %': pctStr(data.attainment_pct),
+          'Sales Forecast': pesoStr(data.sales_forecast),
+          'Open Pipeline': pesoStr(data.open_pipeline),
+          'Variance': pesoStr(data.variance),
+        }],
+      },
+      {
+        name: 'Revenue by Month',
+        rows: (data.revenue_by_month || []).map(r => ({
+          'Month': r.month_name,
+          'Revenue': pesoStr(r.revenue),
+          'Quota': pesoStr(r.quota),
+          'Attainment %': r.quota > 0 ? pctStr((r.revenue / r.quota) * 100) : '—',
+        })),
+      },
+      {
+        name: 'Open Deals',
+        rows: (data.open_deals || []).map(d => ({
+          'Deal Name': d.deal_name,
+          'Stage': d.stage_name,
+          'Client': d.client_name ?? '—',
+          'Account Type': d.account_type ?? '—',
+          'Revenue': pesoStr(d.revenue),
+          'Days in Stage': d.days_in_stage,
+        })),
+      },
+      {
+        name: 'Pipeline by Stage',
+        rows: (data.pipeline_by_stage || []).map(s => ({
+          'Stage': s.stage_name,
+          'Deals': s.deal_count,
+          'Total Value': pesoStr(s.total_value),
+        })),
+      },
+      {
+        name: 'Service Revenue',
+        rows: (data.service_revenue || []).map(s => ({
+          'Service': s.service_name,
+          'Revenue': pesoStr(s.revenue),
+          'Deals': s.deal_count,
+        })),
+      },
+      {
+        name: 'Lead Source',
+        rows: (data.lead_source || []).map(ls => ({
+          'Lead Source': ls.lead_source,
+          'Total Deals': ls.total_deals,
+          'Won Deals': ls.won_deals,
+          'Won Revenue': pesoStr(ls.won_revenue),
+          'Win Rate %': ls.total_deals > 0 ? pctStr((ls.won_deals / ls.total_deals) * 100) : '0%',
+        })),
+      },
+    ]);
+  };
   const openStages = (data.pipeline_by_stage || []).filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage_name));
   const totalServiceRevenue = (data.service_revenue || []).reduce((sum, s) => sum + s.revenue, 0);
   const revenueVsQuotaData = (data.revenue_by_month || []).map((entry) => ({
@@ -135,7 +202,7 @@ export default function BDDashboard() {
       />
 
       <div className="flex-1 overflow-y-auto p-6">
-        {/* Quarter selector */}
+        {/* Quarter selector + export */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <select
             value={selectedYear}
@@ -160,6 +227,12 @@ export default function BDDashboard() {
               {quarter === 'ALL' ? 'All' : `Q${quarter}`}
             </button>
           ))}
+          <button
+            onClick={handleExport}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#e2e6f0] bg-white text-[#4a5068] hover:border-[#3d5af1] hover:text-[#3d5af1] transition-all"
+          >
+            <Download size={12} /> Export XLSX
+          </button>
         </div>
 
         {/* Quota Attainment Hero — Revenue as main text, quota as sub-label */}

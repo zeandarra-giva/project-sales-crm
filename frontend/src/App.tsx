@@ -16,6 +16,7 @@ import NewContactPage from './pages/NewContact';
 import NotificationsPage from './pages/Notifications';
 import ReportsPage from './pages/Reports';
 import PaymentsPage from './pages/Payments';
+import ServicesPage from './pages/ServicesPage';
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/dashboard" element={<BDDashboard />} />
             <Route element={<ManagerLayout />}>
               <Route path="/executive" element={<ExecutiveDashboard />} />
+              <Route path="/services" element={<ServicesPage />} />
             </Route>
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/deals/new" element={<NewDealPage />} />

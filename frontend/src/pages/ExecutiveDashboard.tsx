@@ -3,7 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { Trophy, AlertTriangle, TrendingUp, Loader2 } from 'lucide-react';
+import { Trophy, AlertTriangle, TrendingUp, Loader2, Download } from 'lucide-react';
+import { downloadXlsx, pesoStr, pctStr } from '../lib/exportXlsx';
 import Header from '../components/layout/Header';
 import { Card, Badge, MetricCard, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -93,6 +94,66 @@ export default function ExecutiveDashboard() {
 
   const stageData = (data.pipeline_by_stage || []).filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage_name));
 
+  const handleExport = () => {
+    const periodLabel = selectedQuarter === 'ALL' ? `${selectedYear}-All` : `${selectedYear}-Q${selectedQuarter}`;
+    downloadXlsx(`Executive-Dashboard-${periodLabel}`, [
+      {
+        name: 'Team Summary',
+        rows: [{
+          'Period': periodLabel,
+          'Team Revenue': pesoStr(data.team?.total_revenue),
+          'Team Quota': pesoStr(data.team?.total_quota),
+          'Sales Forecast': pesoStr(data.team?.sales_forecast),
+          'Attainment %': pctStr(data.team?.attainment_pct),
+        }],
+      },
+      {
+        name: 'Leaderboard',
+        rows: (data.leaderboard || []).map((bd, i) => ({
+          'Rank': bd.rank ?? i + 1,
+          'Name': `${bd.first_name} ${bd.last_name}`,
+          'Revenue': pesoStr(bd.revenue),
+          'Quota': pesoStr(bd.quota),
+          'Attainment %': pctStr(bd.attainment_pct),
+          'Win Rate %': bd.win_rate != null ? pctStr(bd.win_rate) : '—',
+        })),
+      },
+      {
+        name: 'Pipeline by Stage',
+        rows: (data.pipeline_by_stage || []).map(s => ({
+          'Stage': s.stage_name,
+          'Deals': s.deal_count,
+          'Total Value': pesoStr(s.total_value),
+        })),
+      },
+      {
+        name: 'By Account Type',
+        rows: (data.by_account_type || []).map(a => ({
+          'Account Type': a.account_type,
+          'Deals': a.deal_count,
+          'Revenue': pesoStr(a.revenue),
+        })),
+      },
+      {
+        name: 'By Service',
+        rows: (data.by_service || []).map(s => ({
+          'Service': s.service_name,
+          'Deals': s.deal_count,
+          'Revenue': pesoStr(s.revenue),
+        })),
+      },
+      {
+        name: 'Stuck Deals',
+        rows: (data.stuck_deals || []).map(d => ({
+          'Deal': d.deal_name,
+          'Stage': d.stage_name,
+          'Owner': `${d.first_name} ${d.last_name}`,
+          'Days in Stage': d.days_in_stage,
+        })),
+      },
+    ]);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <Header title="Executive Dashboard" subtitle={`Team-wide performance · ${selectedQuarter === 'ALL' ? 'All Quarters' : `Q${selectedQuarter}`} ${selectedYear}`} />
@@ -122,6 +183,12 @@ export default function ExecutiveDashboard() {
               {quarter === 'ALL' ? 'All' : `Q${quarter}`}
             </button>
           ))}
+          <button
+            onClick={handleExport}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#e2e6f0] bg-white text-[#4a5068] hover:border-[#3d5af1] hover:text-[#3d5af1] transition-all"
+          >
+            <Download size={12} /> Export XLSX
+          </button>
         </div>
         {/* Team metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
