@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell,
@@ -10,6 +10,7 @@ import { Card, Badge, MetricCard, ProgressBar, Avatar } from '../components/ui/i
 import StagePill from '../components/deals/StagePill';
 import { useExecutiveDashboard } from '../hooks/useDashboard';
 import { useReportingPeriods } from '../hooks/useReporting';
+import { useQuarterlyTargets, useSaveQuarterlyTargets } from '../hooks/useTargets';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -53,9 +54,24 @@ export default function ExecutiveDashboard() {
   const [selectedQuarter, setSelectedQuarter] = useState<number | 'ALL'>(currentQuarter);
   const { data: reportingPeriods } = useReportingPeriods();
   const availableYears = reportingPeriods?.years ?? [currentYear];
+  const { data: quarterlyTargets, isLoading: loadingTargets } = useQuarterlyTargets(selectedYear, selectedQuarter);
+  const { mutate: saveQuarterlyTargets, isPending: savingTargets } = useSaveQuarterlyTargets();
+  const [quotaDraft, setQuotaDraft] = useState<Record<string, string>>({});
+  const [showQuotaConfirm, setShowQuotaConfirm] = useState(false);
 
   const { data, isLoading: loading, error: queryError } = useExecutiveDashboard(selectedQuarter, selectedYear);
   const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || 'Failed to load executive dashboard' : null;
+  const editableQuarterTargets = quarterlyTargets?.targets || [];
+  const draftTotal = editableQuarterTargets.reduce((sum, target) => sum + Number(quotaDraft[target.bdId] || 0), 0);
+
+  useEffect(() => {
+    if (!quarterlyTargets?.targets) return;
+    setQuotaDraft(
+      Object.fromEntries(
+        quarterlyTargets.targets.map((target) => [target.bdId, String(target.quota || 0)])
+      )
+    );
+  }, [quarterlyTargets]);
 
   if (loading) {
     return (
@@ -154,6 +170,20 @@ export default function ExecutiveDashboard() {
     ]);
   };
 
+  const handleSaveQuotas = () => {
+    if (selectedQuarter === 'ALL') return;
+    setShowQuotaConfirm(false);
+    saveQuarterlyTargets({
+      year: selectedYear,
+      quarter: Number(selectedQuarter),
+      targets: editableQuarterTargets.map((target) => ({
+        ...(target.id ? { id: target.id } : {}),
+        bdId: target.bdId,
+        quota: Number(quotaDraft[target.bdId] || 0),
+      })),
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       <Header title="Executive Dashboard" subtitle={`Team-wide performance · ${selectedQuarter === 'ALL' ? 'All Quarters' : `Q${selectedQuarter}`} ${selectedYear}`} />
@@ -197,6 +227,59 @@ export default function ExecutiveDashboard() {
           <MetricCard label="Team Forecast" value={formatCurrency(data.team?.sales_forecast || 0, true)} sub={selectedQuarter === 'ALL' ? 'annual won + live negotiation' : 'Won + Weighted Pipeline'} accent="#8b5cf6" delay={100} />
           <MetricCard label="Attainment" value={`${data.team?.attainment_pct || 0}%`} sub={selectedQuarter === 'ALL' ? 'of annual quota' : 'of quarterly quota'} accent="#f59e0b" delay={150} />
         </div>
+
+        <Card className="p-5 mb-4">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Quarterly Quota Editor</div>
+              <div className="text-xs text-[#8b90a8] mt-1">
+                Managers can set quarterly quota targets per BD here. Executive metrics recompute from these saved targets.
+              </div>
+            </div>
+            {selectedQuarter !== 'ALL' && (
+              <button
+                onClick={() => setShowQuotaConfirm(true)}
+                disabled={savingTargets || loadingTargets}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[#3d5af1] bg-[#3d5af1] text-white disabled:opacity-50"
+              >
+                {savingTargets ? 'Saving...' : 'Save Quotas'}
+              </button>
+            )}
+          </div>
+
+          {selectedQuarter === 'ALL' ? (
+            <div className="text-sm text-[#8b90a8] py-4">Select a specific quarter to edit quota targets. The `All` view is read-only.</div>
+          ) : loadingTargets ? (
+            <div className="text-sm text-[#8b90a8] py-4">Loading quarterly targets...</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-[2fr,1fr,1fr] gap-3 pb-2 border-b border-[#e2e6f0] text-[10px] uppercase tracking-wider text-[#8b90a8]">
+                <div>BD Member</div>
+                <div>Role</div>
+                <div>Quarterly Quota</div>
+              </div>
+              <div className="flex flex-col">
+                {editableQuarterTargets.map((target) => (
+                  <div key={target.bdId} className="grid grid-cols-[2fr,1fr,1fr] gap-3 py-3 border-b border-[#f1f5f9] items-center">
+                    <div className="text-sm font-medium text-[#1a1d2e]">{target.bdName}</div>
+                    <div className="text-xs text-[#8b90a8]">{target.role === 'SALES_MANAGER' ? 'Manager' : 'BD Rep'}</div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={quotaDraft[target.bdId] ?? '0'}
+                      onChange={(e) => setQuotaDraft((prev) => ({ ...prev, [target.bdId]: e.target.value }))}
+                      className="h-10 rounded-[8px] border border-[#E2E8F0] px-3 text-[13px] text-[#0F172A] shadow-sm focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)]"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm">
+                <span className="text-[#8b90a8]">Draft Team Quota</span>
+                <span className="font-semibold text-[#1a1d2e]">{formatCurrency(draftTotal, true)}</span>
+              </div>
+            </>
+          )}
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
           {/* Pipeline by stage */}
@@ -349,6 +432,50 @@ export default function ExecutiveDashboard() {
           </Card>
         </div>
       </div>
+
+      {showQuotaConfirm && selectedQuarter !== 'ALL' && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg p-6 shadow-xl animate-fade-in">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-[#eef1fe] flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={18} className="text-[#3d5af1]" />
+              </div>
+              <div>
+                <h2 className="font-bold text-sm font-display text-[#1a1d2e] mb-1">Confirm Quarterly Quota Update</h2>
+                <p className="text-xs text-[#4a5068] leading-relaxed">
+                  You are about to publish the official quota for Q{selectedQuarter} {selectedYear}. This will be used on BD dashboards and performance reporting.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#e2e6f0] bg-[#f8fafc] p-4 mb-5">
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-[#8b90a8]">Draft Team Quota</span>
+                <span className="font-semibold text-[#1a1d2e]">{formatCurrency(draftTotal, true)}</span>
+              </div>
+              <div className="text-[11px] text-[#8b90a8]">
+                Review each BD quota carefully before confirming. This change is treated as a business event, not a draft-only UI edit.
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowQuotaConfirm(false)}
+                className="px-4 py-2 text-xs font-medium rounded-lg border border-[#e2e6f0] text-[#4a5068] bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveQuotas}
+                disabled={savingTargets}
+                className="px-4 py-2 text-xs font-medium rounded-lg border border-[#3d5af1] bg-[#3d5af1] text-white disabled:opacity-50"
+              >
+                {savingTargets ? 'Publishing...' : 'Confirm and Publish'}
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

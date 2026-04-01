@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useNotifications } from '../../hooks/useNotifications';
 
 const NAV_ITEMS = [
-  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',         roles: ['BD_REP', 'SALES_MANAGER'] },
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',         roles: ['BD_REP'] },
   { to: '/executive',  icon: TrendingUp,      label: 'Executive View',    roles: ['SALES_MANAGER'] },
   { to: '/pipeline',   icon: Briefcase,       label: 'Pipeline',          roles: ['BD_REP', 'SALES_MANAGER'] },
   { to: '/clients',    icon: Users,           label: 'Clients',           roles: ['BD_REP', 'SALES_MANAGER'] },

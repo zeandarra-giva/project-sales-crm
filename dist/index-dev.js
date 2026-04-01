@@ -501,9 +501,8 @@ var handler5 = async () => {
   logger5.info(`Checked ${dueActions.length} due action plans`);
 };
 
-// steps/api/services/update.step.ts
+// steps/api/targets/upsertQuarterly.step.ts
 import { logger as logger6 } from "motia";
-import { z as z3 } from "zod";
 
 // lib/auth.ts
 import jwt from "jsonwebtoken";
@@ -556,8 +555,188 @@ async function authenticate(req) {
   return user;
 }
 
-// steps/api/services/update.step.ts
+// steps/api/targets/upsertQuarterly.step.ts
+import { z as z3 } from "zod";
+import { Prisma } from "@prisma/client";
+var bodySchema = z3.object({
+  year: z3.number().int().min(2e3).max(2100),
+  quarter: z3.number().int().min(1).max(4),
+  targets: z3.array(z3.object({
+    id: z3.string().optional(),
+    bdId: z3.string().uuid(),
+    quota: z3.number().min(0)
+  })).min(1)
+});
 var config6 = {
+  name: "UpsertQuarterlyTargets",
+  description: "Bulk create or update quarterly quota targets for active BDs",
+  triggers: [
+    { type: "http", method: "PUT", path: "/api/targets/quarterly" }
+  ],
+  enqueues: [],
+  flows: ["sales-pipeline"]
+};
+var handler6 = async (req, _ctx) => {
+  try {
+    const user = await authenticate(req.request);
+    if (user.role !== "SALES_MANAGER") {
+      return { status: 403, body: { error: "Only managers can update quarterly targets" } };
+    }
+    const parsed = bodySchema.safeParse(req.request.body);
+    if (!parsed.success) {
+      return { status: 400, body: { error: "Validation failed", details: parsed.error.flatten() } };
+    }
+    const { year, quarter, targets } = parsed.data;
+    const quarterMonth = (quarter - 1) * 3 + 1;
+    const activeReps = await prisma.bD.findMany({
+      where: { isActive: true, role: "BD_REP", id: { in: targets.map((target) => target.bdId) } },
+      select: { id: true }
+    });
+    const allowedIds = new Set(activeReps.map((rep) => rep.id));
+    if (allowedIds.size !== targets.length) {
+      return { status: 400, body: { error: "Targets can only be set for active BD reps" } };
+    }
+    const date = await prisma.dateDimension.findFirst({
+      where: { year, quarter, month: quarterMonth, day: 1 },
+      select: { id: true }
+    });
+    if (!date) {
+      return { status: 404, body: { error: "Date dimension row not found for selected quarter" } };
+    }
+    await prisma.$transaction(async (tx) => {
+      for (const target of targets) {
+        const existing = await tx.target.findFirst({
+          where: {
+            bdId: target.bdId,
+            periodType: "QUARTERLY",
+            dateId: date.id
+          },
+          select: { id: true }
+        });
+        if (existing) {
+          await tx.target.update({
+            where: { id: existing.id },
+            data: { quota: new Prisma.Decimal(target.quota) }
+          });
+        } else {
+          await tx.target.create({
+            data: {
+              bdId: target.bdId,
+              dateId: date.id,
+              periodType: "QUARTERLY",
+              quota: new Prisma.Decimal(target.quota)
+            }
+          });
+        }
+      }
+    });
+    const savedTargets = await prisma.target.findMany({
+      where: {
+        periodType: "QUARTERLY",
+        dateId: date.id
+      },
+      include: {
+        bd: { select: { id: true, firstName: true, lastName: true, role: true } }
+      }
+    });
+    return {
+      status: 200,
+      body: {
+        year,
+        quarter,
+        targets: savedTargets.map((target) => ({
+          id: target.id,
+          bdId: target.bdId,
+          bdName: `${target.bd.firstName} ${target.bd.lastName}`,
+          role: target.bd.role,
+          quota: Number(target.quota)
+        }))
+      }
+    };
+  } catch (error) {
+    if (error.name === "AuthError") {
+      return { status: 401, body: { error: error.message } };
+    }
+    logger6.error("Failed to upsert quarterly targets", { error: error.message });
+    return { status: 500, body: { error: "Internal server error" } };
+  }
+};
+
+// steps/api/targets/listQuarterly.step.ts
+import { logger as logger7 } from "motia";
+var config7 = {
+  name: "ListQuarterlyTargets",
+  description: "List editable quarterly quota targets for all active BDs",
+  triggers: [
+    { type: "http", method: "GET", path: "/api/targets/quarterly" }
+  ],
+  enqueues: [],
+  flows: ["sales-pipeline"]
+};
+var handler7 = async (req, _ctx) => {
+  try {
+    const user = await authenticate(req.request);
+    if (user.role !== "SALES_MANAGER") {
+      return { status: 403, body: { error: "Only managers can view quarterly targets" } };
+    }
+    const year = Number(req.request.queryParams?.year);
+    const quarter = Number(req.request.queryParams?.quarter);
+    if (!year || !quarter || quarter < 1 || quarter > 4) {
+      return { status: 400, body: { error: "year and quarter are required" } };
+    }
+    const quarterMonth = (quarter - 1) * 3 + 1;
+    const date = await prisma.dateDimension.findFirst({
+      where: { year, quarter, month: quarterMonth, day: 1 },
+      select: { id: true }
+    });
+    if (!date) {
+      return { status: 404, body: { error: "Date dimension row not found for selected quarter" } };
+    }
+    const [bds, targets] = await Promise.all([
+      prisma.bD.findMany({
+        where: { isActive: true, role: "BD_REP" },
+        select: { id: true, firstName: true, lastName: true, role: true, isActive: true },
+        orderBy: [{ firstName: "asc" }]
+      }),
+      prisma.target.findMany({
+        where: {
+          periodType: "QUARTERLY",
+          dateId: date.id
+        },
+        select: { id: true, bdId: true, quota: true }
+      })
+    ]);
+    const targetMap = new Map(targets.map((target) => [target.bdId, target]));
+    return {
+      status: 200,
+      body: {
+        year,
+        quarter,
+        targets: bds.map((bd) => {
+          const existing = targetMap.get(bd.id);
+          return {
+            id: existing?.id ?? null,
+            bdId: bd.id,
+            bdName: `${bd.firstName} ${bd.lastName}`,
+            role: bd.role,
+            quota: Number(existing?.quota ?? 0)
+          };
+        })
+      }
+    };
+  } catch (error) {
+    if (error.name === "AuthError") {
+      return { status: 401, body: { error: error.message } };
+    }
+    logger7.error("Failed to list quarterly targets", { error: error.message });
+    return { status: 500, body: { error: "Internal server error" } };
+  }
+};
+
+// steps/api/services/update.step.ts
+import { logger as logger8 } from "motia";
+import { z as z4 } from "zod";
+var config8 = {
   name: "UpdateService",
   description: "Updates an existing service",
   triggers: [
@@ -565,17 +744,17 @@ var config6 = {
       type: "http",
       method: "PATCH",
       path: "/api/services/:id",
-      bodySchema: z3.object({
-        name: z3.string().min(1).optional(),
-        description: z3.string().optional(),
-        isActive: z3.boolean().optional()
+      bodySchema: z4.object({
+        name: z4.string().min(1).optional(),
+        description: z4.string().optional(),
+        isActive: z4.boolean().optional()
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler6 = async (req, _ctx) => {
+var handler8 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -596,14 +775,14 @@ var handler6 = async (req, _ctx) => {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2025") return { status: 404, body: { error: "Service not found" } };
     if (error.code === "P2002") return { status: 409, body: { error: "A service with this name already exists" } };
-    logger6.error("Failed to update service", { error: error.message });
+    logger8.error("Failed to update service", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/services/list.step.ts
-import { logger as logger7 } from "motia";
-var config7 = {
+import { logger as logger9 } from "motia";
+var config9 = {
   name: "ListServices",
   description: "Returns all active services",
   triggers: [
@@ -612,7 +791,7 @@ var config7 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler7 = async (req, ctx) => {
+var handler9 = async (req, ctx) => {
   try {
     await authenticate(req.request);
     const services = await prisma.service.findMany({
@@ -624,14 +803,14 @@ var handler7 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger7.error("Failed to list services", { error: error.message });
+    logger9.error("Failed to list services", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/services/delete.step.ts
-import { logger as logger8 } from "motia";
-var config8 = {
+import { logger as logger10 } from "motia";
+var config10 = {
   name: "DeleteService",
   description: "Soft-deletes (deactivates) a service",
   triggers: [
@@ -640,7 +819,7 @@ var config8 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler8 = async (req, _ctx) => {
+var handler10 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -655,15 +834,15 @@ var handler8 = async (req, _ctx) => {
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2025") return { status: 404, body: { error: "Service not found" } };
-    logger8.error("Failed to delete service", { error: error.message });
+    logger10.error("Failed to delete service", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/services/create.step.ts
-import { logger as logger9 } from "motia";
-import { z as z4 } from "zod";
-var config9 = {
+import { logger as logger11 } from "motia";
+import { z as z5 } from "zod";
+var config11 = {
   name: "CreateService",
   description: "Creates a new service",
   triggers: [
@@ -671,16 +850,16 @@ var config9 = {
       type: "http",
       method: "POST",
       path: "/api/services",
-      bodySchema: z4.object({
-        name: z4.string().min(1),
-        description: z4.string().optional()
+      bodySchema: z5.object({
+        name: z5.string().min(1),
+        description: z5.string().optional()
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler9 = async (req, _ctx) => {
+var handler11 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -698,14 +877,14 @@ var handler9 = async (req, _ctx) => {
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2002") return { status: 409, body: { error: "A service with this name already exists" } };
-    logger9.error("Failed to create service", { error: error.message });
+    logger11.error("Failed to create service", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/reporting/periods.step.ts
-import { logger as logger10 } from "motia";
-var config10 = {
+import { logger as logger12 } from "motia";
+var config12 = {
   name: "GetReportingPeriods",
   description: "List available reporting years from deals and growth table entries",
   triggers: [
@@ -714,7 +893,7 @@ var config10 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler10 = async (req, _ctx) => {
+var handler12 = async (req, _ctx) => {
   try {
     await authenticate(req.request);
     const now = /* @__PURE__ */ new Date();
@@ -749,14 +928,14 @@ var handler10 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger10.error("Failed to fetch reporting periods", { error: error.message });
+    logger12.error("Failed to fetch reporting periods", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/reporting/growthComparison.step.ts
-import { logger as logger11 } from "motia";
-var config11 = {
+import { logger as logger13 } from "motia";
+var config13 = {
   name: "GrowthComparisonReport",
   description: "Returns side-by-side growth comparison analytics for reporting",
   triggers: [
@@ -996,7 +1175,7 @@ async function buildSnapshot(selection, scopedBdId) {
     stageCycle: finalStageCycle.sort((a, b) => b.avgDays - a.avgDays)
   };
 }
-var handler11 = async (req, _ctx) => {
+var handler13 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const params = req.request.queryParams ?? {};
@@ -1027,14 +1206,14 @@ var handler11 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger11.error("Failed to build growth comparison report", { error: error.message });
+    logger13.error("Failed to build growth comparison report", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/pipelineStages/list.step.ts
-import { logger as logger12 } from "motia";
-var config12 = {
+import { logger as logger14 } from "motia";
+var config14 = {
   name: "ListPipelineStages",
   description: "Return all pipeline stages ordered by probability (used for stage picker in DealDetail)",
   triggers: [
@@ -1046,34 +1225,34 @@ var config12 = {
   ],
   flows: ["sales-pipeline"]
 };
-var handler12 = async (req) => {
+var handler14 = async (req) => {
   try {
     await authenticate(req.request);
     const stages = await prisma.pipelineStage.findMany({
       orderBy: { name: "asc" }
       // will be sorted by a fixed order on frontend
     });
-    logger12.info("Pipeline stages fetched", { count: stages.length });
+    logger14.info("Pipeline stages fetched", { count: stages.length });
     return { status: 200, body: stages };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger12.error("Failed to fetch pipeline stages", { error: error.message });
+    logger14.error("Failed to fetch pipeline stages", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/payments/update.step.ts
-import { logger as logger13 } from "motia";
-import { z as z5 } from "zod";
-import { Prisma } from "@prisma/client";
-var UpdatePaymentSchema = z5.object({
-  amount: z5.number().positive("Amount must be greater than 0").optional(),
-  billingYear: z5.number().int().min(2e3).max(2100).optional(),
-  billingMonth: z5.number().int().min(1).max(12).optional()
+import { logger as logger15 } from "motia";
+import { z as z6 } from "zod";
+import { Prisma as Prisma2 } from "@prisma/client";
+var UpdatePaymentSchema = z6.object({
+  amount: z6.number().positive("Amount must be greater than 0").optional(),
+  billingYear: z6.number().int().min(2e3).max(2100).optional(),
+  billingMonth: z6.number().int().min(1).max(12).optional()
 });
-var config13 = {
+var config15 = {
   name: "UpdatePayment",
   description: "Update an existing payment log",
   triggers: [
@@ -1082,7 +1261,7 @@ var config13 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler13 = async (req, _ctx) => {
+var handler15 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -1115,7 +1294,7 @@ var handler13 = async (req, _ctx) => {
     const updated = await prisma.payment.update({
       where: { id },
       data: {
-        ...amount !== void 0 ? { amount: new Prisma.Decimal(amount) } : {},
+        ...amount !== void 0 ? { amount: new Prisma2.Decimal(amount) } : {},
         ...resolvedDateId ? { dateId: resolvedDateId } : {}
       },
       include: {
@@ -1136,7 +1315,7 @@ var handler13 = async (req, _ctx) => {
       type: "FOLLOW_UP_DUE",
       triggeredBy: "NO_FOLLOW_UP_IN_14_DAYS",
       content: `Payment log for "${updated.deal.dealName}" was updated${updated.date ? ` to ${updated.date.month}/${updated.date.year}` : ""}.`
-    }).catch((error) => logger13.warn("Failed to create team payment-update notification", { error, paymentId: id }));
+    }).catch((error) => logger15.warn("Failed to create team payment-update notification", { error, paymentId: id }));
     return {
       status: 200,
       body: {
@@ -1151,14 +1330,14 @@ var handler13 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger13.error("Failed to update payment", { error: error.message });
+    logger15.error("Failed to update payment", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/payments/overview.step.ts
-import { logger as logger14 } from "motia";
-var config14 = {
+import { logger as logger16 } from "motia";
+var config16 = {
   name: "PaymentsOverview",
   description: "Collections overview for the Payments page",
   triggers: [
@@ -1167,7 +1346,7 @@ var config14 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler14 = async (req, _ctx) => {
+var handler16 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const requestedBdId = req.request.queryParams?.bdId;
@@ -1222,14 +1401,14 @@ var handler14 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger14.error("Failed to build payments overview", { error: error.message });
+    logger16.error("Failed to build payments overview", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/payments/list.step.ts
-import { logger as logger15 } from "motia";
-var config15 = {
+import { logger as logger17 } from "motia";
+var config17 = {
   name: "ListPayments",
   description: "List payments with optional deal, BD, year, and quarter filters",
   triggers: [
@@ -1238,7 +1417,7 @@ var config15 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler15 = async (req, ctx) => {
+var handler17 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const dealId = req.request.queryParams?.dealId;
@@ -1306,14 +1485,14 @@ var handler15 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger15.error("Failed to list payments", { error: error.message });
+    logger17.error("Failed to list payments", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/payments/delete.step.ts
-import { logger as logger16 } from "motia";
-var config16 = {
+import { logger as logger18 } from "motia";
+var config18 = {
   name: "DeletePayment",
   description: "Delete a payment log",
   triggers: [
@@ -1322,7 +1501,7 @@ var config16 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler16 = async (req, _ctx) => {
+var handler18 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -1345,22 +1524,22 @@ var handler16 = async (req, _ctx) => {
       type: "FOLLOW_UP_DUE",
       triggeredBy: "NO_FOLLOW_UP_IN_14_DAYS",
       content: `Payment log for "${existing.deal.dealName}" was deleted${existing.date ? ` (${existing.date.month}/${existing.date.year})` : ""}.`
-    }).catch((error) => logger16.warn("Failed to create team payment-delete notification", { error, paymentId: id }));
+    }).catch((error) => logger18.warn("Failed to create team payment-delete notification", { error, paymentId: id }));
     return { status: 200, body: { success: true, id } };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger16.error("Failed to delete payment", { error: error.message });
+    logger18.error("Failed to delete payment", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/payments/create.step.ts
-import { logger as logger17 } from "motia";
-import { z as z6 } from "zod";
-import { Prisma as Prisma2 } from "@prisma/client";
-var config17 = {
+import { logger as logger19 } from "motia";
+import { z as z7 } from "zod";
+import { Prisma as Prisma3 } from "@prisma/client";
+var config19 = {
   name: "CreatePayment",
   description: "Record a payment against a deal",
   triggers: [
@@ -1369,14 +1548,14 @@ var config17 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var CreatePaymentSchema = z6.object({
-  dealId: z6.string().uuid("Invalid deal ID"),
-  amount: z6.number().positive("Amount must be greater than 0"),
-  dateId: z6.string().uuid().optional(),
-  billingYear: z6.number().int().min(2e3).max(2100).optional(),
-  billingMonth: z6.number().int().min(1).max(12).optional()
+var CreatePaymentSchema = z7.object({
+  dealId: z7.string().uuid("Invalid deal ID"),
+  amount: z7.number().positive("Amount must be greater than 0"),
+  dateId: z7.string().uuid().optional(),
+  billingYear: z7.number().int().min(2e3).max(2100).optional(),
+  billingMonth: z7.number().int().min(1).max(12).optional()
 });
-var handler17 = async (req, ctx) => {
+var handler19 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const parsed = CreatePaymentSchema.safeParse(req.request.body);
@@ -1420,7 +1599,7 @@ var handler17 = async (req, ctx) => {
     const payment = await prisma.payment.create({
       data: {
         dealId,
-        amount: new Prisma2.Decimal(amount),
+        amount: new Prisma3.Decimal(amount),
         ...resolvedDateId ? { dateId: resolvedDateId } : {}
       },
       include: {
@@ -1441,7 +1620,7 @@ var handler17 = async (req, ctx) => {
       type: "FOLLOW_UP_DUE",
       triggeredBy: "NO_FOLLOW_UP_IN_14_DAYS",
       content: `Payment of ${Number(payment.amount).toLocaleString("en-PH")} was logged for "${payment.deal.dealName}"${payment.date ? ` (${payment.date.month}/${payment.date.year})` : ""}.`
-    }).catch((error) => logger17.warn("Failed to create team payment notification", { error, dealId }));
+    }).catch((error) => logger19.warn("Failed to create team payment notification", { error, dealId }));
     return {
       status: 201,
       body: {
@@ -1456,14 +1635,14 @@ var handler17 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger17.error("Failed to create payment", { error: error.message });
+    logger19.error("Failed to create payment", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/notifications/markRead.step.ts
-import { logger as logger18 } from "motia";
-var config18 = {
+import { logger as logger20 } from "motia";
+var config20 = {
   name: "MarkNotificationRead",
   description: "Mark a single notification as read",
   triggers: [
@@ -1473,7 +1652,7 @@ var config18 = {
   enqueues: [],
   flows: ["notification-system"]
 };
-var handler18 = async (req, ctx) => {
+var handler20 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -1493,14 +1672,14 @@ var handler18 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger18.error("Failed to mark notification read", { error: error.message });
+    logger20.error("Failed to mark notification read", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/notifications/markAllRead.step.ts
-import { logger as logger19 } from "motia";
-var config19 = {
+import { logger as logger21 } from "motia";
+var config21 = {
   name: "MarkAllNotificationsRead",
   description: "Mark all of the authenticated user's notifications as read",
   triggers: [
@@ -1510,7 +1689,7 @@ var config19 = {
   enqueues: [],
   flows: ["notification-system"]
 };
-var handler19 = async (req, ctx) => {
+var handler21 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const result = await prisma.notification.updateMany({
@@ -1525,14 +1704,14 @@ var handler19 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger19.error("Failed to mark all notifications read", { error: error.message });
+    logger21.error("Failed to mark all notifications read", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/notifications/list.step.ts
-import { logger as logger20 } from "motia";
-var config20 = {
+import { logger as logger22 } from "motia";
+var config22 = {
   name: "ListNotifications",
   description: "List notifications for the authenticated BD member with unread count (FR-ADD-010)",
   triggers: [
@@ -1542,7 +1721,7 @@ var config20 = {
   enqueues: [],
   flows: ["notification-system"]
 };
-var handler20 = async (req, ctx) => {
+var handler22 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const notifications = await prisma.notification.findMany({
@@ -1585,23 +1764,23 @@ var handler20 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger20.error("Failed to list notifications", { error: error.message });
+    logger22.error("Failed to list notifications", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/growthEntries/update.step.ts
-import { logger as logger21 } from "motia";
-import { z as z7 } from "zod";
-import { Prisma as Prisma3 } from "@prisma/client";
-var bodySchema = z7.object({
-  label: z7.string().min(1).max(120).optional(),
-  year: z7.number().int().min(2e3).max(2100).optional(),
-  quarter: z7.number().int().min(1).max(4).nullable().optional(),
-  revenue: z7.number().min(0).optional(),
-  notes: z7.string().nullable().optional()
+import { logger as logger23 } from "motia";
+import { z as z8 } from "zod";
+import { Prisma as Prisma4 } from "@prisma/client";
+var bodySchema2 = z8.object({
+  label: z8.string().min(1).max(120).optional(),
+  year: z8.number().int().min(2e3).max(2100).optional(),
+  quarter: z8.number().int().min(1).max(4).nullable().optional(),
+  revenue: z8.number().min(0).optional(),
+  notes: z8.string().nullable().optional()
 });
-var config21 = {
+var config23 = {
   name: "UpdateGrowthEntry",
   description: "Update a growth table row",
   triggers: [
@@ -1609,13 +1788,13 @@ var config21 = {
       type: "http",
       method: "PATCH",
       path: "/api/growth-entries/:id",
-      bodySchema
+      bodySchema: bodySchema2
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler21 = async (req, _ctx) => {
+var handler23 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -1632,7 +1811,7 @@ var handler21 = async (req, _ctx) => {
         ...req.request.body.label !== void 0 && { label: req.request.body.label },
         ...req.request.body.year !== void 0 && { year: req.request.body.year },
         ...req.request.body.quarter !== void 0 && { quarter: req.request.body.quarter },
-        ...req.request.body.revenue !== void 0 && { revenue: new Prisma3.Decimal(req.request.body.revenue) },
+        ...req.request.body.revenue !== void 0 && { revenue: new Prisma4.Decimal(req.request.body.revenue) },
         ...req.request.body.notes !== void 0 && { notes: req.request.body.notes }
       },
       include: {
@@ -1650,14 +1829,14 @@ var handler21 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger21.error("Failed to update growth entry", { error: error.message });
+    logger23.error("Failed to update growth entry", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/growthEntries/list.step.ts
-import { logger as logger22 } from "motia";
-var config22 = {
+import { logger as logger24 } from "motia";
+var config24 = {
   name: "ListGrowthEntries",
   description: "List growth table entries and a side-by-side comparison payload",
   triggers: [
@@ -1666,7 +1845,7 @@ var config22 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler22 = async (req, _ctx) => {
+var handler24 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const params = req.request.queryParams ?? {};
@@ -1738,23 +1917,23 @@ var handler22 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger22.error("Failed to list growth entries", { error: error.message });
+    logger24.error("Failed to list growth entries", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/growthEntries/create.step.ts
-import { logger as logger23 } from "motia";
-import { z as z8 } from "zod";
-import { Prisma as Prisma4 } from "@prisma/client";
-var bodySchema2 = z8.object({
-  label: z8.string().min(1).max(120),
-  year: z8.number().int().min(2e3).max(2100),
-  quarter: z8.number().int().min(1).max(4).optional(),
-  revenue: z8.number().min(0),
-  notes: z8.string().optional()
+import { logger as logger25 } from "motia";
+import { z as z9 } from "zod";
+import { Prisma as Prisma5 } from "@prisma/client";
+var bodySchema3 = z9.object({
+  label: z9.string().min(1).max(120),
+  year: z9.number().int().min(2e3).max(2100),
+  quarter: z9.number().int().min(1).max(4).optional(),
+  revenue: z9.number().min(0),
+  notes: z9.string().optional()
 });
-var config23 = {
+var config25 = {
   name: "CreateGrowthEntry",
   description: "Create a growth table row",
   triggers: [
@@ -1762,13 +1941,13 @@ var config23 = {
       type: "http",
       method: "POST",
       path: "/api/growth-entries",
-      bodySchema: bodySchema2
+      bodySchema: bodySchema3
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler23 = async (req, _ctx) => {
+var handler25 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { label, year, quarter, revenue, notes } = req.request.body;
@@ -1777,7 +1956,7 @@ var handler23 = async (req, _ctx) => {
         label,
         year,
         quarter: quarter ?? null,
-        revenue: new Prisma4.Decimal(revenue),
+        revenue: new Prisma5.Decimal(revenue),
         notes,
         ownerId: user.id
       },
@@ -1796,16 +1975,16 @@ var handler23 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger23.error("Failed to create growth entry", { error: error.message });
+    logger25.error("Failed to create growth entry", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/deals/updateStage.step.ts
-import { logger as logger24, enqueue } from "motia";
-import { z as z9 } from "zod";
-import { Prisma as Prisma5 } from "@prisma/client";
-var config24 = {
+import { logger as logger26, enqueue } from "motia";
+import { z as z10 } from "zod";
+import { Prisma as Prisma6 } from "@prisma/client";
+var config26 = {
   name: "UpdateDealStage",
   description: "Move a deal to a new pipeline stage with atomic audit log tracking (FR-D07 to FR-D11)",
   triggers: [
@@ -1813,19 +1992,19 @@ var config24 = {
       type: "http",
       method: "PATCH",
       path: "/api/deals/:id/stage",
-      bodySchema: z9.object({
-        stageId: z9.string().uuid(),
-        remarks: z9.string().min(1, "Remarks are required when moving a deal"),
-        actionPlan: z9.string().min(1, "Action plan is required when moving a deal"),
-        actionPlanDueDate: z9.string().datetime().optional(),
-        notes: z9.string().optional()
+      bodySchema: z10.object({
+        stageId: z10.string().uuid(),
+        remarks: z10.string().min(1, "Remarks are required when moving a deal"),
+        actionPlan: z10.string().min(1, "Action plan is required when moving a deal"),
+        actionPlanDueDate: z10.string().datetime().optional(),
+        notes: z10.string().optional()
       })
     }
   ],
   enqueues: ["deal.stage.changed"],
   flows: ["sales-pipeline"]
 };
-var handler24 = async (req, _ctx) => {
+var handler26 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -1939,7 +2118,7 @@ var handler24 = async (req, _ctx) => {
         isClosed
       }
     });
-    logger24.info("Deal stage updated", {
+    logger26.info("Deal stage updated", {
       dealId: id,
       from: deal.stage.name,
       to: targetStage.name,
@@ -1950,10 +2129,10 @@ var handler24 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma5.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Record not found or invalid reference" } };
     }
-    logger24.error("Failed to update deal stage", {
+    logger26.error("Failed to update deal stage", {
       error: error.message,
       dealId: req.request.pathParams.id
     });
@@ -1962,10 +2141,10 @@ var handler24 = async (req, _ctx) => {
 };
 
 // steps/api/deals/update.step.ts
-import { logger as logger25 } from "motia";
-import { z as z10 } from "zod";
-import { Prisma as Prisma6 } from "@prisma/client";
-var config25 = {
+import { logger as logger27 } from "motia";
+import { z as z11 } from "zod";
+import { Prisma as Prisma7 } from "@prisma/client";
+var config27 = {
   name: "UpdateDeal",
   description: "Update an existing deal (fields only \u2014 stage transitions go through /stage endpoint)",
   triggers: [
@@ -1973,28 +2152,28 @@ var config25 = {
       type: "http",
       method: "PATCH",
       path: "/api/deals/:id",
-      bodySchema: z10.object({
-        dealName: z10.string().min(1).optional(),
-        monthlySubscription: z10.number().min(0).optional(),
-        duration: z10.number().min(1).optional(),
-        stageId: z10.string().uuid().optional(),
-        startDate: z10.string().datetime().optional(),
+      bodySchema: z11.object({
+        dealName: z11.string().min(1).optional(),
+        monthlySubscription: z11.number().min(0).optional(),
+        duration: z11.number().min(1).optional(),
+        stageId: z11.string().uuid().optional(),
+        startDate: z11.string().datetime().optional(),
         // remarks/actionPlan now live on DealAuditLog (Rev 1–2)
         // These update the CURRENT open audit log entry (exitedAt IS NULL)
-        remarks: z10.string().optional(),
-        actionPlan: z10.string().optional(),
-        actionPlanDueDate: z10.string().datetime().optional(),
-        dueDate: z10.string().datetime().optional(),
-        proposalLink: z10.string().url().optional(),
-        contractLink: z10.string().url().optional(),
-        primaryContactId: z10.string().uuid().nullable().optional()
+        remarks: z11.string().optional(),
+        actionPlan: z11.string().optional(),
+        actionPlanDueDate: z11.string().datetime().optional(),
+        dueDate: z11.string().datetime().optional(),
+        proposalLink: z11.string().url().optional(),
+        contractLink: z11.string().url().optional(),
+        primaryContactId: z11.string().uuid().nullable().optional()
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler25 = async (req, _ctx) => {
+var handler27 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -2169,7 +2348,7 @@ var handler25 = async (req, _ctx) => {
       }
       return updated;
     });
-    logger25.info("Updated deal", { dealId: id, by: user.id });
+    logger27.info("Updated deal", { dealId: id, by: user.id });
     const activityChanges = [];
     if (remarks !== void 0) activityChanges.push("remarks");
     if (actionPlan !== void 0) activityChanges.push("action plan");
@@ -2183,7 +2362,7 @@ var handler25 = async (req, _ctx) => {
         type: "FOLLOW_UP_DUE",
         triggeredBy: "NO_FOLLOW_UP_IN_14_DAYS",
         content: `${content} Updated by ${user.firstName} ${user.lastName}.`
-      }).catch((error) => logger25.warn("Failed to create deal activity notification", { error, dealId: id }));
+      }).catch((error) => logger27.warn("Failed to create deal activity notification", { error, dealId: id }));
     }
     return {
       status: 200,
@@ -2193,10 +2372,10 @@ var handler25 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma6.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma7.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Record not found or invalid ID provided" } };
     }
-    logger25.error("Failed to update deal", { error: error.message, dealId: req.request.pathParams.id });
+    logger27.error("Failed to update deal", { error: error.message, dealId: req.request.pathParams.id });
     return {
       status: 500,
       body: { error: "Internal server error" }
@@ -2205,9 +2384,9 @@ var handler25 = async (req, _ctx) => {
 };
 
 // steps/api/deals/terminate.step.ts
-import { logger as logger26 } from "motia";
-import { z as z11 } from "zod";
-var config26 = {
+import { logger as logger28 } from "motia";
+import { z as z12 } from "zod";
+var config28 = {
   name: "TerminateDealContract",
   description: "Terminate an active closed-won contract early and log the activity",
   triggers: [
@@ -2215,17 +2394,17 @@ var config26 = {
       type: "http",
       method: "POST",
       path: "/api/deals/:id/terminate",
-      bodySchema: z11.object({
-        terminatedAt: z11.string().datetime(),
-        reason: z11.string().min(1),
-        notes: z11.string().optional()
+      bodySchema: z12.object({
+        terminatedAt: z12.string().datetime(),
+        reason: z12.string().min(1),
+        notes: z12.string().optional()
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler26 = async (req, _ctx) => {
+var handler28 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -2287,19 +2466,19 @@ var handler26 = async (req, _ctx) => {
         }
       });
     });
-    logger26.info("Terminated contract", { dealId: id, by: user.id });
+    logger28.info("Terminated contract", { dealId: id, by: user.id });
     await createTeamNotification({
       dealId: updatedDeal.id,
       type: "FOLLOW_UP_DUE",
       triggeredBy: "NO_FOLLOW_UP_IN_14_DAYS",
       content: `Contract for "${updatedDeal.dealName}" was terminated effective ${effectiveTerminationDate.toLocaleDateString("en-PH")}. Review collections and account follow-up.`
-    }).catch((error) => logger26.warn("Failed to create termination notification", { error, dealId: id }));
+    }).catch((error) => logger28.warn("Failed to create termination notification", { error, dealId: id }));
     return { status: 200, body: updatedDeal };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger26.error("Failed to terminate contract", {
+    logger28.error("Failed to terminate contract", {
       error: error.message,
       dealId: req.request.pathParams.id
     });
@@ -2308,16 +2487,16 @@ var handler26 = async (req, _ctx) => {
 };
 
 // steps/api/deals/list.step.ts
-import { logger as logger27 } from "motia";
-import { Prisma as Prisma7 } from "@prisma/client";
-var currentAuditLogSelect = Prisma7.validator()({
+import { logger as logger29 } from "motia";
+import { Prisma as Prisma8 } from "@prisma/client";
+var currentAuditLogSelect = Prisma8.validator()({
   id: true,
   enteredAt: true,
   remarks: true,
   actionPlan: true,
   actionPlanDueDate: true
 });
-var config27 = {
+var config29 = {
   name: "ListDeals",
   description: "Get list of all deals",
   triggers: [
@@ -2326,10 +2505,10 @@ var config27 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler27 = async (req, _ctx) => {
+var handler29 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
-    logger27.info("Listing deals", { userId: user.id });
+    logger29.info("Listing deals", { userId: user.id });
     const whereClause = user.role === "SALES_MANAGER" ? {} : { bdId: user.id };
     const deals = await prisma.deal.findMany({
       where: whereClause,
@@ -2371,14 +2550,14 @@ var handler27 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger27.error("Failed to list deals", { error });
+    logger29.error("Failed to list deals", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/deals/history.step.ts
-import { logger as logger28 } from "motia";
-var config28 = {
+import { logger as logger30 } from "motia";
+var config30 = {
   name: "GetDealHistory",
   description: "Get full stage transition history for a deal (FR-ADD-002)",
   triggers: [
@@ -2387,7 +2566,7 @@ var config28 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler28 = async (req, ctx) => {
+var handler30 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -2454,15 +2633,15 @@ var handler28 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger28.error("Failed to get deal history", { error: error.message, dealId: req.request.pathParams.id });
+    logger30.error("Failed to get deal history", { error: error.message, dealId: req.request.pathParams.id });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/deals/get.step.ts
-import { logger as logger29 } from "motia";
-import { Prisma as Prisma8 } from "@prisma/client";
-var currentAuditLogSelect2 = Prisma8.validator()({
+import { logger as logger31 } from "motia";
+import { Prisma as Prisma9 } from "@prisma/client";
+var currentAuditLogSelect2 = Prisma9.validator()({
   id: true,
   enteredAt: true,
   remarks: true,
@@ -2473,7 +2652,7 @@ var currentAuditLogSelect2 = Prisma8.validator()({
     select: { id: true, firstName: true, lastName: true }
   }
 });
-var config29 = {
+var config31 = {
   name: "GetDeal",
   description: "Get a single deal by ID with full details (supports DealDetail page)",
   triggers: [
@@ -2482,7 +2661,7 @@ var config29 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler29 = async (req, _ctx) => {
+var handler31 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -2580,16 +2759,16 @@ var handler29 = async (req, _ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger29.error("Failed to get deal", { error: error.message, dealId: req.request.pathParams.id });
+    logger31.error("Failed to get deal", { error: error.message, dealId: req.request.pathParams.id });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/deals/create.step.ts
-import { logger as logger30, enqueue as enqueue2 } from "motia";
-import { z as z12 } from "zod";
-import { Prisma as Prisma9 } from "@prisma/client";
-var config30 = {
+import { logger as logger32, enqueue as enqueue2 } from "motia";
+import { z as z13 } from "zod";
+import { Prisma as Prisma10 } from "@prisma/client";
+var config32 = {
   name: "CreateDeal",
   description: "Create a new deal",
   triggers: [
@@ -2597,19 +2776,19 @@ var config30 = {
       type: "http",
       method: "POST",
       path: "/api/deals",
-      bodySchema: z12.object({
-        dealName: z12.string().min(1),
-        clientId: z12.string().min(1),
-        monthlySubscription: z12.number().min(0),
-        duration: z12.number().min(1),
-        leadSource: z12.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
-        contractStartDate: z12.string().min(1),
-        contractEndDate: z12.string().min(1),
-        primaryContactId: z12.string().uuid().optional(),
-        serviceId: z12.string().optional(),
-        bundleId: z12.string().optional(),
-        proposalLink: z12.string().optional(),
-        contractLink: z12.string().optional()
+      bodySchema: z13.object({
+        dealName: z13.string().min(1),
+        clientId: z13.string().min(1),
+        monthlySubscription: z13.number().min(0),
+        duration: z13.number().min(1),
+        leadSource: z13.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
+        contractStartDate: z13.string().min(1),
+        contractEndDate: z13.string().min(1),
+        primaryContactId: z13.string().uuid().optional(),
+        serviceId: z13.string().optional(),
+        bundleId: z13.string().optional(),
+        proposalLink: z13.string().optional(),
+        contractLink: z13.string().optional()
       }).refine(
         (body) => Boolean(body.serviceId || body.bundleId),
         {
@@ -2622,7 +2801,7 @@ var config30 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler30 = async (req, ctx) => {
+var handler32 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const {
@@ -2731,7 +2910,7 @@ var handler30 = async (req, ctx) => {
         }
       }
     });
-    logger30.info("Created new deal", { dealId: newDeal.id, bdId: user.id });
+    logger32.info("Created new deal", { dealId: newDeal.id, bdId: user.id });
     await enqueue2({
       topic: "deal.created",
       data: {
@@ -2748,7 +2927,7 @@ var handler30 = async (req, ctx) => {
       type: "NEW_DEAL_ASSIGNED",
       triggeredBy: "STAGE_CHANGE",
       content: `New deal "${newDeal.dealName}" was created and assigned to ${newDeal.bd.firstName} ${newDeal.bd.lastName}.`
-    }).catch((error) => logger30.warn("Failed to create direct new-deal notification", { error }));
+    }).catch((error) => logger32.warn("Failed to create direct new-deal notification", { error }));
     return {
       status: 201,
       body: {
@@ -2761,20 +2940,20 @@ var handler30 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma9.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma10.PrismaClientKnownRequestError && error.code === "P2025") {
       return {
         status: 400,
         body: { error: "Related record not found \u2014 check bdMemberId, clientId, serviceIds, etc." }
       };
     }
-    logger30.error("Failed to create deal", { error });
+    logger32.error("Failed to create deal", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/dashboard/executive.step.ts
-import { logger as logger31 } from "motia";
-var config31 = {
+import { logger as logger33 } from "motia";
+var config33 = {
   name: "ExecutiveDashboard",
   description: "Returns all 9 executive-level dashboard metrics (Manager only)",
   triggers: [
@@ -2783,7 +2962,7 @@ var config31 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler31 = async (req, ctx) => {
+var handler33 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -2962,14 +3141,14 @@ var handler31 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger31.error("Executive dashboard failed", { error: error.message });
+    logger33.error("Executive dashboard failed", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/dashboard/bd.step.ts
-import { logger as logger32 } from "motia";
-var config32 = {
+import { logger as logger34 } from "motia";
+var config34 = {
   name: "BDDashboard",
   description: "Returns all 10 BD-level dashboard metrics for a given quarter/year",
   triggers: [
@@ -2978,7 +3157,7 @@ var config32 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler32 = async (req, ctx) => {
+var handler34 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { queryParams } = req.request;
@@ -3089,36 +3268,36 @@ var handler32 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger32.error("BD dashboard failed", { error: error.message });
+    logger34.error("BD dashboard failed", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/contacts/update.step.ts
-import { logger as logger33 } from "motia";
-import { z as z13 } from "zod";
-import { Prisma as Prisma10 } from "@prisma/client";
-var config33 = {
+import { logger as logger35 } from "motia";
+import { z as z14 } from "zod";
+import { Prisma as Prisma11 } from "@prisma/client";
+var config35 = {
   name: "UpdateContact",
   description: "Update an existing contact",
   triggers: [{
     type: "http",
     method: "PATCH",
     path: "/api/contacts/:id",
-    bodySchema: z13.object({
-      firstName: z13.string().min(1).optional(),
-      lastName: z13.string().min(1).optional(),
-      email: z13.string().email().optional(),
-      phone: z13.string().optional(),
-      jobTitle: z13.string().optional(),
-      decisionMakerTier: z13.number().min(1).max(5).optional(),
-      isPrimary: z13.boolean().optional()
+    bodySchema: z14.object({
+      firstName: z14.string().min(1).optional(),
+      lastName: z14.string().min(1).optional(),
+      email: z14.string().email().optional(),
+      phone: z14.string().optional(),
+      jobTitle: z14.string().optional(),
+      decisionMakerTier: z14.number().min(1).max(5).optional(),
+      isPrimary: z14.boolean().optional()
     })
   }],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler33 = async (req, ctx) => {
+var handler35 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -3149,23 +3328,23 @@ var handler33 = async (req, ctx) => {
       }
       return updatedContact;
     });
-    logger33.info("Contact updated", { contactId: id, by: user.id });
+    logger35.info("Contact updated", { contactId: id, by: user.id });
     return { status: 200, body: contact };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma10.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof Prisma11.PrismaClientKnownRequestError && error.code === "P2025") {
       return { status: 404, body: { error: "Contact not found" } };
     }
-    logger33.error("Failed to update contact", { error });
+    logger35.error("Failed to update contact", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/contacts/list.step.ts
-import { logger as logger34 } from "motia";
-var config34 = {
+import { logger as logger36 } from "motia";
+var config36 = {
   name: "ListContacts",
   description: "Get list of all contacts",
   triggers: [
@@ -3178,10 +3357,10 @@ var config34 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler34 = async (req, ctx) => {
+var handler36 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
-    logger34.info("Listing contacts", { userId: user.id });
+    logger36.info("Listing contacts", { userId: user.id });
     const contacts = await prisma.contact.findMany({
       include: {
         client: {
@@ -3198,40 +3377,40 @@ var handler34 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger34.error("Failed to list contacts", { error });
+    logger36.error("Failed to list contacts", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/contacts/create.step.ts
-import { logger as logger35 } from "motia";
-import { z as z14 } from "zod";
-import { Prisma as Prisma11 } from "@prisma/client";
-var config35 = {
+import { logger as logger37 } from "motia";
+import { z as z15 } from "zod";
+import { Prisma as Prisma12 } from "@prisma/client";
+var config37 = {
   name: "CreateContact",
   description: "Create a new contact",
   triggers: [{
     type: "http",
     method: "POST",
     path: "/api/contacts",
-    bodySchema: z14.object({
-      firstName: z14.string().min(1),
-      lastName: z14.string().min(1),
-      email: z14.string().email(),
+    bodySchema: z15.object({
+      firstName: z15.string().min(1),
+      lastName: z15.string().min(1),
+      email: z15.string().email(),
       // email is required in the DB
-      phone: z14.string().optional(),
+      phone: z15.string().optional(),
       // maps to 'number' in DB
-      jobTitle: z14.string().optional(),
+      jobTitle: z15.string().optional(),
       // maps to 'designation' in DB
-      decisionMakerTier: z14.number().min(1).max(5).default(3),
-      clientId: z14.string().min(1),
-      isPrimary: z14.boolean().default(false)
+      decisionMakerTier: z15.number().min(1).max(5).default(3),
+      clientId: z15.string().min(1),
+      isPrimary: z15.boolean().default(false)
     })
   }],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler35 = async (req, ctx) => {
+var handler37 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const {
@@ -3275,49 +3454,49 @@ var handler35 = async (req, ctx) => {
       }
       return newContact;
     });
-    logger35.info("Contact created", { contactId: contact.id, by: user.id });
+    logger37.info("Contact created", { contactId: contact.id, by: user.id });
     return { status: 201, body: contact };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma11.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma12.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Client not found \u2014 check clientId" } };
     }
-    if (error instanceof Prisma11.PrismaClientValidationError || error instanceof Prisma11.PrismaClientKnownRequestError && error.code === "P2000") {
+    if (error instanceof Prisma12.PrismaClientValidationError || error instanceof Prisma12.PrismaClientKnownRequestError && error.code === "P2000") {
       return { status: 400, body: { error: "Invalid input \u2014 check field lengths and types" } };
     }
-    logger35.error("Failed to create contact", { error });
+    logger37.error("Failed to create contact", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/clients/update.step.ts
-import { logger as logger36 } from "motia";
-import { z as z15 } from "zod";
-import { Prisma as Prisma12 } from "@prisma/client";
-var config36 = {
+import { logger as logger38 } from "motia";
+import { z as z16 } from "zod";
+import { Prisma as Prisma13 } from "@prisma/client";
+var config38 = {
   name: "UpdateClient",
   description: "Update an existing client",
   triggers: [{
     type: "http",
     method: "PATCH",
     path: "/api/clients/:id",
-    bodySchema: z15.object({
-      name: z15.string().min(1).optional(),
+    bodySchema: z16.object({
+      name: z16.string().min(1).optional(),
       // all optional for partial update
-      brand: z15.string().optional(),
-      accountType: z15.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]).optional(),
-      status: z15.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).optional(),
-      industryId: z15.string().optional(),
-      contactId: z15.string().optional()
+      brand: z16.string().optional(),
+      accountType: z16.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]).optional(),
+      status: z16.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).optional(),
+      industryId: z16.string().optional(),
+      contactId: z16.string().optional()
       // set primary contact
     })
   }],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler36 = async (req, ctx) => {
+var handler38 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -3340,14 +3519,14 @@ var handler36 = async (req, ctx) => {
       },
       include: { industry: true, contacts: true, contact: true }
     });
-    logger36.info("Client updated", { clientId: id, by: user.id });
+    logger38.info("Client updated", { clientId: id, by: user.id });
     return { status: 200, body: updated };
   } catch (error) {
-    logger36.error("Failed to update client", { error: error.message, clientId: req.request.pathParams?.id });
+    logger38.error("Failed to update client", { error: error.message, clientId: req.request.pathParams?.id });
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma12.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma13.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return {
         status: 400,
         body: { error: "Record not found or related ID is invalid" }
@@ -3361,8 +3540,8 @@ var handler36 = async (req, ctx) => {
 };
 
 // steps/api/clients/list.step.ts
-import { logger as logger37 } from "motia";
-var config37 = {
+import { logger as logger39 } from "motia";
+var config39 = {
   name: "ListClients",
   description: "Get list of all clients",
   triggers: [
@@ -3375,10 +3554,10 @@ var config37 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler37 = async (req, ctx) => {
+var handler39 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
-    logger37.info("Listing clients", { userId: user.id });
+    logger39.info("Listing clients", { userId: user.id });
     const clients = await prisma.client.findMany({
       include: {
         industry: true,
@@ -3399,14 +3578,14 @@ var handler37 = async (req, ctx) => {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    logger37.error("Failed to list clients", { error });
+    logger39.error("Failed to list clients", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/clients/detail.step.ts
-import { logger as logger38 } from "motia";
-var config38 = {
+import { logger as logger40 } from "motia";
+var config40 = {
   name: "GetClientDetail",
   description: "Get a single client by ID",
   triggers: [
@@ -3415,7 +3594,7 @@ var config38 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler38 = async (req, ctx) => {
+var handler40 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { id } = req.request.pathParams;
@@ -3443,7 +3622,7 @@ var handler38 = async (req, ctx) => {
     }
     return { status: 200, body: client };
   } catch (error) {
-    logger38.error("Failed to get client details", { error: error.message, clientId: req.request.pathParams.id });
+    logger40.error("Failed to get client details", { error: error.message, clientId: req.request.pathParams.id });
     return {
       status: error.name === "AuthError" ? 401 : 500,
       body: { error: error.message || "Internal Server Error" }
@@ -3452,31 +3631,31 @@ var handler38 = async (req, ctx) => {
 };
 
 // steps/api/clients/create.step.ts
-import { logger as logger39 } from "motia";
-import { z as z16 } from "zod";
-import { Prisma as Prisma13 } from "@prisma/client";
-var config39 = {
+import { logger as logger41 } from "motia";
+import { z as z17 } from "zod";
+import { Prisma as Prisma14 } from "@prisma/client";
+var config41 = {
   name: "CreateClient",
   description: "Create a new client",
   triggers: [{
     type: "http",
     method: "POST",
     path: "/api/clients",
-    bodySchema: z16.object({
+    bodySchema: z17.object({
       // Zod validates BEFORE handler runs
-      name: z16.string().min(1),
+      name: z17.string().min(1),
       // required
-      brand: z16.string().optional(),
-      accountType: z16.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]),
-      status: z16.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).default("PROSPECT"),
-      industryId: z16.string().optional(),
-      referralId: z16.string().optional()
+      brand: z17.string().optional(),
+      accountType: z17.enum(["ENTERPRISE", "CORPORATE", "SMB", "GOVERNMENT"]),
+      status: z17.enum(["ACTIVE", "INACTIVE", "PROSPECT"]).default("PROSPECT"),
+      industryId: z17.string().optional(),
+      referralId: z17.string().optional()
     })
   }],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler39 = async (req, ctx) => {
+var handler41 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
     const { name, brand, accountType, status, industryId, referralId } = req.request.body;
@@ -3484,24 +3663,24 @@ var handler39 = async (req, ctx) => {
       data: { name, brand, accountType, status, industryId, referralId },
       include: { industry: true, contacts: true }
     });
-    logger39.info("Client created", { clientId: client.id, by: user.id });
+    logger41.info("Client created", { clientId: client.id, by: user.id });
     return { status: 201, body: client };
   } catch (error) {
     if (error.name === "AuthError") {
       return { status: 401, body: { error: error.message } };
     }
-    if (error instanceof Prisma13.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
+    if (error instanceof Prisma14.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003")) {
       return { status: 400, body: { error: "Related record not found (check industryId, referralId)" } };
     }
-    logger39.error("Failed to create client", { error });
+    logger41.error("Failed to create client", { error });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/update.step.ts
-import { logger as logger40 } from "motia";
-import { z as z17 } from "zod";
-var config40 = {
+import { logger as logger42 } from "motia";
+import { z as z18 } from "zod";
+var config42 = {
   name: "UpdateBundle",
   description: "Updates a bundle name",
   triggers: [
@@ -3509,15 +3688,15 @@ var config40 = {
       type: "http",
       method: "PATCH",
       path: "/api/bundles/:id",
-      bodySchema: z17.object({
-        name: z17.string().min(1).optional()
+      bodySchema: z18.object({
+        name: z18.string().min(1).optional()
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler40 = async (req, _ctx) => {
+var handler42 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -3536,14 +3715,14 @@ var handler40 = async (req, _ctx) => {
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2025") return { status: 404, body: { error: "Bundle not found" } };
-    logger40.error("Failed to update bundle", { error: error.message });
+    logger42.error("Failed to update bundle", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/removeService.step.ts
-import { logger as logger41 } from "motia";
-var config41 = {
+import { logger as logger43 } from "motia";
+var config43 = {
   name: "RemoveServiceFromBundle",
   description: "Removes a service from a bundle",
   triggers: [
@@ -3552,7 +3731,7 @@ var config41 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler41 = async (req, _ctx) => {
+var handler43 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -3566,14 +3745,14 @@ var handler41 = async (req, _ctx) => {
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2025") return { status: 404, body: { error: "Service not found in this bundle" } };
-    logger41.error("Failed to remove service from bundle", { error: error.message });
+    logger43.error("Failed to remove service from bundle", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/list.step.ts
-import { logger as logger42 } from "motia";
-var config42 = {
+import { logger as logger44 } from "motia";
+var config44 = {
   name: "ListBundles",
   description: "Returns all bundles with their included services",
   triggers: [
@@ -3582,7 +3761,7 @@ var config42 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler42 = async (req, ctx) => {
+var handler44 = async (req, ctx) => {
   try {
     await authenticate(req.request);
     const bundles = await prisma.bundle.findMany({
@@ -3597,14 +3776,14 @@ var handler42 = async (req, ctx) => {
     return { status: 200, body: bundles };
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
-    logger42.error("Failed to list bundles", { error: error.message });
+    logger44.error("Failed to list bundles", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/delete.step.ts
-import { logger as logger43 } from "motia";
-var config43 = {
+import { logger as logger45 } from "motia";
+var config45 = {
   name: "DeleteBundle",
   description: "Deletes a bundle (only if it has no active deals)",
   triggers: [
@@ -3613,7 +3792,7 @@ var config43 = {
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler43 = async (req, _ctx) => {
+var handler45 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -3633,15 +3812,15 @@ var handler43 = async (req, _ctx) => {
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2025") return { status: 404, body: { error: "Bundle not found" } };
-    logger43.error("Failed to delete bundle", { error: error.message });
+    logger45.error("Failed to delete bundle", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/create.step.ts
-import { logger as logger44 } from "motia";
-import { z as z18 } from "zod";
-var config44 = {
+import { logger as logger46 } from "motia";
+import { z as z19 } from "zod";
+var config46 = {
   name: "CreateBundle",
   description: "Creates a new bundle",
   triggers: [
@@ -3649,15 +3828,15 @@ var config44 = {
       type: "http",
       method: "POST",
       path: "/api/bundles",
-      bodySchema: z18.object({
-        name: z18.string().min(1)
+      bodySchema: z19.object({
+        name: z19.string().min(1)
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler44 = async (req, _ctx) => {
+var handler46 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -3673,15 +3852,15 @@ var handler44 = async (req, _ctx) => {
     return { status: 201, body: bundle };
   } catch (error) {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
-    logger44.error("Failed to create bundle", { error: error.message });
+    logger46.error("Failed to create bundle", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/bundles/addService.step.ts
-import { logger as logger45 } from "motia";
-import { z as z19 } from "zod";
-var config45 = {
+import { logger as logger47 } from "motia";
+import { z as z20 } from "zod";
+var config47 = {
   name: "AddServiceToBundle",
   description: "Adds a service to a bundle with value and revenue-share configuration",
   triggers: [
@@ -3689,18 +3868,18 @@ var config45 = {
       type: "http",
       method: "POST",
       path: "/api/bundles/:bundleId/services",
-      bodySchema: z19.object({
-        serviceId: z19.string().uuid(),
-        name: z19.string().min(1),
-        serviceValue: z19.number().min(0),
-        revenueSharePct: z19.number().min(0).max(100)
+      bodySchema: z20.object({
+        serviceId: z20.string().uuid(),
+        name: z20.string().min(1),
+        serviceValue: z20.number().min(0),
+        revenueSharePct: z20.number().min(0).max(100)
       })
     }
   ],
   enqueues: [],
   flows: ["sales-pipeline"]
 };
-var handler45 = async (req, _ctx) => {
+var handler47 = async (req, _ctx) => {
   try {
     const user = await authenticate(req.request);
     if (user.role !== "SALES_MANAGER") {
@@ -3723,14 +3902,14 @@ var handler45 = async (req, _ctx) => {
     if (error.name === "AuthError") return { status: 401, body: { error: error.message } };
     if (error.code === "P2002") return { status: 409, body: { error: "This service is already in the bundle" } };
     if (error.code === "P2003") return { status: 404, body: { error: "Bundle or service not found" } };
-    logger45.error("Failed to add service to bundle", { error: error.message });
+    logger47.error("Failed to add service to bundle", { error: error.message });
     return { status: 500, body: { error: "Internal server error" } };
   }
 };
 
 // steps/api/auth/me.step.ts
-import { logger as logger46 } from "motia";
-var config46 = {
+import { logger as logger48 } from "motia";
+var config48 = {
   name: "AuthMe",
   description: "Get current authenticated user profile",
   triggers: [
@@ -3743,16 +3922,16 @@ var config46 = {
   enqueues: [],
   flows: ["auth"]
 };
-var handler46 = async (req, ctx) => {
+var handler48 = async (req, ctx) => {
   try {
     const user = await authenticate(req.request);
-    logger46.info("Auth check successful", { userId: user.id });
+    logger48.info("Auth check successful", { userId: user.id });
     return {
       status: 200,
       body: { user }
     };
   } catch (error) {
-    logger46.warn("Auth check failed", { error: error.message });
+    logger48.warn("Auth check failed", { error: error.message });
     return {
       status: 401,
       body: { error: "Not authenticated" }
@@ -3761,10 +3940,10 @@ var handler46 = async (req, ctx) => {
 };
 
 // steps/api/auth/login.step.ts
-import { logger as logger47 } from "motia";
-import { z as z20 } from "zod";
+import { logger as logger49 } from "motia";
+import { z as z21 } from "zod";
 import bcrypt from "bcrypt";
-var config47 = {
+var config49 = {
   name: "AuthLogin",
   description: "Authenticate BD member and return JWT",
   triggers: [
@@ -3772,30 +3951,30 @@ var config47 = {
       type: "http",
       method: "POST",
       path: "/api/auth/login",
-      bodySchema: z20.object({
-        email: z20.string().email(),
-        password: z20.string().min(1)
+      bodySchema: z21.object({
+        email: z21.string().email(),
+        password: z21.string().min(1)
       })
     }
   ],
   enqueues: [],
   flows: ["auth"]
 };
-var handler47 = async (req, ctx) => {
+var handler49 = async (req, ctx) => {
   const { email, password } = req.request.body;
-  logger47.info("Login attempt", { email });
+  logger49.info("Login attempt", { email });
   const bd = await prisma.bD.findUnique({
     where: { email }
   });
   if (!bd) {
-    logger47.warn("Login failed - user not found", { email });
+    logger49.warn("Login failed - user not found", { email });
     return {
       status: 401,
       body: { error: "Invalid email or password" }
     };
   }
   if (!bd.isActive) {
-    logger47.warn("Login failed - account deactivated", { email });
+    logger49.warn("Login failed - account deactivated", { email });
     return {
       status: 401,
       body: { error: "Account is deactivated" }
@@ -3803,7 +3982,7 @@ var handler47 = async (req, ctx) => {
   }
   const passwordValid = await bcrypt.compare(password, bd.password);
   if (!passwordValid) {
-    logger47.warn("Login failed - wrong password", { email });
+    logger49.warn("Login failed - wrong password", { email });
     return {
       status: 401,
       body: { error: "Invalid email or password" }
@@ -3814,7 +3993,7 @@ var handler47 = async (req, ctx) => {
     email: bd.email,
     role: bd.role
   });
-  logger47.info("Login successful", { email, role: bd.role });
+  logger49.info("Login successful", { email, role: bd.role });
   return {
     status: 200,
     body: {
@@ -3838,47 +4017,49 @@ motia.addStep(config2, "./steps/events/onDealCreated.step.ts", handler2, "./step
 motia.addStep(config3, "./steps/cron/checkStuckDeals.step.ts", handler3, "./steps/cron/checkStuckDeals.step.ts");
 motia.addStep(config4, "./steps/cron/checkBillingDue.step.ts", handler4, "./steps/cron/checkBillingDue.step.ts");
 motia.addStep(config5, "./steps/cron/checkActionPlanDue.step.ts", handler5, "./steps/cron/checkActionPlanDue.step.ts");
-motia.addStep(config6, "./steps/api/services/update.step.ts", handler6, "./steps/api/services/update.step.ts");
-motia.addStep(config7, "./steps/api/services/list.step.ts", handler7, "./steps/api/services/list.step.ts");
-motia.addStep(config8, "./steps/api/services/delete.step.ts", handler8, "./steps/api/services/delete.step.ts");
-motia.addStep(config9, "./steps/api/services/create.step.ts", handler9, "./steps/api/services/create.step.ts");
-motia.addStep(config10, "./steps/api/reporting/periods.step.ts", handler10, "./steps/api/reporting/periods.step.ts");
-motia.addStep(config11, "./steps/api/reporting/growthComparison.step.ts", handler11, "./steps/api/reporting/growthComparison.step.ts");
-motia.addStep(config12, "./steps/api/pipelineStages/list.step.ts", handler12, "./steps/api/pipelineStages/list.step.ts");
-motia.addStep(config13, "./steps/api/payments/update.step.ts", handler13, "./steps/api/payments/update.step.ts");
-motia.addStep(config14, "./steps/api/payments/overview.step.ts", handler14, "./steps/api/payments/overview.step.ts");
-motia.addStep(config15, "./steps/api/payments/list.step.ts", handler15, "./steps/api/payments/list.step.ts");
-motia.addStep(config16, "./steps/api/payments/delete.step.ts", handler16, "./steps/api/payments/delete.step.ts");
-motia.addStep(config17, "./steps/api/payments/create.step.ts", handler17, "./steps/api/payments/create.step.ts");
-motia.addStep(config18, "./steps/api/notifications/markRead.step.ts", handler18, "./steps/api/notifications/markRead.step.ts");
-motia.addStep(config19, "./steps/api/notifications/markAllRead.step.ts", handler19, "./steps/api/notifications/markAllRead.step.ts");
-motia.addStep(config20, "./steps/api/notifications/list.step.ts", handler20, "./steps/api/notifications/list.step.ts");
-motia.addStep(config21, "./steps/api/growthEntries/update.step.ts", handler21, "./steps/api/growthEntries/update.step.ts");
-motia.addStep(config22, "./steps/api/growthEntries/list.step.ts", handler22, "./steps/api/growthEntries/list.step.ts");
-motia.addStep(config23, "./steps/api/growthEntries/create.step.ts", handler23, "./steps/api/growthEntries/create.step.ts");
-motia.addStep(config24, "./steps/api/deals/updateStage.step.ts", handler24, "./steps/api/deals/updateStage.step.ts");
-motia.addStep(config25, "./steps/api/deals/update.step.ts", handler25, "./steps/api/deals/update.step.ts");
-motia.addStep(config26, "./steps/api/deals/terminate.step.ts", handler26, "./steps/api/deals/terminate.step.ts");
-motia.addStep(config27, "./steps/api/deals/list.step.ts", handler27, "./steps/api/deals/list.step.ts");
-motia.addStep(config28, "./steps/api/deals/history.step.ts", handler28, "./steps/api/deals/history.step.ts");
-motia.addStep(config29, "./steps/api/deals/get.step.ts", handler29, "./steps/api/deals/get.step.ts");
-motia.addStep(config30, "./steps/api/deals/create.step.ts", handler30, "./steps/api/deals/create.step.ts");
-motia.addStep(config31, "./steps/api/dashboard/executive.step.ts", handler31, "./steps/api/dashboard/executive.step.ts");
-motia.addStep(config32, "./steps/api/dashboard/bd.step.ts", handler32, "./steps/api/dashboard/bd.step.ts");
-motia.addStep(config33, "./steps/api/contacts/update.step.ts", handler33, "./steps/api/contacts/update.step.ts");
-motia.addStep(config34, "./steps/api/contacts/list.step.ts", handler34, "./steps/api/contacts/list.step.ts");
-motia.addStep(config35, "./steps/api/contacts/create.step.ts", handler35, "./steps/api/contacts/create.step.ts");
-motia.addStep(config36, "./steps/api/clients/update.step.ts", handler36, "./steps/api/clients/update.step.ts");
-motia.addStep(config37, "./steps/api/clients/list.step.ts", handler37, "./steps/api/clients/list.step.ts");
-motia.addStep(config38, "./steps/api/clients/detail.step.ts", handler38, "./steps/api/clients/detail.step.ts");
-motia.addStep(config39, "./steps/api/clients/create.step.ts", handler39, "./steps/api/clients/create.step.ts");
-motia.addStep(config40, "./steps/api/bundles/update.step.ts", handler40, "./steps/api/bundles/update.step.ts");
-motia.addStep(config41, "./steps/api/bundles/removeService.step.ts", handler41, "./steps/api/bundles/removeService.step.ts");
-motia.addStep(config42, "./steps/api/bundles/list.step.ts", handler42, "./steps/api/bundles/list.step.ts");
-motia.addStep(config43, "./steps/api/bundles/delete.step.ts", handler43, "./steps/api/bundles/delete.step.ts");
-motia.addStep(config44, "./steps/api/bundles/create.step.ts", handler44, "./steps/api/bundles/create.step.ts");
-motia.addStep(config45, "./steps/api/bundles/addService.step.ts", handler45, "./steps/api/bundles/addService.step.ts");
-motia.addStep(config46, "./steps/api/auth/me.step.ts", handler46, "./steps/api/auth/me.step.ts");
-motia.addStep(config47, "./steps/api/auth/login.step.ts", handler47, "./steps/api/auth/login.step.ts");
+motia.addStep(config6, "./steps/api/targets/upsertQuarterly.step.ts", handler6, "./steps/api/targets/upsertQuarterly.step.ts");
+motia.addStep(config7, "./steps/api/targets/listQuarterly.step.ts", handler7, "./steps/api/targets/listQuarterly.step.ts");
+motia.addStep(config8, "./steps/api/services/update.step.ts", handler8, "./steps/api/services/update.step.ts");
+motia.addStep(config9, "./steps/api/services/list.step.ts", handler9, "./steps/api/services/list.step.ts");
+motia.addStep(config10, "./steps/api/services/delete.step.ts", handler10, "./steps/api/services/delete.step.ts");
+motia.addStep(config11, "./steps/api/services/create.step.ts", handler11, "./steps/api/services/create.step.ts");
+motia.addStep(config12, "./steps/api/reporting/periods.step.ts", handler12, "./steps/api/reporting/periods.step.ts");
+motia.addStep(config13, "./steps/api/reporting/growthComparison.step.ts", handler13, "./steps/api/reporting/growthComparison.step.ts");
+motia.addStep(config14, "./steps/api/pipelineStages/list.step.ts", handler14, "./steps/api/pipelineStages/list.step.ts");
+motia.addStep(config15, "./steps/api/payments/update.step.ts", handler15, "./steps/api/payments/update.step.ts");
+motia.addStep(config16, "./steps/api/payments/overview.step.ts", handler16, "./steps/api/payments/overview.step.ts");
+motia.addStep(config17, "./steps/api/payments/list.step.ts", handler17, "./steps/api/payments/list.step.ts");
+motia.addStep(config18, "./steps/api/payments/delete.step.ts", handler18, "./steps/api/payments/delete.step.ts");
+motia.addStep(config19, "./steps/api/payments/create.step.ts", handler19, "./steps/api/payments/create.step.ts");
+motia.addStep(config20, "./steps/api/notifications/markRead.step.ts", handler20, "./steps/api/notifications/markRead.step.ts");
+motia.addStep(config21, "./steps/api/notifications/markAllRead.step.ts", handler21, "./steps/api/notifications/markAllRead.step.ts");
+motia.addStep(config22, "./steps/api/notifications/list.step.ts", handler22, "./steps/api/notifications/list.step.ts");
+motia.addStep(config23, "./steps/api/growthEntries/update.step.ts", handler23, "./steps/api/growthEntries/update.step.ts");
+motia.addStep(config24, "./steps/api/growthEntries/list.step.ts", handler24, "./steps/api/growthEntries/list.step.ts");
+motia.addStep(config25, "./steps/api/growthEntries/create.step.ts", handler25, "./steps/api/growthEntries/create.step.ts");
+motia.addStep(config26, "./steps/api/deals/updateStage.step.ts", handler26, "./steps/api/deals/updateStage.step.ts");
+motia.addStep(config27, "./steps/api/deals/update.step.ts", handler27, "./steps/api/deals/update.step.ts");
+motia.addStep(config28, "./steps/api/deals/terminate.step.ts", handler28, "./steps/api/deals/terminate.step.ts");
+motia.addStep(config29, "./steps/api/deals/list.step.ts", handler29, "./steps/api/deals/list.step.ts");
+motia.addStep(config30, "./steps/api/deals/history.step.ts", handler30, "./steps/api/deals/history.step.ts");
+motia.addStep(config31, "./steps/api/deals/get.step.ts", handler31, "./steps/api/deals/get.step.ts");
+motia.addStep(config32, "./steps/api/deals/create.step.ts", handler32, "./steps/api/deals/create.step.ts");
+motia.addStep(config33, "./steps/api/dashboard/executive.step.ts", handler33, "./steps/api/dashboard/executive.step.ts");
+motia.addStep(config34, "./steps/api/dashboard/bd.step.ts", handler34, "./steps/api/dashboard/bd.step.ts");
+motia.addStep(config35, "./steps/api/contacts/update.step.ts", handler35, "./steps/api/contacts/update.step.ts");
+motia.addStep(config36, "./steps/api/contacts/list.step.ts", handler36, "./steps/api/contacts/list.step.ts");
+motia.addStep(config37, "./steps/api/contacts/create.step.ts", handler37, "./steps/api/contacts/create.step.ts");
+motia.addStep(config38, "./steps/api/clients/update.step.ts", handler38, "./steps/api/clients/update.step.ts");
+motia.addStep(config39, "./steps/api/clients/list.step.ts", handler39, "./steps/api/clients/list.step.ts");
+motia.addStep(config40, "./steps/api/clients/detail.step.ts", handler40, "./steps/api/clients/detail.step.ts");
+motia.addStep(config41, "./steps/api/clients/create.step.ts", handler41, "./steps/api/clients/create.step.ts");
+motia.addStep(config42, "./steps/api/bundles/update.step.ts", handler42, "./steps/api/bundles/update.step.ts");
+motia.addStep(config43, "./steps/api/bundles/removeService.step.ts", handler43, "./steps/api/bundles/removeService.step.ts");
+motia.addStep(config44, "./steps/api/bundles/list.step.ts", handler44, "./steps/api/bundles/list.step.ts");
+motia.addStep(config45, "./steps/api/bundles/delete.step.ts", handler45, "./steps/api/bundles/delete.step.ts");
+motia.addStep(config46, "./steps/api/bundles/create.step.ts", handler46, "./steps/api/bundles/create.step.ts");
+motia.addStep(config47, "./steps/api/bundles/addService.step.ts", handler47, "./steps/api/bundles/addService.step.ts");
+motia.addStep(config48, "./steps/api/auth/me.step.ts", handler48, "./steps/api/auth/me.step.ts");
+motia.addStep(config49, "./steps/api/auth/login.step.ts", handler49, "./steps/api/auth/login.step.ts");
 motia.initialize();
 //# sourceMappingURL=index-dev.js.map
