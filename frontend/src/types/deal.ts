@@ -8,6 +8,8 @@ export type PipelineStage =
   | 'Closed Lost';
 
 export type LeadSource = 'Inbound' | 'Outbound' | 'Referral';
+export type ContractStatus = 'ACTIVE' | 'TERMINATED';
+export type DealActivityType = 'stage_change' | 'contract_terminated';
 
 export interface Deal {
   id: string;
@@ -34,6 +36,10 @@ export interface Deal {
   proposal_revision_count: number;
   proposal_link?: string;
   contract_link?: string; // Required on Closed Won (Rev 8)
+  contract_status?: ContractStatus;
+  terminated_at?: string;
+  termination_reason?: string;
+  termination_notes?: string;
   lead_source: LeadSource;
   final_proposed_value?: number;
   sales_cycle_days?: number;
@@ -71,6 +77,8 @@ export interface Deal {
 
 export interface DealAuditLog {
   id: string;
+  activity_type?: DealActivityType;
+  title?: string;
   deal_id?: string;
   stage?: PipelineStage;
   stage_id?: string;
@@ -80,6 +88,7 @@ export interface DealAuditLog {
   changed_by?: string;
   changedBy?: { id: string; firstName: string; lastName: string };
   notes?: string;
+  effective_date?: string;
   // Migrated from Deal (Rev 1–3)
   remarks?: string;
   actionPlan?: string;

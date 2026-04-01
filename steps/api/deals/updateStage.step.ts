@@ -46,6 +46,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             return { status: 403, body: { error: 'You can only manage your own deals' } }
         }
 
+        if (deal.contractStatus === 'TERMINATED') {
+            return { status: 400, body: { error: 'Terminated contracts cannot move through the pipeline.' } }
+        }
+
         // No-op guard
         if (deal.stageId === stageId) {
             return { status: 200, body: { message: 'Deal is already at this stage' } }

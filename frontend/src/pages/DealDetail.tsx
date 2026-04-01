@@ -7,7 +7,7 @@ import {
 import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import DealHistory from '../components/deals/DealHistory';
-import { useDeal, useUpdateDeal, useUpdateDealStage, usePipelineStages, useDealHistory } from '../hooks/useDeals';
+import { useDeal, useUpdateDeal, useUpdateDealStage, usePipelineStages, useDealHistory, useTerminateDeal } from '../hooks/useDeals';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import type { PipelineStage, DealAuditLog } from '../types/index';
 
@@ -42,12 +42,17 @@ export default function DealDetail() {
 
   const updateMutation = useUpdateDeal();
   const stageMutation  = useUpdateDealStage();
+  const terminateMutation = useTerminateDeal();
 
   const [editing, setEditing]               = useState(false);
   const [stageConfirm, setStageConfirm]     = useState<PipelineStage | null>(null);
+  const [showTerminateModal, setShowTerminateModal] = useState(false);
   const [editRemarks, setEditRemarks]       = useState('');
   const [editActionPlan, setEditActionPlan] = useState('');
   const [contractLink, setContractLink]     = useState('');
+  const [terminationDate, setTerminationDate] = useState('');
+  const [terminationReason, setTerminationReason] = useState('');
+  const [terminationNotes, setTerminationNotes] = useState('');
   // Stage change modal fields (mandatory)
   const [stageRemarks, setStageRemarks]     = useState('');
   const [stageActionPlan, setStageActionPlan] = useState('');
@@ -72,6 +77,7 @@ export default function DealDetail() {
   const currentStage = deal.stage;
   const stageIndex   = STAGE_ORDER.indexOf(currentStage);
   const isClosed     = ['Closed Won', 'Closed Lost'].includes(currentStage);
+  const isTerminated = deal.contract_status === 'TERMINATED';
 
   // Look up the real DB UUID for a given stage name
   const getStageId = (name: PipelineStage): string | undefined =>
@@ -88,6 +94,13 @@ export default function DealDetail() {
     setEditActionPlan(currentActionPlan);
     setContractLink(deal.contract_link || '');
     setEditing(true);
+  };
+
+  const openTerminateModal = () => {
+    setTerminationDate(deal.terminated_at ? deal.terminated_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setTerminationReason(deal.termination_reason || '');
+    setTerminationNotes(deal.termination_notes || '');
+    setShowTerminateModal(true);
   };
 
   const saveEdit = () => {
@@ -146,16 +159,35 @@ export default function DealDetail() {
     setStageConfirm(null);
   };
 
+  const confirmTermination = () => {
+    if (!terminationDate || !terminationReason.trim()) return;
+
+    terminateMutation.mutate({
+      id: deal.id,
+      data: {
+        terminatedAt: new Date(`${terminationDate}T00:00:00.000Z`).toISOString(),
+        reason: terminationReason.trim(),
+        notes: terminationNotes.trim() || undefined,
+      },
+    }, {
+      onSuccess: () => setShowTerminateModal(false),
+    });
+  };
+
   // Map backend history entries to the DealAuditLog frontend type
   const auditLogs: DealAuditLog[] = history.map(h => ({
     id:            h.id,
+    activity_type: h.type,
+    title:         h.title,
     deal_id:       deal.id,
     stage:         h.stage,
     entered_at:    h.enteredAt,
     exited_at:     h.exitedAt,
     days_in_stage: h.daysInStage,
     changed_by:    h.changedById,
+    changedBy:     h.changedBy,
     notes:         h.notes,
+    effective_date: h.effectiveDate,
   }));
 
   return (
@@ -178,6 +210,9 @@ export default function DealDetail() {
           <Badge variant={deal.lead_source === 'Inbound' ? 'success' : deal.lead_source === 'Outbound' ? 'info' : 'warning'} size="sm">
             {deal.lead_source}
           </Badge>
+          {isTerminated && (
+            <Badge variant="danger" size="sm">Terminated</Badge>
+          )}
           {editing ? (
             <>
               <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}>
@@ -193,6 +228,11 @@ export default function DealDetail() {
                 <Edit2 size={14} /> Edit
               </Button>
             )
+          )}
+          {!isTerminated && currentStage === 'Closed Won' && (
+            <Button size="sm" variant="danger" onClick={openTerminateModal}>
+              Terminate Contract
+            </Button>
           )}
         </div>
       </div>
@@ -380,6 +420,65 @@ export default function DealDetail() {
               </div>
             )}
 
+            {showTerminateModal && (
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-[#f4f6fb] border border-[#d1d5e8] rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                  <h3 className="font-bold font-display text-[#1a1d2e] mb-1">Terminate contract early?</h3>
+                  <p className="text-sm text-[#4a5068] mb-4">
+                    This will mark the contract as terminated, stop future contract recognition after the effective date, and write an activity-log event for loss analysis.
+                  </p>
+
+                  <div className="mb-3">
+                    <Input
+                      label="Termination Effective Date"
+                      type="date"
+                      value={terminationDate}
+                      onChange={e => setTerminationDate(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <Input
+                      label="Termination Reason"
+                      value={terminationReason}
+                      onChange={e => setTerminationReason(e.target.value)}
+                      placeholder="Client requested cancellation"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <Textarea
+                      label="Notes"
+                      value={terminationNotes}
+                      onChange={e => setTerminationNotes(e.target.value)}
+                      rows={3}
+                      placeholder="Additional details for churn and loss analysis..."
+                    />
+                  </div>
+
+                  {terminateMutation.isError && (
+                    <div className="mb-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-xs text-[#e11d48]">
+                      Failed to terminate this contract. Please check the date and try again.
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 justify-end pt-2 border-t border-[#e2e6f0]">
+                    <Button variant="secondary" size="sm" onClick={() => setShowTerminateModal(false)}>Cancel</Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={confirmTermination}
+                      disabled={terminateMutation.isPending || !terminationDate || !terminationReason.trim()}
+                    >
+                      {terminateMutation.isPending ? 'Terminating...' : 'Confirm Termination'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Remarks — sourced from current DealAuditLog (Rev 1) */}
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
@@ -446,6 +545,7 @@ export default function DealDetail() {
                 {[
                   { label: 'Contract Start',   date: deal.start_date,           icon: <Calendar size={12} /> },
                   deal.due_date && { label: 'Contract End', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
+                  deal.terminated_at && { label: 'Terminated On', date: deal.terminated_at, icon: <AlertTriangle size={12} />, warning: true },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
                   currentActionPlanDueDate && {
                     label: 'Action Plan Due', date: currentActionPlanDueDate,
@@ -507,6 +607,17 @@ export default function DealDetail() {
             {(deal.proposal_link || deal.contract_link) && (
               <Card className="p-5">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Contract</div>
+                {isTerminated && (
+                  <div className="mb-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2">
+                    <div className="text-xs font-semibold text-[#e11d48]">Contract terminated early</div>
+                    <div className="mt-1 text-[11px] text-[#be123c]">
+                      {deal.termination_reason || 'No termination reason recorded'}
+                    </div>
+                    {deal.termination_notes && (
+                      <div className="mt-1 text-[11px] text-[#be123c] whitespace-pre-wrap">{deal.termination_notes}</div>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   {deal.proposal_link && (
                     <a href={deal.proposal_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-[#3d5af1] transition-colors">

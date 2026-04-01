@@ -45,6 +45,10 @@ export function mapDealToFrontend(d: any): Deal {
     proposal_revision_count: d.proposalRevisionCount ?? 0,
     proposal_link: d.proposalLink ?? undefined,
     contract_link: d.contractLink ?? undefined,
+    contract_status: d.contractStatus ?? 'ACTIVE',
+    terminated_at: d.terminatedAt ?? undefined,
+    termination_reason: d.terminationReason ?? undefined,
+    termination_notes: d.terminationNotes ?? undefined,
     lead_source: LEAD_SOURCE_MAP[d.leadSource] ?? d.leadSource,
     final_proposed_value: d.finalProposedValue ? Number(d.finalProposedValue) : undefined,
     sales_cycle_days: d.salesCycleDays ?? undefined,
@@ -132,8 +136,19 @@ export interface UpdateDealPayload {
   contractLink?: string
 }
 
+export interface TerminateDealPayload {
+  terminatedAt: string
+  reason: string
+  notes?: string
+}
+
 export async function updateDeal(id: string, data: UpdateDealPayload): Promise<Deal> {
   const res = await apiClient.patch<any>(`/api/deals/${id}`, data)
+  return mapDealToFrontend(res.data)
+}
+
+export async function terminateDeal(id: string, data: TerminateDealPayload): Promise<Deal> {
+  const res = await apiClient.post<any>(`/api/deals/${id}/terminate`, data)
   return mapDealToFrontend(res.data)
 }
 
@@ -168,14 +183,18 @@ export async function updateDealStage(id: string, data: UpdateDealStagePayload):
 
 export interface DealHistoryEntry {
   id: string
-  stage: PipelineStage
-  stageId: string
+  type: 'stage_change' | 'contract_terminated'
+  title: string
+  stage?: PipelineStage
+  stageId?: string
   enteredAt: string
   exitedAt?: string
   daysInStage?: number
   isCurrent: boolean
   notes?: string
   changedById: string
+  changedBy?: { id: string; firstName: string; lastName: string }
+  effectiveDate?: string
 }
 
 export async function getDealHistory(id: string): Promise<DealHistoryEntry[]> {

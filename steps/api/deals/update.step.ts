@@ -62,6 +62,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             return { status: 403, body: { error: 'You can only manage your own deals' } }
         }
 
+        if (deal.contractStatus === 'TERMINATED' && stageId && stageId !== deal.stageId) {
+            return { status: 400, body: { error: 'Terminated contracts cannot move through the pipeline.' } }
+        }
+
         let targetStageName = ''
         if (stageId && stageId !== deal.stageId) {
             const targetStage = await prisma.pipelineStage.findUnique({

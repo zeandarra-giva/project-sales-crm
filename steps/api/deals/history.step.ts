@@ -40,14 +40,24 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             orderBy: { enteredAt: 'desc' },
         })
 
+        const activities = await prisma.dealActivity.findMany({
+            where: { dealId: id },
+            include: {
+                createdBy: { select: { id: true, firstName: true, lastName: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+        })
+
         // Compute daysInStage for each entry client-side (exitedAt null = still current)
-        const enriched = history.map((entry) => {
+        const stageEntries = history.map((entry) => {
             const exitTime = entry.exitedAt ? new Date(entry.exitedAt).getTime() : Date.now()
             const enterTime = new Date(entry.enteredAt).getTime()
             const daysInStage = Math.floor((exitTime - enterTime) / 86400000)
 
             return {
                 id: entry.id,
+                type: 'stage_change',
+                title: entry.stage.name,
                 stage: entry.stage.name,
                 stageId: entry.stageId,
                 enteredAt: entry.enteredAt,
@@ -59,6 +69,22 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 notes: entry.notes,
             }
         })
+
+        const activityEntries = activities.map((entry) => ({
+            id: entry.id,
+            type: entry.type === 'CONTRACT_TERMINATED' ? 'contract_terminated' : 'stage_change',
+            title: entry.title,
+            enteredAt: entry.createdAt,
+            effectiveDate: entry.effectiveDate,
+            changedById: entry.createdById,
+            changedBy: entry.createdBy,
+            notes: entry.description,
+            isCurrent: false,
+        }))
+
+        const enriched = [...stageEntries, ...activityEntries].sort(
+            (a, b) => new Date(b.enteredAt).getTime() - new Date(a.enteredAt).getTime()
+        )
 
         return { status: 200, body: enriched }
 
