@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports';
 import {
+  type CollectionsReportResponse,
   type GrowthComparisonSelection,
   type GrowthComparisonSnapshot,
 } from '../api/reporting';
@@ -39,6 +40,7 @@ export function useReportData(tab: string, year: number, quarter: number, bdId: 
 }
 
 export type { GrowthComparisonSelection, GrowthComparisonSnapshot } from '../api/reporting';
+export type { CollectionsReportResponse } from '../api/reporting';
 
 export function useGrowthComparisonPair(
   left: GrowthComparisonSelection,
@@ -57,6 +59,24 @@ export function useGrowthComparisonPair(
     ],
     enabled,
     queryFn: async () => (await reportsApi.growthComparison({ left, right, bd_id: bdId || undefined })).data,
+    staleTime: 30_000,
+  });
+}
+
+export function useCollectionsReport(
+  filters?: { year?: number; quarter?: number; bdId?: string },
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['collections-report', filters?.year || 'all', filters?.quarter || 'all', filters?.bdId || 'all'],
+    enabled,
+    queryFn: async () => (
+      await reportsApi.collectionsOverview({
+        ...(filters?.year ? { year: filters.year } : {}),
+        ...(filters?.quarter ? { quarter: filters.quarter } : {}),
+        ...(filters?.bdId ? { bd_id: filters.bdId } : {}),
+      })
+    ).data,
     staleTime: 30_000,
   });
 }

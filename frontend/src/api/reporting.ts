@@ -82,6 +82,52 @@ export interface GrowthComparisonResponse {
   right: GrowthComparisonSnapshot
 }
 
+export interface CollectionsReportSummary {
+  bookedRevenue: number
+  expectedRevenue: number
+  collectedRevenue: number
+  overdueRevenue: number
+  outstandingRevenue: number
+  collectionRate: number
+}
+
+export interface CollectionsTrendItem {
+  monthKey: string
+  label: string
+  bookedRevenue: number
+  expectedRevenue: number
+  collectedRevenue: number
+}
+
+export interface CollectionsBreakdownItem {
+  id: string
+  name: string
+  bookedRevenue: number
+  expectedRevenue: number
+  collectedRevenue: number
+  overdueRevenue: number
+}
+
+export interface CollectionsAccountItem {
+  dealId: string
+  dealName: string
+  clientName: string
+  bdName: string
+  expectedRevenue: number
+  collectedRevenue: number
+  overdueRevenue: number
+  lastPaidMonth: string | null
+  nextDueMonth: string | null
+}
+
+export interface CollectionsReportResponse {
+  summary: CollectionsReportSummary
+  monthlyTrend: CollectionsTrendItem[]
+  byBd: CollectionsBreakdownItem[]
+  byAccount: CollectionsBreakdownItem[]
+  overdueAccounts: CollectionsAccountItem[]
+}
+
 export interface GrowthEntriesResponse {
   entries: GrowthEntry[]
   comparison: GrowthComparison[]

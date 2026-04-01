@@ -1,5 +1,5 @@
 import analyticsClient from './analyticsClient';
-import type { GrowthComparisonResponse, GrowthComparisonSelection } from './reporting';
+import type { CollectionsReportResponse, GrowthComparisonResponse, GrowthComparisonSelection } from './reporting';
 
 export interface ReportParams {
   year: number;
@@ -37,6 +37,11 @@ export const reportsApi = {
         rightQuarters: params.right.quarters.join(','),
         ...(params.bd_id ? { bd_id: params.bd_id } : {}),
       },
+    }),
+
+  collectionsOverview: (params?: { year?: number; quarter?: number; bd_id?: string }) =>
+    analyticsClient.get<CollectionsReportResponse>('/api/analytics/reports/collections-overview', {
+      params,
     }),
 
   // Analytics dashboard endpoints
