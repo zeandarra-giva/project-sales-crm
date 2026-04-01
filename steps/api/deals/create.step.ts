@@ -20,6 +20,7 @@ export const config = {
                 leadSource: z.enum(['INBOUND', 'OUTBOUND', 'REFERRAL']),
                 contractStartDate: z.string().min(1),
                 contractEndDate: z.string().min(1),
+                primaryContactId: z.string().uuid().optional(),
                 serviceId: z.string().optional(),
                 bundleId: z.string().optional(),
                 proposalLink: z.string().optional(),
@@ -49,6 +50,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             leadSource,
             contractStartDate,
             contractEndDate,
+            primaryContactId,
             serviceId,
             bundleId,
             proposalLink,
@@ -62,6 +64,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
 
         if (!inquiryStage) {
             return { status: 500, body: { error: 'Inquiry stage not found in DB.' } }
+        }
+
+        if (primaryContactId) {
+            const selectedContact = await prisma.contact.findFirst({
+                where: { id: primaryContactId, clientId },
+                select: { id: true },
+            })
+
+            if (!selectedContact) {
+                return { status: 400, body: { error: 'Selected primary contact does not belong to this client.' } }
+            }
         }
 
         const newDeal = await prisma.deal.create({
@@ -81,6 +94,14 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 startDate: new Date(contractStartDate),
                 dueDate: new Date(contractEndDate),
                 lastStageUpdateAt: new Date(),
+                ...(primaryContactId && {
+                    dealContacts: {
+                        create: {
+                            contactId: primaryContactId,
+                            isPrimary: true,
+                        },
+                    },
+                }),
                 auditLogs: {
                     create: {
                         stageId: inquiryStage.id,
@@ -102,6 +123,21 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 },
                 service: true,
                 bundle: true,
+                dealContacts: {
+                    include: {
+                        contact: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                number: true,
+                                designation: true,
+                            },
+                        },
+                    },
+                    orderBy: { isPrimary: 'desc' },
+                },
                 auditLogs: {
                     where: { exitedAt: null },
                     take: 1,

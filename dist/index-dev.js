@@ -968,7 +968,8 @@ var config16 = {
         actionPlanDueDate: z7.string().datetime().optional(),
         dueDate: z7.string().datetime().optional(),
         proposalLink: z7.string().url().optional(),
-        contractLink: z7.string().url().optional()
+        contractLink: z7.string().url().optional(),
+        primaryContactId: z7.string().uuid().nullable().optional()
       })
     }
   ],
@@ -986,6 +987,7 @@ var handler16 = async (req, _ctx) => {
       actionPlanDueDate,
       monthlySubscription,
       duration,
+      primaryContactId,
       ...rest
     } = req.request.body;
     const deal = await prisma.deal.findUnique({
@@ -1021,6 +1023,15 @@ var handler16 = async (req, _ctx) => {
           status: 400,
           body: { error: "Remarks (Loss Reason) are required when closing a deal as lost" }
         };
+      }
+    }
+    if (primaryContactId !== void 0 && primaryContactId !== null) {
+      const selectedContact = await prisma.contact.findFirst({
+        where: { id: primaryContactId, clientId: deal.clientId },
+        select: { id: true }
+      });
+      if (!selectedContact) {
+        return { status: 400, body: { error: "Selected primary contact does not belong to this deal client." } };
       }
     }
     const updateData = { ...rest };
@@ -1060,6 +1071,21 @@ var handler16 = async (req, _ctx) => {
           bd: {
             select: { id: true, firstName: true, lastName: true }
           },
+          dealContacts: {
+            include: {
+              contact: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  number: true,
+                  designation: true
+                }
+              }
+            },
+            orderBy: { isPrimary: "desc" }
+          },
           auditLogs: {
             where: { exitedAt: null },
             take: 1,
@@ -1078,6 +1104,32 @@ var handler16 = async (req, _ctx) => {
             }
           }
         });
+      }
+      if (primaryContactId !== void 0) {
+        await tx.dealContact.updateMany({
+          where: { dealId: id },
+          data: { isPrimary: false }
+        });
+        if (primaryContactId !== null) {
+          const existingDealContact = await tx.dealContact.findFirst({
+            where: { dealId: id, contactId: primaryContactId },
+            select: { id: true }
+          });
+          if (existingDealContact) {
+            await tx.dealContact.update({
+              where: { id: existingDealContact.id },
+              data: { isPrimary: true }
+            });
+          } else {
+            await tx.dealContact.create({
+              data: {
+                dealId: id,
+                contactId: primaryContactId,
+                isPrimary: true
+              }
+            });
+          }
+        }
       }
       if (stageId && stageId !== deal.stageId) {
         await tx.dealAuditLog.updateMany({
@@ -1498,6 +1550,7 @@ var config21 = {
         leadSource: z9.enum(["INBOUND", "OUTBOUND", "REFERRAL"]),
         contractStartDate: z9.string().min(1),
         contractEndDate: z9.string().min(1),
+        primaryContactId: z9.string().uuid().optional(),
         serviceId: z9.string().optional(),
         bundleId: z9.string().optional(),
         proposalLink: z9.string().optional(),
@@ -1525,6 +1578,7 @@ var handler21 = async (req, ctx) => {
       leadSource,
       contractStartDate,
       contractEndDate,
+      primaryContactId,
       serviceId,
       bundleId,
       proposalLink,
@@ -1535,6 +1589,15 @@ var handler21 = async (req, ctx) => {
     });
     if (!inquiryStage) {
       return { status: 500, body: { error: "Inquiry stage not found in DB." } };
+    }
+    if (primaryContactId) {
+      const selectedContact = await prisma.contact.findFirst({
+        where: { id: primaryContactId, clientId },
+        select: { id: true }
+      });
+      if (!selectedContact) {
+        return { status: 400, body: { error: "Selected primary contact does not belong to this client." } };
+      }
     }
     const newDeal = await prisma.deal.create({
       data: {
@@ -1554,6 +1617,14 @@ var handler21 = async (req, ctx) => {
         startDate: new Date(contractStartDate),
         dueDate: new Date(contractEndDate),
         lastStageUpdateAt: /* @__PURE__ */ new Date(),
+        ...primaryContactId && {
+          dealContacts: {
+            create: {
+              contactId: primaryContactId,
+              isPrimary: true
+            }
+          }
+        },
         auditLogs: {
           create: {
             stageId: inquiryStage.id,
@@ -1575,6 +1646,21 @@ var handler21 = async (req, ctx) => {
         },
         service: true,
         bundle: true,
+        dealContacts: {
+          include: {
+            contact: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                number: true,
+                designation: true
+              }
+            }
+          },
+          orderBy: { isPrimary: "desc" }
+        },
         auditLogs: {
           where: { exitedAt: null },
           take: 1,

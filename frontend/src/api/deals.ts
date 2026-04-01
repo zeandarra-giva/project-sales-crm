@@ -86,6 +86,18 @@ export function mapDealToFrontend(d: any): Deal {
     } : undefined,
     service: d.service ?? undefined,
     bundle: d.bundle ?? undefined,
+    dealContacts: (d.dealContacts ?? []).map((dealContact: any) => ({
+      id: dealContact.id,
+      isPrimary: dealContact.isPrimary,
+      contact: {
+        id: dealContact.contact.id,
+        firstName: dealContact.contact.firstName,
+        lastName: dealContact.contact.lastName,
+        email: dealContact.contact.email,
+        number: dealContact.contact.number ?? undefined,
+        designation: dealContact.contact.designation ?? undefined,
+      },
+    })),
     auditLogs: d.auditLogs,
     probability_pct: STAGE_PROBABILITY[stageName] ?? 0,
     days_in_stage: d.lastStageUpdateAt ? daysBetween(d.lastStageUpdateAt) : 0,
@@ -112,6 +124,7 @@ export interface CreateDealPayload {
   leadSource: 'INBOUND' | 'OUTBOUND' | 'REFERRAL'
   contractStartDate: string
   contractEndDate: string
+  primaryContactId?: string
   serviceId?: string
   bundleId?: string
   proposalLink?: string
@@ -134,6 +147,7 @@ export interface UpdateDealPayload {
   dueDate?: string
   proposalLink?: string
   contractLink?: string
+  primaryContactId?: string | null
 }
 
 export interface TerminateDealPayload {

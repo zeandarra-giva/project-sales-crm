@@ -120,6 +120,11 @@ export default function BDDashboard() {
   const isAhead = variance >= 0;
   const openStages = (data.pipeline_by_stage || []).filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage_name));
   const totalServiceRevenue = (data.service_revenue || []).reduce((sum, s) => sum + s.revenue, 0);
+  const revenueVsQuotaData = (data.revenue_by_month || []).map((entry) => ({
+    ...entry,
+    deficit: Math.max((entry.quota || 0) - (entry.revenue || 0), 0),
+    excess: Math.max((entry.revenue || 0) - (entry.quota || 0), 0),
+  }));
 
   return (
     <div className="flex flex-col h-full">
@@ -264,16 +269,43 @@ export default function BDDashboard() {
           {/* Revenue vs Quota bar chart */}
           <Card className="p-5">
             <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">{selectedQ === 'ALL' ? 'Revenue vs Quota (Year)' : 'Revenue vs Quota (Monthly)'}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div className="rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">Revenue</div>
+                <div className="mt-1 text-sm font-semibold text-[#0F172A]">{formatCurrency(data.total_revenue || 0, true)}</div>
+              </div>
+              <div className="rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">Quota</div>
+                <div className="mt-1 text-sm font-semibold text-[#0F172A]">{formatCurrency(data.quota || 0, true)}</div>
+              </div>
+              <div className={cn(
+                'rounded-[8px] border px-3 py-2',
+                (data.variance || 0) >= 0
+                  ? 'border-[rgba(16,185,129,0.18)] bg-[rgba(16,185,129,0.06)]'
+                  : 'border-[rgba(244,63,94,0.18)] bg-[rgba(244,63,94,0.06)]'
+              )}>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">
+                  {(data.variance || 0) >= 0 ? 'Excess' : 'Deficit'}
+                </div>
+                <div className={cn(
+                  'mt-1 text-sm font-semibold',
+                  (data.variance || 0) >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
+                )}>
+                  {formatCurrency(Math.abs(data.variance || 0), true)}
+                </div>
+              </div>
+            </div>
             <div className="h-64">
-              {(data.revenue_by_month || []).length > 0 ? (
+              {revenueVsQuotaData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.revenue_by_month} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <BarChart data={revenueVsQuotaData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
                     <XAxis dataKey="month_name" tick={{ fill: '#8b90a8', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₱${(v / 1000000).toFixed(1)}M`} />
                     <Tooltip {...TT} formatter={(val: number) => [formatCurrency(val), '']} />
                     <Bar dataKey="quota" name="Quota" fill="#e6eaf5" stroke="#c8cfe8" strokeWidth={1} radius={[4, 4, 0, 0]} />
                     <Bar dataKey="revenue" name="Revenue" fill="#dce3fd" stroke="#3d5af1" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="deficit" name="Deficit" fill="#fee2e2" stroke="#f43f5e" strokeWidth={1} radius={[4, 4, 0, 0]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </BarChart>
                 </ResponsiveContainer>

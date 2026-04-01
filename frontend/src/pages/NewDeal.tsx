@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Input, Select, Textarea, Button, Card } from '../components/ui/index';
@@ -28,6 +28,7 @@ export default function NewDealPage() {
     lead_source: 'OUTBOUND',
     client_id: prefillClientId,
     service_id: '',
+    primary_contact_id: '',
     contract_start_date: '',
     contract_end_date: '',
     proposal_link: '',
@@ -36,6 +37,16 @@ export default function NewDealPage() {
 
   const clientOptions = clients.map(c => ({ value: c.id, label: c.name }));
   const serviceOptions = services.map(service => ({ value: service.id, label: service.name }));
+  const selectedClient = clients.find(client => client.id === form.client_id);
+  const clientContacts = selectedClient?.contacts ?? [];
+  const hasClientPrimaryContact = clientContacts.some(contact => contact.is_primary);
+  const primaryContactOptions = [
+    ...(!hasClientPrimaryContact && form.client_id ? [{ value: '__NONE__', label: 'No primary contact yet' }] : []),
+    ...clientContacts.map(contact => ({
+      value: contact.id,
+      label: `${contact.first_name} ${contact.last_name}${contact.is_primary ? ' (Client Primary)' : ''}`,
+    })),
+  ];
 
   const contractValue =
     form.monthly_subscription && form.duration
@@ -45,6 +56,19 @@ export default function NewDealPage() {
     !!form.contract_start_date &&
     !!form.contract_end_date &&
     new Date(form.contract_end_date) < new Date(form.contract_start_date);
+
+  useEffect(() => {
+    if (!form.client_id) {
+      setForm(prev => ({ ...prev, primary_contact_id: '' }));
+      return;
+    }
+
+    const primaryContact = clientContacts.find(contact => contact.is_primary);
+    setForm(prev => ({
+      ...prev,
+      primary_contact_id: primaryContact?.id ?? '__NONE__',
+    }));
+  }, [form.client_id, selectedClient?.id, selectedClient?.contact_id, clientContacts.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +80,7 @@ export default function NewDealPage() {
       duration: parseInt(form.duration),
       leadSource: form.lead_source as 'INBOUND' | 'OUTBOUND' | 'REFERRAL',
       serviceId: form.service_id,
+      primaryContactId: form.primary_contact_id && form.primary_contact_id !== '__NONE__' ? form.primary_contact_id : undefined,
       contractStartDate: form.contract_start_date,
       contractEndDate: form.contract_end_date,
       proposalLink: form.proposal_link || undefined,
@@ -85,6 +110,23 @@ export default function NewDealPage() {
             <div className="flex flex-col gap-4">
               <Input label="Deal Name" value={form.deal_name} onChange={e => update('deal_name', e.target.value)} placeholder="Client Name – Service" required />
               <Select label="Client" value={form.client_id} onChange={e => update('client_id', e.target.value)} options={clientOptions} placeholder="Select client..." required />
+              {form.client_id && (
+                <div className="flex flex-col gap-2">
+                  <Select
+                    label="Primary Contact for Deal"
+                    value={form.primary_contact_id}
+                    onChange={e => update('primary_contact_id', e.target.value)}
+                    options={primaryContactOptions}
+                    placeholder={clientContacts.length > 0 ? 'Select primary contact...' : 'No contacts for this client yet'}
+                    disabled={clientContacts.length === 0}
+                  />
+                  {!hasClientPrimaryContact && (
+                    <div className="rounded-xl border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-xs text-[#b45309]">
+                      This client does not have a primary contact yet. You can continue with <span className="font-medium">No primary contact yet</span> and update it later on the deal details page.
+                    </div>
+                  )}
+                </div>
+              )}
               <Select
                 label="Service"
                 value={form.service_id}

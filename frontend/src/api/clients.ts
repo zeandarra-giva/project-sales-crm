@@ -9,6 +9,28 @@ function mapClientToFrontend(client: any): Client {
     industry_id: client.industryId,
     contact_id: client.contactId,
     referral_id: client.referralId,
+    contact: client.contact ? {
+      id: client.contact.id,
+      first_name: client.contact.firstName,
+      last_name: client.contact.lastName,
+      email: client.contact.email,
+      number: client.contact.number ?? undefined,
+      designation: client.contact.designation ?? undefined,
+      decision_rank: client.contact.decisionRank ?? 'Tier 3 Influencer',
+      is_primary: client.contact.isPrimary ?? false,
+      client_id: client.contact.clientId,
+    } : undefined,
+    contacts: (client.contacts ?? []).map((contact: any) => ({
+      id: contact.id,
+      first_name: contact.firstName,
+      last_name: contact.lastName,
+      email: contact.email,
+      number: contact.number ?? undefined,
+      designation: contact.designation ?? undefined,
+      decision_rank: contact.decisionRank ?? 'Tier 3 Influencer',
+      is_primary: contact.isPrimary ?? false,
+      client_id: contact.clientId,
+    })),
   };
 }
 

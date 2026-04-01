@@ -26,6 +26,7 @@ export const config = {
                 dueDate: z.string().datetime().optional(),
                 proposalLink: z.string().url().optional(),
                 contractLink: z.string().url().optional(),
+                primaryContactId: z.string().uuid().nullable().optional(),
             }),
         },
     ],
@@ -44,6 +45,7 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
             actionPlanDueDate,
             monthlySubscription,
             duration,
+            primaryContactId,
             ...rest
         } = req.request.body
 
@@ -92,6 +94,17 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
             }
         }
 
+        if (primaryContactId !== undefined && primaryContactId !== null) {
+            const selectedContact = await prisma.contact.findFirst({
+                where: { id: primaryContactId, clientId: deal.clientId },
+                select: { id: true },
+            })
+
+            if (!selectedContact) {
+                return { status: 400, body: { error: 'Selected primary contact does not belong to this deal client.' } }
+            }
+        }
+
         // 3. Prepare Deal update data (no remarks/actionPlan — those are on audit log)
         const updateData: any = { ...rest }
 
@@ -136,6 +149,21 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
                     bd: {
                         select: { id: true, firstName: true, lastName: true }
                     },
+                    dealContacts: {
+                        include: {
+                            contact: {
+                                select: {
+                                    id: true,
+                                    firstName: true,
+                                    lastName: true,
+                                    email: true,
+                                    number: true,
+                                    designation: true,
+                                },
+                            },
+                        },
+                        orderBy: { isPrimary: 'desc' },
+                    },
                     auditLogs: {
                         where: { exitedAt: null },
                         take: 1,
@@ -156,6 +184,35 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
                         }),
                     },
                 })
+            }
+
+            if (primaryContactId !== undefined) {
+                await tx.dealContact.updateMany({
+                    where: { dealId: id },
+                    data: { isPrimary: false },
+                })
+
+                if (primaryContactId !== null) {
+                    const existingDealContact = await tx.dealContact.findFirst({
+                        where: { dealId: id, contactId: primaryContactId },
+                        select: { id: true },
+                    })
+
+                    if (existingDealContact) {
+                        await tx.dealContact.update({
+                            where: { id: existingDealContact.id },
+                            data: { isPrimary: true },
+                        })
+                    } else {
+                        await tx.dealContact.create({
+                            data: {
+                                dealId: id,
+                                contactId: primaryContactId,
+                                isPrimary: true,
+                            },
+                        })
+                    }
+                }
             }
 
             // 6. Record history in DealAuditLog if stage changed via this endpoint

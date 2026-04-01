@@ -17,6 +17,7 @@ export interface Client {
   industry_id?: string;
   industry?: Industry;
   contact_id?: string;
+  contact?: import('./contact').Contact;
   referral_id?: string;
   deals?: import('./deal').Deal[];
   contacts?: import('./contact').Contact[];
