@@ -3,6 +3,7 @@ import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 const UpdatePaymentSchema = z.object({
     amount: z.number().positive('Amount must be greater than 0').optional(),
@@ -73,6 +74,13 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
                 date: { select: { year: true, month: true, quarter: true } },
             },
         })
+
+        await createTeamNotification({
+            dealId: updated.dealId,
+            type: 'FOLLOW_UP_DUE',
+            triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+            content: `Payment log for "${updated.deal.dealName}" was updated${updated.date ? ` to ${updated.date.month}/${updated.date.year}` : ''}.`,
+        }).catch((error) => logger.warn('Failed to create team payment-update notification', { error, paymentId: id }))
 
         return {
             status: 200,

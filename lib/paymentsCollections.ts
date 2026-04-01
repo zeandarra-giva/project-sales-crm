@@ -69,6 +69,7 @@ export type CollectionDealSummary = {
   nextDueLabel: string | null
   lastPaidLabel: string | null
   followUpStatus: 'Current' | 'Due This Month' | 'Overdue'
+  countsTowardBookedRevenue: boolean
 }
 
 export type CollectionOverview = {
@@ -171,10 +172,6 @@ export function buildCollectionsOverview(
     let lastPaidLabel: string | null = null
     let nextDueLabel: string | null = null
 
-    if (!scope || (deal.closedDate && isInScope(scope, new Date(deal.closedDate).getUTCFullYear(), new Date(deal.closedDate).getUTCMonth() + 1))) {
-      bookedRevenue += bookedValue
-    }
-
     for (const payment of deal.payments) {
       const amount = Number(payment.amount || 0)
       const period = payment.date
@@ -217,6 +214,7 @@ export function buildCollectionsOverview(
       })
     }
 
+    let countsTowardBookedRevenue = false
     if (startDate) {
       filterYears.add(startDate.getUTCFullYear())
       for (let monthOffset = 0; monthOffset < Number(deal.duration || 0); monthOffset += 1) {
@@ -231,6 +229,7 @@ export function buildCollectionsOverview(
         const remaining = Math.max(monthlySubscription - paidAmount, 0)
 
         if (isInScope(scope, dueYear, dueMonthNumber)) {
+          countsTowardBookedRevenue = true
           const monthBucket = monthlyTrend.get(monthKey) || {
             monthKey,
             label: formatMonthLabel(dueYear, dueMonthNumber),
@@ -245,7 +244,7 @@ export function buildCollectionsOverview(
 
         if (deal.closedDate) {
           const closed = new Date(deal.closedDate)
-          if (closed.getUTCFullYear() === dueYear && closed.getUTCMonth() + 1 === dueMonthNumber && isInScope(scope, dueYear, dueMonthNumber)) {
+          if (countsTowardBookedRevenue && closed.getUTCFullYear() === dueYear && closed.getUTCMonth() + 1 === dueMonthNumber && isInScope(scope, dueYear, dueMonthNumber)) {
             const monthBucket = monthlyTrend.get(monthKey) || {
               monthKey,
               label: formatMonthLabel(dueYear, dueMonthNumber),
@@ -277,6 +276,10 @@ export function buildCollectionsOverview(
       }
     }
 
+    if (countsTowardBookedRevenue) {
+      bookedRevenue += bookedValue
+    }
+
     overdueRevenue += dealOverdueRevenue
 
     const outstandingRevenue = Math.max(bookedValue - dealCollected, 0)
@@ -306,6 +309,7 @@ export function buildCollectionsOverview(
       nextDueLabel,
       lastPaidLabel,
       followUpStatus,
+      countsTowardBookedRevenue,
     })
   }
 

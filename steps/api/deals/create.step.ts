@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'CreateDeal',
@@ -167,6 +168,13 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 expectedCloseDate: newDeal.dueDate ?? newDeal.startDate,
             },
         })
+
+        await createTeamNotification({
+            dealId: newDeal.id,
+            type: 'NEW_DEAL_ASSIGNED',
+            triggeredBy: 'STAGE_CHANGE',
+            content: `New deal "${newDeal.dealName}" was created and assigned to ${newDeal.bd.firstName} ${newDeal.bd.lastName}.`,
+        }).catch((error) => logger.warn('Failed to create direct new-deal notification', { error }))
 
         return {
             status: 201,

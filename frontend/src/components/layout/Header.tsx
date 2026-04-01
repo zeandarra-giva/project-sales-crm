@@ -1,7 +1,6 @@
 import { Search, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { MOCK_BDS } from '../../mockData';
 import NotificationBell from '../notifications/NotificationBell';
 
 interface HeaderProps {
@@ -11,7 +10,7 @@ interface HeaderProps {
 }
 
 export default function Header({ title, subtitle, action }: HeaderProps) {
-  const { user, switchUser } = useAuthStore();
+  const { user } = useAuthStore();
 
   return (
     <header
@@ -30,16 +29,11 @@ export default function Header({ title, subtitle, action }: HeaderProps) {
 
       {/* Right — Controls */}
       <div className="flex items-center gap-2.5">
-        {/* Demo user switcher */}
-        <select
-          className="h-9 rounded-[8px] border border-[#E2E8F0] bg-[rgba(248,250,252,0.92)] px-3 text-[12px] text-[#475569] shadow-sm cursor-pointer focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)] transition-all"
-          value={user?.id}
-          onChange={e => switchUser(e.target.value)}
-        >
-          {MOCK_BDS.map(bd => (
-            <option key={bd.id} value={bd.id}>{bd.firstName} ({bd.role})</option>
-          ))}
-        </select>
+        {user && (
+          <div className="h-9 inline-flex items-center rounded-[8px] border border-[#E2E8F0] bg-[rgba(248,250,252,0.92)] px-3 text-[12px] text-[#475569] shadow-sm">
+            {user.firstName} {user.lastName} · {user.role === 'SALES_MANAGER' ? 'Manager' : 'BD'}
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative">

@@ -3,6 +3,7 @@ import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'CreatePayment',
@@ -90,6 +91,13 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 date: { select: { year: true, month: true, quarter: true } },
             },
         })
+
+        await createTeamNotification({
+            dealId: payment.dealId,
+            type: 'FOLLOW_UP_DUE',
+            triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+            content: `Payment of ${Number(payment.amount).toLocaleString('en-PH')} was logged for "${payment.deal.dealName}"${payment.date ? ` (${payment.date.month}/${payment.date.year})` : ''}.`,
+        }).catch((error) => logger.warn('Failed to create team payment notification', { error, dealId }))
 
         return {
             status: 201,

@@ -2,6 +2,7 @@ import { type Handlers, type StepConfig, logger } from 'motia'
 import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'TerminateDealContract',
@@ -95,6 +96,13 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
         })
 
         logger.info('Terminated contract', { dealId: id, by: user.id })
+
+        await createTeamNotification({
+            dealId: updatedDeal.id,
+            type: 'FOLLOW_UP_DUE',
+            triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+            content: `Contract for "${updatedDeal.dealName}" was terminated effective ${effectiveTerminationDate.toLocaleDateString('en-PH')}. Review collections and account follow-up.`,
+        }).catch((error) => logger.warn('Failed to create termination notification', { error, dealId: id }))
 
         return { status: 200, body: updatedDeal }
     } catch (error: any) {

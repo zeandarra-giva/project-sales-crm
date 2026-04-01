@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'UpdateDeal',
@@ -240,6 +241,23 @@ export const handler: Handlers<typeof config> = async (req, _ctx) => {
         })
 
         logger.info('Updated deal', { dealId: id, by: user.id })
+
+        const activityChanges: string[] = []
+        if (remarks !== undefined) activityChanges.push('remarks')
+        if (actionPlan !== undefined) activityChanges.push('action plan')
+        if (actionPlanDueDate !== undefined) activityChanges.push('action plan due date')
+        if (req.request.body.dueDate !== undefined) activityChanges.push('contract end date')
+        if (primaryContactId !== undefined) activityChanges.push('primary contact')
+
+        if (activityChanges.length > 0) {
+            const content = `Deal "${updatedDeal.dealName}" follow-up details were updated: ${activityChanges.join(', ')}.`
+            await createTeamNotification({
+                dealId: updatedDeal.id,
+                type: 'FOLLOW_UP_DUE',
+                triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+                content: `${content} Updated by ${user.firstName} ${user.lastName}.`,
+            }).catch((error) => logger.warn('Failed to create deal activity notification', { error, dealId: id }))
+        }
 
         return {
             status: 200,

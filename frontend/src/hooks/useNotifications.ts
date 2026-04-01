@@ -11,7 +11,7 @@ import type { Notification } from '../types';
 export function useNotifications(_bdId?: string) {
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['notifications'],
     queryFn: async () => {
       const res = await notificationsApi.list();
@@ -37,6 +37,7 @@ export function useNotifications(_bdId?: string) {
     notifications,
     unreadCount,
     isLoading,
+    error: error ? 'Unable to load notifications' : null,
     markRead:    (id: string) => markReadMutation.mutate(id),
     markAllRead: ()           => markAllReadMutation.mutate(),
   };
