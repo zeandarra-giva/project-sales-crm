@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: salescrm
+      POSTGRES_PASSWORD: salescrm_pass
+      POSTGRES_DB: sales_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salescrm -d sales_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3111:3111"
+      - "3112:3112"
+      - "3113:3113"
+    environment:
+      DATABASE_URL: postgresql://salescrm:salescrm_pass@db:5432/sales_crm?schema=public
+      JWT_SECRET: change-me-to-a-secure-secret-at-least-32-chars
+      NODE_ENV: production
+
+  console:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - app
+    network_mode: "service:app"
+    command: ["iii", "console", "--host", "0.0.0.0", "--engine-host", "localhost", "--engine-port", "3111", "--ws-port", "3112"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  analytics:
+    build: ../sales_crm_pipeline
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://salescrm:salescrm_pass@db:5432/sales_crm
+      JWT_SECRET: change-me-to-a-secure-secret-at-least-32-chars
+
+  seed:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://salescrm:salescrm_pass@db:5432/sales_crm?schema=public
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    profiles:
+      - seed
+
+volumes:
+  pgdata:

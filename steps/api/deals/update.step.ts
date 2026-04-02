@@ -1,4 +1,4 @@
-import { type Handlers, type StepConfig, logger } from 'motia'
+import { type Handlers, type StepConfig, logger, enqueue } from 'motia'
 import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
@@ -29,7 +29,7 @@ export const config = {
             }),
         },
     ],
-    enqueues: [],
+    enqueues: ['deal.updated'],
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
@@ -171,6 +171,22 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         })
 
         logger.info('Updated deal', { dealId: id, by: user.id })
+
+        // Emit deal.updated event for downstream processing
+        const body = req.request.body as Record<string, unknown>
+        const updatedFields = Object.keys(body).filter(
+            (k) => body[k] !== undefined
+        )
+        await enqueue({
+            topic: 'deal.updated',
+            data: {
+                dealId: id,
+                dealName: updatedDeal.dealName,
+                bdId: updatedDeal.bdId,
+                updatedById: user.id,
+                updatedFields,
+            },
+        })
 
         return {
             status: 200,

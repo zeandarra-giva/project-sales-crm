@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Sales CRM backend powered by Motia",
   "scripts": {
-    "dev": "iii-cli start --config config.yaml",
+    "dev": "motia dev",
     "build": "motia build",
     "start": "motia start",
     "db:generate": "prisma generate",
@@ -28,6 +28,7 @@
     "@types/node": "^20.19.35",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "main": "index.js",
@@ -39,6 +40,6 @@
   "license": "ISC",
   "type": "module",
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts"
   }
 }

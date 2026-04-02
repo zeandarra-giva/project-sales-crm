@@ -7,7 +7,7 @@ export const config = {
   triggers: [
     {
       type: 'cron' as const,
-      expression: '0 8 * * *', // Every day at 8:00 AM
+      expression: '0 0 8 * * *', // Every day at 8:00 AM (sec min hour dom mon dow)
     }
   ],
 } as const satisfies StepConfig

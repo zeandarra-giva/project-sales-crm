@@ -390,8 +390,10 @@ model DealProjection {
   id              String  @id @default(uuid())
   dealId          String  @unique @map("deal_id") // 1:1 with Deal
   bdId            String  @map("bd_id")
-  projectedAmount Decimal @map("projected_amount")
-  dateId          String? @map("date_id")
+  projectedAmount Decimal  @map("projected_amount")
+  probabilityPct  Decimal  @map("probability_pct")
+  weightedValue   Decimal? @map("weighted_value")
+  dateId          String?  @map("date_id")
 
   // Relations
   deal Deal          @relation(fields: [dealId], references: [id])
