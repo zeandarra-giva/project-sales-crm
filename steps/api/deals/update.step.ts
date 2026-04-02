@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'UpdateDeal',
@@ -26,6 +27,7 @@ export const config = {
                 dueDate: z.string().datetime().optional(),
                 proposalLink: z.string().url().optional(),
                 contractLink: z.string().url().optional(),
+                primaryContactId: z.string().uuid().nullable().optional(),
             }),
         },
     ],
@@ -33,7 +35,7 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, ctx) => {
+export const handler: Handlers<typeof config> = async (req, _ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
@@ -44,6 +46,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             actionPlanDueDate,
             monthlySubscription,
             duration,
+            primaryContactId,
             ...rest
         } = req.request.body
 
@@ -60,6 +63,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         // BD Reps can only edit their own deals
         if (user.role !== 'SALES_MANAGER' && deal.bdId !== user.id) {
             return { status: 403, body: { error: 'You can only manage your own deals' } }
+        }
+
+        if (deal.contractStatus === 'TERMINATED' && stageId && stageId !== deal.stageId) {
+            return { status: 400, body: { error: 'Terminated contracts cannot move through the pipeline.' } }
         }
 
         let targetStageName = ''
@@ -88,6 +95,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             }
         }
 
+        if (primaryContactId !== undefined && primaryContactId !== null) {
+            const selectedContact = await prisma.contact.findFirst({
+                where: { id: primaryContactId, clientId: deal.clientId },
+                select: { id: true },
+            })
+
+            if (!selectedContact) {
+                return { status: 400, body: { error: 'Selected primary contact does not belong to this deal client.' } }
+            }
+        }
+
         // 3. Prepare Deal update data (no remarks/actionPlan — those are on audit log)
         const updateData: any = { ...rest }
 
@@ -101,15 +119,23 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         }
 
         if (stageId && stageId !== deal.stageId) {
+            const now = new Date()
             updateData.stageId = stageId
-            updateData.lastStageUpdateAt = new Date()
+            updateData.lastStageUpdateAt = now
 
             if (targetStageName === 'Closed Won' || targetStageName === 'Closed Lost') {
                 updateData.isClosed = true
-                updateData.closedDate = new Date()
+                updateData.closedDate = now
+                if (deal.startDate) {
+                    updateData.salesCycleDays = Math.max(
+                        0,
+                        Math.floor((now.getTime() - deal.startDate.getTime()) / 86400000)
+                    )
+                }
             } else {
                 updateData.isClosed = false
                 updateData.closedDate = null
+                updateData.salesCycleDays = null
             }
         }
 
@@ -123,6 +149,21 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                     client: true,
                     bd: {
                         select: { id: true, firstName: true, lastName: true }
+                    },
+                    dealContacts: {
+                        include: {
+                            contact: {
+                                select: {
+                                    id: true,
+                                    firstName: true,
+                                    lastName: true,
+                                    email: true,
+                                    number: true,
+                                    designation: true,
+                                },
+                            },
+                        },
+                        orderBy: { isPrimary: 'desc' },
                     },
                     auditLogs: {
                         where: { exitedAt: null },
@@ -144,6 +185,35 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                         }),
                     },
                 })
+            }
+
+            if (primaryContactId !== undefined) {
+                await tx.dealContact.updateMany({
+                    where: { dealId: id },
+                    data: { isPrimary: false },
+                })
+
+                if (primaryContactId !== null) {
+                    const existingDealContact = await tx.dealContact.findFirst({
+                        where: { dealId: id, contactId: primaryContactId },
+                        select: { id: true },
+                    })
+
+                    if (existingDealContact) {
+                        await tx.dealContact.update({
+                            where: { id: existingDealContact.id },
+                            data: { isPrimary: true },
+                        })
+                    } else {
+                        await tx.dealContact.create({
+                            data: {
+                                dealId: id,
+                                contactId: primaryContactId,
+                                isPrimary: true,
+                            },
+                        })
+                    }
+                }
             }
 
             // 6. Record history in DealAuditLog if stage changed via this endpoint
@@ -171,6 +241,23 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         })
 
         logger.info('Updated deal', { dealId: id, by: user.id })
+
+        const activityChanges: string[] = []
+        if (remarks !== undefined) activityChanges.push('remarks')
+        if (actionPlan !== undefined) activityChanges.push('action plan')
+        if (actionPlanDueDate !== undefined) activityChanges.push('action plan due date')
+        if (req.request.body.dueDate !== undefined) activityChanges.push('contract end date')
+        if (primaryContactId !== undefined) activityChanges.push('primary contact')
+
+        if (activityChanges.length > 0) {
+            const content = `Deal "${updatedDeal.dealName}" follow-up details were updated: ${activityChanges.join(', ')}.`
+            await createTeamNotification({
+                dealId: updatedDeal.id,
+                type: 'FOLLOW_UP_DUE',
+                triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+                content: `${content} Updated by ${user.firstName} ${user.lastName}.`,
+            }).catch((error) => logger.warn('Failed to create deal activity notification', { error, dealId: id }))
+        }
 
         // Emit deal.updated event for downstream processing
         const body = req.request.body as Record<string, unknown>

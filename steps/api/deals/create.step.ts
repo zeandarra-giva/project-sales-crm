@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../../lib/db'
 import { authenticate } from '../../../lib/auth'
 import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'CreateDeal',
@@ -20,6 +21,7 @@ export const config = {
                 leadSource: z.enum(['INBOUND', 'OUTBOUND', 'REFERRAL']),
                 contractStartDate: z.string().min(1),
                 contractEndDate: z.string().min(1),
+                primaryContactId: z.string().uuid().optional(),
                 serviceId: z.string().optional(),
                 bundleId: z.string().optional(),
                 proposalLink: z.string().optional(),
@@ -49,6 +51,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             leadSource,
             contractStartDate,
             contractEndDate,
+            primaryContactId,
             serviceId,
             bundleId,
             proposalLink,
@@ -62,6 +65,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
 
         if (!inquiryStage) {
             return { status: 500, body: { error: 'Inquiry stage not found in DB.' } }
+        }
+
+        if (primaryContactId) {
+            const selectedContact = await prisma.contact.findFirst({
+                where: { id: primaryContactId, clientId },
+                select: { id: true },
+            })
+
+            if (!selectedContact) {
+                return { status: 400, body: { error: 'Selected primary contact does not belong to this client.' } }
+            }
         }
 
         const newDeal = await prisma.deal.create({
@@ -81,6 +95,14 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 startDate: new Date(contractStartDate),
                 dueDate: new Date(contractEndDate),
                 lastStageUpdateAt: new Date(),
+                ...(primaryContactId && {
+                    dealContacts: {
+                        create: {
+                            contactId: primaryContactId,
+                            isPrimary: true,
+                        },
+                    },
+                }),
                 auditLogs: {
                     create: {
                         stageId: inquiryStage.id,
@@ -102,6 +124,21 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 },
                 service: true,
                 bundle: true,
+                dealContacts: {
+                    include: {
+                        contact: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                number: true,
+                                designation: true,
+                            },
+                        },
+                    },
+                    orderBy: { isPrimary: 'desc' },
+                },
                 auditLogs: {
                     where: { exitedAt: null },
                     take: 1,
@@ -131,6 +168,13 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                 expectedCloseDate: newDeal.dueDate ?? newDeal.startDate,
             },
         })
+
+        await createTeamNotification({
+            dealId: newDeal.id,
+            type: 'NEW_DEAL_ASSIGNED',
+            triggeredBy: 'STAGE_CHANGE',
+            content: `New deal "${newDeal.dealName}" was created and assigned to ${newDeal.bd.firstName} ${newDeal.bd.lastName}.`,
+        }).catch((error) => logger.warn('Failed to create direct new-deal notification', { error }))
 
         return {
             status: 201,

@@ -25,7 +25,7 @@ export const config = {
     flows: ['sales-pipeline'],
 } as const satisfies StepConfig
 
-export const handler: Handlers<typeof config> = async (req, ctx) => {
+export const handler: Handlers<typeof config> = async (req, _ctx) => {
     try {
         const user = await authenticate(req.request)
         const { id } = req.request.pathParams
@@ -44,6 +44,10 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
         // BD Reps can only move their own deals (FR-PRE-002)
         if (user.role !== 'SALES_MANAGER' && deal.bdId !== user.id) {
             return { status: 403, body: { error: 'You can only manage your own deals' } }
+        }
+
+        if (deal.contractStatus === 'TERMINATED') {
+            return { status: 400, body: { error: 'Terminated contracts cannot move through the pipeline.' } }
         }
 
         // No-op guard
@@ -80,7 +84,15 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             }
         }
 
+        const now = new Date()
         const isClosed = ['Closed Won', 'Closed Lost'].includes(targetStage.name)
+        const salesCycleDays =
+            isClosed && deal.startDate
+                ? Math.max(
+                    0,
+                    Math.floor((now.getTime() - deal.startDate.getTime()) / 86400000)
+                )
+                : null
 
         // ── 4. Atomic transaction: audit log + deal update ──
         const updatedDeal = await prisma.$transaction(async (tx) => {
@@ -88,7 +100,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             // 4a. Close the current open audit log row (FR-D08)
             await tx.dealAuditLog.updateMany({
                 where: { dealId: id, exitedAt: null },
-                data: { exitedAt: new Date() },
+                data: { exitedAt: now },
             })
 
             // 4b. Open a new audit log row with remarks + action plan (Rev 1–3)
@@ -97,7 +109,7 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
                     dealId: id,
                     stageId,
                     changedById: user.id,
-                    enteredAt: new Date(),
+                    enteredAt: now,
                     notes: notes || `Moved from ${deal.stage.name} to ${targetStage.name}`,
                     remarks,
                     actionPlan,
@@ -109,9 +121,17 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             // remarks/actionPlan now live on DealAuditLog — NOT on Deal (Rev 1–2)
             const dealUpdateData: Prisma.DealUpdateInput = {
                 stage: { connect: { id: stageId } },
-                lastStageUpdateAt: new Date(),
+                lastStageUpdateAt: now,
                 isClosed,
-                ...(isClosed && { closedDate: new Date() }),
+                ...(isClosed
+                    ? {
+                        closedDate: now,
+                        ...(salesCycleDays !== null && { salesCycleDays }),
+                    }
+                    : {
+                        closedDate: null,
+                        salesCycleDays: null,
+                    }),
                 // Capture final proposed value on Closed Lost (FR-ADD-005)
                 ...(targetStage.name === 'Closed Lost' && {
                     finalProposedValue: deal.revenue,

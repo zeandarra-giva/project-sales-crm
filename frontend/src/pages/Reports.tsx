@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line,
@@ -9,8 +9,14 @@ import { Card, Badge, ProgressBar, Avatar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import { useAuthStore } from '../store/authStore';
 import { reportsApi } from '../api/reports';
-import { useReportData, useBDList } from '../hooks/useReports';
-import { useCreateGrowthEntry, useGrowthEntries, useReportingPeriods } from '../hooks/useReporting';
+import {
+  useReportData,
+  useBDList,
+  useGrowthComparisonPair,
+  type GrowthComparisonSelection,
+  type GrowthComparisonSnapshot,
+} from '../hooks/useReports';
+import { useReportingPeriods } from '../hooks/useReporting';
 import { formatCurrency, cn } from '../lib/utils';
 import type { PipelineStage } from '../types';
 
@@ -29,6 +35,7 @@ const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }:
 
 const ALL_TABS = ['Pipeline', 'Quota Performance', 'Win/Loss', 'Sales Cycle', 'Loss Analysis', 'Growth Table', 'Executive'];
 const COLORS = ['#3d5af1', '#059669', '#d97706', '#7c3aed', '#e11d48', '#0891b2', '#6366f1', '#ec4899'];
+const QUARTERS = [1, 2, 3, 4];
 const TT = {
   contentStyle: { background: '#fff', border: '1px solid #e2e6f0', borderRadius: 8, fontSize: 12, color: '#1a1d2e' },
   itemStyle: { color: '#4a5068' },
@@ -39,6 +46,136 @@ interface BDOption {
   id: string;
   first_name: string;
   last_name: string;
+}
+
+function toggleMultiValue(values: number[], value: number) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value].sort((a, b) => a - b);
+}
+
+function buildGrowthMetricChart(leftData?: GrowthComparisonSnapshot, rightData?: GrowthComparisonSnapshot) {
+  return [
+    { metric: 'Actual Revenue', left: leftData?.actual || 0, right: rightData?.actual || 0 },
+    { metric: 'Pipeline', left: leftData?.pipelineValue || 0, right: rightData?.pipelineValue || 0 },
+    { metric: 'Quota', left: leftData?.quota || 0, right: rightData?.quota || 0 },
+    { metric: 'Lost Value', left: leftData?.lostValue || 0, right: rightData?.lostValue || 0 },
+  ];
+}
+
+function buildServiceComparison(leftData?: GrowthComparisonSnapshot, rightData?: GrowthComparisonSnapshot) {
+  const map = new Map<string, { metric: string; left: number; right: number }>();
+
+  for (const item of leftData?.serviceRevenue || []) {
+    map.set(item.name, { metric: item.name, left: item.value, right: 0 });
+  }
+
+  for (const item of rightData?.serviceRevenue || []) {
+    const existing = map.get(item.name) || { metric: item.name, left: 0, right: 0 };
+    existing.right = item.value;
+    map.set(item.name, existing);
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => Math.max(b.left, b.right) - Math.max(a.left, a.right))
+    .slice(0, 6);
+}
+
+function GrowthFilterBuilder({
+  title,
+  accent,
+  config,
+  onChange,
+  availableYears,
+}: {
+  title: string;
+  accent: string;
+  config: GrowthComparisonSelection;
+  onChange: (next: GrowthComparisonSelection) => void;
+  availableYears: number[];
+}) {
+  const yearOptions = availableYears.length > 0 ? availableYears : config.years;
+  const summary = `${config.years.length > 0 ? config.years.join(', ') : 'No years'} · ${config.quarters.length > 0 ? config.quarters.map((quarter) => `Q${quarter}`).join(', ') : 'All quarters'}`;
+  const [yearsOpen, setYearsOpen] = useState(false);
+  const selectedYearsLabel = config.years.length === 0
+    ? 'Select years'
+    : config.years.length <= 2
+      ? config.years.join(', ')
+      : `${config.years.length} years selected`;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <div className="text-xs font-semibold font-display uppercase tracking-wider" style={{ color: accent }}>{title}</div>
+          <div className="text-xs text-[#8b90a8] mt-1">Build the comparison window for this side.</div>
+        </div>
+        <Badge variant="neutral" size="sm">{summary}</Badge>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wider text-[#8b90a8] mb-2">Years</div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setYearsOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between rounded-xl border border-[#e2e6f0] bg-white px-3 py-2 text-sm text-[#1a1d2e] shadow-sm"
+            >
+              <span>{selectedYearsLabel}</span>
+              <span className="text-xs text-[#8b90a8]">{yearsOpen ? 'Close' : 'Open'}</span>
+            </button>
+            {yearsOpen && (
+              <div className="absolute z-20 mt-2 w-full rounded-xl border border-[#e2e6f0] bg-white p-2 shadow-lg">
+                <div className="flex max-h-48 flex-col overflow-y-auto">
+                  {yearOptions.map((year) => {
+                    const active = config.years.includes(year);
+                    return (
+                      <label
+                        key={year}
+                        className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-[#1a1d2e] hover:bg-[#f8faff] cursor-pointer"
+                      >
+                        <span>{year}</span>
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => onChange({ ...config, years: toggleMultiValue(config.years, year) })}
+                          className="h-4 w-4 accent-[#3d5af1]"
+                          style={{ accentColor: accent }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="text-[11px] text-[#8b90a8] mt-2">Pick one or more real reporting years.</div>
+        </div>
+
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wider text-[#8b90a8] mb-2">Quarters</div>
+          <div className="flex flex-wrap gap-2">
+            {QUARTERS.map((quarter) => {
+              const active = config.quarters.includes(quarter);
+              return (
+              <button
+                key={quarter}
+                type="button"
+                onClick={() => onChange({ ...config, quarters: toggleMultiValue(config.quarters, quarter) })}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                  active ? 'text-white shadow-sm' : 'border-[#e2e6f0] text-[#4a5068] bg-white hover:bg-[#f8faff]'
+                )}
+                style={active ? { backgroundColor: accent, borderColor: accent } : undefined}
+              >
+                {`Q${quarter}`}
+              </button>
+            )})}
+          </div>
+          <div className="text-[11px] text-[#8b90a8] mt-2">Leave all quarters off to compare the full year span.</div>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export default function ReportsPage() {
@@ -52,33 +189,51 @@ export default function ReportsPage() {
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
-  const [growthQuarter, setGrowthQuarter] = useState<number | null>(null);
-  const [compareYear, setCompareYear] = useState(currentYear - 1);
-  const [compareQuarter, setCompareQuarter] = useState<number | null>(null);
-  const [compareFilter, setCompareFilter] = useState('');
-  const [growthForm, setGrowthForm] = useState({
-    label: '',
-    year: currentYear,
-    quarter: '',
-    revenue: '',
-    notes: '',
+  const [leftGrowthConfig, setLeftGrowthConfig] = useState<GrowthComparisonSelection>({
+    years: [currentYear],
+    quarters: [],
+  });
+  const [rightGrowthConfig, setRightGrowthConfig] = useState<GrowthComparisonSelection>({
+    years: [currentYear],
+    quarters: [],
   });
 
   const { data: reportingPeriods } = useReportingPeriods();
   const { data: bdList = [] } = useBDList();
   const availableYears = reportingPeriods?.years ?? [currentYear];
+
+  useEffect(() => {
+    const primaryYear = availableYears[0] ?? currentYear;
+    const secondaryYear = availableYears[1] ?? availableYears[0] ?? currentYear;
+
+    setLeftGrowthConfig((prev) => ({
+      years: prev.years.filter((year) => availableYears.includes(year)).length > 0
+        ? prev.years.filter((year) => availableYears.includes(year))
+        : [primaryYear],
+      quarters: prev.quarters,
+    }));
+
+    setRightGrowthConfig((prev) => ({
+      years: prev.years.filter((year) => availableYears.includes(year)).length > 0
+        ? prev.years.filter((year) => availableYears.includes(year))
+        : [secondaryYear],
+      quarters: prev.quarters,
+    }));
+  }, [availableYears, currentYear]);
   const { data, isLoading: loading, error: queryError, refetch } = useReportData(tab, selectedYear, selectedQuarter, selectedBD);
-  const { data: growthData, isLoading: growthLoading, error: growthError } = useGrowthEntries({
-    year: selectedYear,
-    quarter: growthQuarter,
-    compareYear,
-    compareQuarter,
-  });
-  const createGrowthEntry = useCreateGrowthEntry();
+  const {
+    data: growthComparisonData,
+    isLoading: growthLoading,
+    error: growthError,
+    refetch: refetchGrowthComparison,
+  } = useGrowthComparisonPair(leftGrowthConfig, rightGrowthConfig, selectedBD, tab === 'Growth Table');
+
+  const leftGrowthData = growthComparisonData?.left;
+  const rightGrowthData = growthComparisonData?.right;
 
   const error = queryError ? (queryError as any).response?.data?.detail || (queryError as any).response?.data?.error || (queryError as Error).message || `Failed to load ${tab} report` : null;
   const growthTableError = growthError
-    ? (growthError as any).response?.data?.error || (growthError as Error).message || 'Failed to load growth table'
+    ? (growthError as any).response?.data?.error || (growthError as Error).message || 'Failed to load growth comparison'
     : null;
 
   // Shim variables pointing to current tab's data
@@ -142,7 +297,6 @@ export default function ReportsPage() {
               onChange={e => {
                 const year = parseInt(e.target.value, 10);
                 setSelectedYear(year);
-                setGrowthForm(prev => ({ ...prev, year }));
               }}
               className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white text-[#1a1d2e] focus:outline-none focus:ring-2 focus:ring-[#3d5af1] focus:border-transparent"
             >
@@ -222,210 +376,302 @@ export default function ReportsPage() {
 
           {!loading && !error && tab === 'Growth Table' && (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="p-5 lg:col-span-1">
-                  <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Add Growth Data</div>
-                  <form
-                    className="flex flex-col gap-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      createGrowthEntry.mutate({
-                        label: growthForm.label.trim(),
-                        year: growthForm.year,
-                        quarter: growthForm.quarter ? parseInt(growthForm.quarter, 10) : null,
-                        revenue: Number(growthForm.revenue),
-                        notes: growthForm.notes.trim() || undefined,
-                      }, {
-                        onSuccess: () => {
-                          setGrowthForm((prev) => ({ ...prev, label: '', quarter: '', revenue: '', notes: '' }));
-                        },
-                      });
-                    }}
-                  >
-                    <input
-                      value={growthForm.label}
-                      onChange={(e) => setGrowthForm(prev => ({ ...prev, label: e.target.value }))}
-                      placeholder="Data label (e.g. Team Revenue)"
-                      className="px-3 py-2 text-sm border border-[#e2e6f0] rounded-lg"
-                      required
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <select
-                        value={growthForm.year}
-                        onChange={(e) => setGrowthForm(prev => ({ ...prev, year: parseInt(e.target.value, 10) }))}
-                        className="px-3 py-2 text-sm border border-[#e2e6f0] rounded-lg bg-white"
-                      >
-                        {availableYears.map((year) => (
-                          <option key={year} value={year}>{year}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={growthForm.quarter}
-                        onChange={(e) => setGrowthForm(prev => ({ ...prev, quarter: e.target.value }))}
-                        className="px-3 py-2 text-sm border border-[#e2e6f0] rounded-lg bg-white"
-                      >
-                        <option value="">All Quarters</option>
-                        {[1, 2, 3, 4].map((quarter) => (
-                          <option key={quarter} value={quarter}>{`Q${quarter}`}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={growthForm.revenue}
-                      onChange={(e) => setGrowthForm(prev => ({ ...prev, revenue: e.target.value }))}
-                      placeholder="Revenue"
-                      className="px-3 py-2 text-sm border border-[#e2e6f0] rounded-lg"
-                      required
-                    />
-                    <textarea
-                      value={growthForm.notes}
-                      onChange={(e) => setGrowthForm(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Notes (optional)"
-                      rows={3}
-                      className="px-3 py-2 text-sm border border-[#e2e6f0] rounded-lg"
-                    />
-                    <button
-                      type="submit"
-                      disabled={createGrowthEntry.isPending}
-                      className="px-4 py-2 text-sm font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors disabled:opacity-60"
-                    >
-                      {createGrowthEntry.isPending ? 'Saving...' : 'Add Row'}
-                    </button>
-                  </form>
-                </Card>
-
-                <Card className="p-5 lg:col-span-2">
-                  <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-                    <div>
-                      <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Growth Comparison</div>
-                      <div className="text-xs text-[#8b90a8] mt-1">Side-by-side revenue sandbox by year and optional quarter.</div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <select
-                        value={growthQuarter ?? ''}
-                        onChange={(e) => setGrowthQuarter(e.target.value ? parseInt(e.target.value, 10) : null)}
-                        className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white"
-                      >
-                        <option value="">All Quarters</option>
-                        {[1, 2, 3, 4].map((quarter) => (
-                          <option key={quarter} value={quarter}>{`Q${quarter}`}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={compareYear}
-                        onChange={(e) => setCompareYear(parseInt(e.target.value, 10))}
-                        className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white"
-                      >
-                        {availableYears.map((year) => (
-                          <option key={year} value={year}>{`Compare to ${year}`}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={compareQuarter ?? ''}
-                        onChange={(e) => setCompareQuarter(e.target.value ? parseInt(e.target.value, 10) : null)}
-                        className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white"
-                      >
-                        <option value="">All Quarters</option>
-                        {[1, 2, 3, 4].map((quarter) => (
-                          <option key={quarter} value={quarter}>{`Q${quarter}`}</option>
-                        ))}
-                      </select>
-                      <input
-                        value={compareFilter}
-                        onChange={(e) => setCompareFilter(e.target.value)}
-                        placeholder="Filter labels"
-                        className="px-3 py-1.5 text-xs border border-[#e2e6f0] rounded-lg bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {growthLoading ? (
-                    <div className="flex items-center justify-center py-16 text-sm text-[#8b90a8]">
-                      <Loader2 size={18} className="animate-spin mr-2" />
-                      Loading growth table...
-                    </div>
-                  ) : growthTableError ? (
-                    <div className="text-center py-10 text-sm text-[#8b90a8]">{growthTableError}</div>
-                  ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                      {(growthData?.comparison ?? [])
-                        .filter(item => item.label.toLowerCase().includes(compareFilter.toLowerCase()))
-                        .map((item) => (
-                          <div key={item.label} className="rounded-xl border border-[#e2e6f0] p-4 bg-[#fafbfd]">
-                            <div className="text-sm font-semibold text-[#1a1d2e] mb-3">{item.label}</div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="rounded-lg bg-white border border-[#e2e6f0] p-3">
-                                <div className="text-[10px] uppercase tracking-wider text-[#8b90a8] mb-1">
-                                  {`${selectedYear}${growthQuarter ? ` · Q${growthQuarter}` : ''}`}
-                                </div>
-                                <div className="text-lg font-bold font-display text-[#1a1d2e]">{formatCurrency(item.leftRevenue, true)}</div>
-                              </div>
-                              <div className="rounded-lg bg-white border border-[#e2e6f0] p-3">
-                                <div className="text-[10px] uppercase tracking-wider text-[#8b90a8] mb-1">
-                                  {`${compareYear}${compareQuarter ? ` · Q${compareQuarter}` : ''}`}
-                                </div>
-                                <div className="text-lg font-bold font-display text-[#1a1d2e]">{formatCurrency(item.rightRevenue, true)}</div>
-                              </div>
-                            </div>
-                            <div className="mt-3 flex items-center justify-between text-xs">
-                              <span className="text-[#8b90a8]">Delta</span>
-                              <span className={cn('font-semibold', item.delta >= 0 ? 'text-[#10b981]' : 'text-[#e11d48]')}>
-                                {`${item.delta >= 0 ? '+' : ''}${formatCurrency(item.delta, true)}`}
-                              </span>
-                            </div>
-                            <div className="mt-1 flex items-center justify-between text-xs">
-                              <span className="text-[#8b90a8]">Growth</span>
-                              <span className={cn('font-semibold', (item.growthPct ?? 0) >= 0 ? 'text-[#10b981]' : 'text-[#e11d48]')}>
-                                {item.growthPct === null ? 'N/A' : `${item.growthPct >= 0 ? '+' : ''}${item.growthPct.toFixed(1)}%`}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      {(growthData?.comparison ?? []).filter(item => item.label.toLowerCase().includes(compareFilter.toLowerCase())).length === 0 && (
-                        <div className="xl:col-span-2 text-center py-16 text-sm text-[#8b90a8]">
-                          No growth rows match the current filters.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              </div>
-
               <Card className="p-5">
-                <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Saved Growth Rows</div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wider text-[#8b90a8] border-b border-[#e2e6f0]">
-                        <th className="py-2 pr-4">Label</th>
-                        <th className="py-2 pr-4">Period</th>
-                        <th className="py-2 pr-4">Revenue</th>
-                        <th className="py-2 pr-4">Owner</th>
-                        <th className="py-2 pr-4">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(growthData?.entries ?? []).map((entry) => (
-                        <tr key={entry.id} className="border-b border-[#f0f2f8]">
-                          <td className="py-3 pr-4 font-medium text-[#1a1d2e]">{entry.label}</td>
-                          <td className="py-3 pr-4 text-[#4a5068]">{`${entry.year}${entry.quarter ? ` · Q${entry.quarter}` : ''}`}</td>
-                          <td className="py-3 pr-4 text-[#1a1d2e] font-semibold">{formatCurrency(entry.revenue, true)}</td>
-                          <td className="py-3 pr-4 text-[#4a5068]">{`${entry.owner.firstName} ${entry.owner.lastName}`}</td>
-                          <td className="py-3 pr-4 text-[#8b90a8]">{entry.notes || '—'}</td>
-                        </tr>
-                      ))}
-                      {(growthData?.entries ?? []).length === 0 && (
-                        <tr>
-                          <td className="py-8 text-center text-[#8b90a8]" colSpan={5}>No rows saved for this year filter yet.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Growth Comparison Workspace</div>
+                    <div className="text-sm text-[#1a1d2e] mt-1">Compare two reporting windows side by side using either a year with selected quarters or a quarter across selected years.</div>
+                    <div className="text-xs text-[#8b90a8] mt-2">This view pulls live BD analytics for quota attainment, service revenue, revenue by account, lead source performance, win/loss, and sales cycle analysis.</div>
+                  </div>
+                  {selectedBD ? (
+                    <Badge variant="info" size="sm">Filtered to selected BD</Badge>
+                  ) : (
+                    <Badge variant="neutral" size="sm">All BD sales included</Badge>
+                  )}
                 </div>
               </Card>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <GrowthFilterBuilder
+                  title="Left Side"
+                  accent="#3d5af1"
+                  config={leftGrowthConfig}
+                  onChange={setLeftGrowthConfig}
+                  availableYears={availableYears}
+                />
+                <GrowthFilterBuilder
+                  title="Right Side"
+                  accent="#0f9f8f"
+                  config={rightGrowthConfig}
+                  onChange={setRightGrowthConfig}
+                  availableYears={availableYears}
+                />
+              </div>
+
+              {growthLoading ? (
+                <Card className="p-10">
+                  <div className="flex items-center justify-center text-sm text-[#8b90a8]">
+                    <Loader2 size={18} className="animate-spin mr-2" />
+                    Loading comparison analytics...
+                  </div>
+                </Card>
+              ) : growthTableError ? (
+                <Card className="p-8 text-center max-w-md mx-auto">
+                  <AlertTriangle size={24} className="text-[#d97706] mx-auto mb-3" />
+                  <div className="text-sm font-semibold text-[#1a1d2e] mb-1">Failed to load growth comparison</div>
+                  <div className="text-xs text-[#8b90a8] mb-1">{growthTableError}</div>
+                  <div className="text-xs text-[#8b90a8]">Make sure the analytics service is running on port 8001.</div>
+                  <button
+                    onClick={() => refetchGrowthComparison()}
+                    className="mt-4 px-4 py-2 text-xs font-medium bg-[#3d5af1] text-white rounded-lg hover:bg-[#2d4ad1] transition-colors"
+                  >
+                    Retry
+                  </button>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      {
+                        label: 'Revenue Delta',
+                        value: formatCurrency((leftGrowthData?.actual || 0) - (rightGrowthData?.actual || 0), true),
+                        tone: (leftGrowthData?.actual || 0) >= (rightGrowthData?.actual || 0),
+                        sub: `${leftGrowthData?.label || 'Left'} vs ${rightGrowthData?.label || 'Right'}`,
+                      },
+                      {
+                        label: 'Attainment Gap',
+                        value: `${((leftGrowthData?.attainmentPct || 0) - (rightGrowthData?.attainmentPct || 0)).toFixed(1)}%`,
+                        tone: (leftGrowthData?.attainmentPct || 0) >= (rightGrowthData?.attainmentPct || 0),
+                        sub: 'quota attainment',
+                      },
+                      {
+                        label: 'Win Rate Gap',
+                        value: `${((leftGrowthData?.winRate || 0) - (rightGrowthData?.winRate || 0)).toFixed(1)}%`,
+                        tone: (leftGrowthData?.winRate || 0) >= (rightGrowthData?.winRate || 0),
+                        sub: 'closed opportunities',
+                      },
+                      {
+                        label: 'Cycle Speed Gap',
+                        value: `${(((rightGrowthData?.avgSalesCycleDays || 0) - (leftGrowthData?.avgSalesCycleDays || 0))).toFixed(1)}d`,
+                        tone: (leftGrowthData?.avgSalesCycleDays || 0) <= (rightGrowthData?.avgSalesCycleDays || 0),
+                        sub: 'positive means left side is faster',
+                      },
+                    ].map((item) => (
+                      <Card key={item.label} className="p-4">
+                        <div className="text-xs text-[#8b90a8] mb-1">{item.label}</div>
+                        <div className={cn('text-2xl font-bold font-display', item.tone ? 'text-[#10b981]' : 'text-[#e11d48]')}>{item.value}</div>
+                        <div className="text-xs text-[#8b90a8] mt-1">{item.sub}</div>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                      <div>
+                        <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider">Core Metric Comparison</div>
+                        <div className="text-xs text-[#8b90a8] mt-1">Revenue, pipeline, quota, and lost value side by side.</div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="info" size="sm">{leftGrowthData?.label || 'Left'}</Badge>
+                        <Badge variant="success" size="sm">{rightGrowthData?.label || 'Right'}</Badge>
+                      </div>
+                    </div>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={buildGrowthMetricChart(leftGrowthData, rightGrowthData)} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
+                          <XAxis dataKey="metric" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(value) => formatCurrency(Number(value), true)} />
+                          <Tooltip {...TT} formatter={(value: number) => [formatCurrency(value), '']} />
+                          <Legend />
+                          <Bar dataKey="left" name={leftGrowthData?.label || 'Left'} fill="#dce3fd" stroke="#3d5af1" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="right" name={rightGrowthData?.label || 'Right'} fill="#c9f1eb" stroke="#0f9f8f" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {[
+                      { title: 'Left Snapshot', accent: '#3d5af1', data: leftGrowthData },
+                      { title: 'Right Snapshot', accent: '#0f9f8f', data: rightGrowthData },
+                    ].map((panel) => (
+                      <Card key={panel.title} className="p-5">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div>
+                            <div className="text-xs font-semibold font-display uppercase tracking-wider" style={{ color: panel.accent }}>{panel.title}</div>
+                            <div className="text-lg font-bold font-display text-[#1a1d2e] mt-1">{panel.data?.label}</div>
+                            <div className="text-xs text-[#8b90a8] mt-1">{panel.data?.periods.map((item) => `${item.year} Q${item.quarter}`).join(' · ')}</div>
+                          </div>
+                          <Badge variant="neutral" size="sm">{panel.data?.periods.length || 0} periods</Badge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          {[
+                            { label: 'Quota Attainment', value: `${panel.data?.attainmentPct.toFixed(1) || '0.0'}%`, tone: 'text-[#3d5af1]' },
+                            { label: 'Actual Revenue', value: formatCurrency(panel.data?.actual || 0, true), tone: 'text-[#10b981]' },
+                            { label: 'Win/Loss', value: `${panel.data?.wins || 0} / ${panel.data?.losses || 0}`, tone: 'text-[#1a1d2e]' },
+                            { label: 'Avg. Sales Cycle', value: panel.data?.avgSalesCycleDays ? `${panel.data.avgSalesCycleDays.toFixed(1)}d` : 'N/A', tone: 'text-[#d97706]' },
+                          ].map((metric) => (
+                            <div key={metric.label} className="rounded-xl border border-[#e2e6f0] bg-[#fafbfd] p-3">
+                              <div className="text-[10px] uppercase tracking-wider text-[#8b90a8] mb-1">{metric.label}</div>
+                              <div className={cn('text-lg font-bold font-display', metric.tone)}>{metric.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Service Revenue</div>
+                            <div className="h-56">
+                              {(panel.data?.serviceRevenue.length || 0) > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={panel.data?.serviceRevenue || []} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={82} label={renderPieLabel} labelLine={false}>
+                                      {(panel.data?.serviceRevenue || []).map((_: any, index: number) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                                    </Pie>
+                                    <Tooltip {...TT} formatter={(value: number, name: string) => [formatCurrency(value), name]} />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No service revenue data</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Revenue by Account</div>
+                            <div className="h-56">
+                              {(panel.data?.accountRevenue.length || 0) > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={panel.data?.accountRevenue || []} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" horizontal={false} />
+                                    <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(value) => formatCurrency(Number(value), true)} />
+                                    <YAxis type="category" dataKey="name" width={100} tick={{ fill: '#8b90a8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                    <Tooltip {...TT} formatter={(value: number) => [formatCurrency(value), 'Revenue']} />
+                                    <Bar dataKey="value" fill={`${panel.accent}33`} stroke={panel.accent} strokeWidth={1} radius={[0, 4, 4, 0]} />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No account mix data</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Lead Source Performance</div>
+                            <div className="h-56">
+                              {(panel.data?.leadSourcePerformance.length || 0) > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={panel.data?.leadSourcePerformance || []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
+                                    <XAxis dataKey="source" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(value) => formatCurrency(Number(value), true)} />
+                                    <Tooltip
+                                      {...TT}
+                                      formatter={(value: number, key: string, item: any) => {
+                                        if (key === 'value') return [formatCurrency(value), 'Revenue'];
+                                        return [`${item?.payload?.winRate?.toFixed(1) || 0}%`, 'Win Rate'];
+                                      }}
+                                    />
+                                    <Bar dataKey="value" fill={`${panel.accent}33`} stroke={panel.accent} strokeWidth={1} radius={[4, 4, 0, 0]} />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No lead source data</div>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-1.5 mt-2">
+                              {(panel.data?.leadSourcePerformance || []).map((item) => (
+                                <div key={item.source} className="flex items-center justify-between gap-2 text-xs border-b border-[#f0f2f8] py-1.5">
+                                  <span className="text-[#4a5068]">{item.source}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[#8b90a8]">{item.deals} deals</span>
+                                    <Badge variant={item.winRate >= 50 ? 'success' : item.winRate > 0 ? 'warning' : 'neutral'} size="sm">{item.winRate.toFixed(1)}%</Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Win/Loss Mix</div>
+                              <div className="h-52">
+                                {(panel.data?.wins || 0) + (panel.data?.losses || 0) > 0 ? (
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                      <Pie
+                                        data={[
+                                          { name: 'Won', value: panel.data?.wins || 0 },
+                                          { name: 'Lost', value: panel.data?.losses || 0 },
+                                        ]}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        outerRadius={76}
+                                        label={renderPieLabel}
+                                        labelLine={false}
+                                      >
+                                        <Cell fill="#10b981" />
+                                        <Cell fill="#e11d48" />
+                                      </Pie>
+                                      <Tooltip {...TT} />
+                                    </PieChart>
+                                  </ResponsiveContainer>
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No closed deals in this slice</div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Sales Cycle Analysis</div>
+                              <div className="h-52">
+                                {(panel.data?.stageCycle.length || 0) > 0 ? (
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={panel.data?.stageCycle || []} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" horizontal={false} />
+                                      <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(value) => `${Number(value).toFixed(0)}d`} />
+                                      <YAxis type="category" dataKey="stage" width={100} tick={{ fill: '#8b90a8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                      <Tooltip {...TT} formatter={(value: number) => [`${value.toFixed(1)} days`, 'Avg. cycle']} />
+                                      <Bar dataKey="avgDays" fill={`${panel.accent}33`} stroke={panel.accent} strokeWidth={1} radius={[0, 4, 4, 0]} />
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No stage cycle data</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <Card className="p-5">
+                    <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Service Revenue Comparison</div>
+                    <div className="h-72">
+                      {buildServiceComparison(leftGrowthData, rightGrowthData).length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={buildServiceComparison(leftGrowthData, rightGrowthData)} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
+                            <XAxis dataKey="metric" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(value) => formatCurrency(Number(value), true)} />
+                            <Tooltip {...TT} formatter={(value: number) => [formatCurrency(value), 'Revenue']} />
+                            <Legend />
+                            <Bar dataKey="left" name={leftGrowthData?.label || 'Left'} fill="#dce3fd" stroke="#3d5af1" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="right" name={rightGrowthData?.label || 'Right'} fill="#c9f1eb" stroke="#0f9f8f" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-xs text-[#8b90a8]">No comparable service revenue data</div>
+                      )}
+                    </div>
+                  </Card>
+                </>
+              )}
             </div>
           )}
 

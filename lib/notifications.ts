@@ -2,82 +2,69 @@ import { prisma } from './db'
 import { logger } from 'motia'
 import type { NotificationType, NotificationTrigger } from '@prisma/client'
 
-interface CreateNotificationInput {
+type NotificationPayload = {
   bdId: string
-  dealId?: string | null
   type: NotificationType
   triggeredBy: NotificationTrigger
   content: string
+  dealId?: string | null
   scheduledAt?: Date | null
 }
 
 /**
  * Create a notification, skipping duplicates for the same deal+type on the same day.
- * Returns the created notification or null if a duplicate was found.
  */
-export async function createNotification(input: CreateNotificationInput) {
-  const { bdId, dealId, type, triggeredBy, content, scheduledAt } = input
-
+export async function createNotification(payload: NotificationPayload) {
   // Deduplicate: skip if same deal+type already created today
-  if (dealId) {
+  if (payload.dealId) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const existing = await prisma.notification.findFirst({
       where: {
-        dealId,
-        type,
+        dealId: payload.dealId,
+        type: payload.type,
         createdAt: { gte: today },
       },
     })
     if (existing) {
-      logger.info(`Skipped duplicate ${type} notification for deal ${dealId}`)
+      logger.info(`Skipped duplicate ${payload.type} notification for deal ${payload.dealId}`)
       return null
     }
   }
 
-  const notification = await prisma.notification.create({
+  return prisma.notification.create({
     data: {
-      bdId,
-      dealId: dealId || undefined,
-      type,
-      triggeredBy,
-      content,
-      scheduledAt,
+      bdId: payload.bdId,
+      type: payload.type,
+      triggeredBy: payload.triggeredBy,
+      content: payload.content,
+      ...(payload.dealId ? { dealId: payload.dealId } : {}),
+      ...(payload.scheduledAt ? { scheduledAt: payload.scheduledAt } : {}),
     },
   })
-
-  logger.info(`Created ${type} notification for BD ${bdId}`, { dealId })
-  return notification
 }
 
 /**
- * Create notifications for both the BD rep and the manager (if different).
+ * Create notifications for all active BD members (team-wide alerts).
  */
-export async function notifyBdAndManager(
-  bdId: string,
-  dealId: string,
-  type: NotificationType,
-  triggeredBy: NotificationTrigger,
-  content: string,
-) {
-  // Notify the BD rep
-  await createNotification({ bdId, dealId, type, triggeredBy, content })
-
-  // Also notify the manager(s)
-  const managers = await prisma.bD.findMany({
-    where: { role: 'SALES_MANAGER', isActive: true },
+export async function createTeamNotification(payload: Omit<NotificationPayload, 'bdId'>) {
+  const recipients = await prisma.bD.findMany({
+    where: { isActive: true },
     select: { id: true },
   })
 
-  for (const mgr of managers) {
-    if (mgr.id !== bdId) {
-      await createNotification({
-        bdId: mgr.id,
-        dealId,
-        type,
-        triggeredBy,
-        content: `[Team] ${content}`,
-      })
-    }
+  if (recipients.length === 0) {
+    return { count: 0 }
   }
+
+  return prisma.notification.createMany({
+    data: recipients.map((recipient) => ({
+      bdId: recipient.id,
+      type: payload.type,
+      triggeredBy: payload.triggeredBy,
+      content: payload.content,
+      dealId: payload.dealId ?? null,
+      scheduledAt: payload.scheduledAt ?? null,
+    })),
+  })
 }

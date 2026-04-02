@@ -2,6 +2,8 @@ import { type StepConfig, type Handlers, logger } from 'motia'
 import { authenticate } from '../../../lib/auth'
 import { prisma } from '../../../lib/db'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
+import { createTeamNotification } from '../../../lib/notifications'
 
 export const config = {
     name: 'CreatePayment',
@@ -16,8 +18,9 @@ export const config = {
 const CreatePaymentSchema = z.object({
     dealId: z.string().uuid('Invalid deal ID'),
     amount: z.number().positive('Amount must be greater than 0'),
-    // dateId is optional — links to DateDimension if provided
     dateId: z.string().uuid().optional(),
+    billingYear: z.number().int().min(2000).max(2100).optional(),
+    billingMonth: z.number().int().min(1).max(12).optional(),
 })
 
 export const handler: Handlers<typeof config> = async (req, ctx) => {
@@ -32,35 +35,78 @@ export const handler: Handlers<typeof config> = async (req, ctx) => {
             }
         }
 
-        const { dealId, amount, dateId } = parsed.data
+        const { dealId, amount, dateId, billingYear, billingMonth } = parsed.data
 
-        // Verify deal exists and belongs to this BD (managers can record against any deal)
-        const deal = await prisma.deal.findUnique({ where: { id: dealId } })
+        const deal = await prisma.deal.findUnique({
+            where: { id: dealId },
+            include: {
+                stage: { select: { name: true } },
+            },
+        })
 
         if (!deal) {
             return { status: 404, body: { error: 'Deal not found' } }
+        }
+
+        if (deal.stage.name !== 'Closed Won' && !deal.isClosed) {
+            return { status: 400, body: { error: 'Payments can only be recorded against closed deals' } }
         }
 
         if (user.role !== 'SALES_MANAGER' && deal.bdId !== user.id) {
             return { status: 403, body: { error: 'You can only record payments against your own deals' } }
         }
 
+        let resolvedDateId = dateId
+        if (!resolvedDateId && billingYear && billingMonth) {
+            const dateRow = await prisma.dateDimension.findFirst({
+                where: {
+                    year: billingYear,
+                    month: billingMonth,
+                    day: 1,
+                },
+                select: { id: true },
+            })
+            if (!dateRow) {
+                return { status: 400, body: { error: 'Billing period not found in date dimension' } }
+            }
+            resolvedDateId = dateRow.id
+        }
+
         const payment = await prisma.payment.create({
             data: {
                 dealId,
-                amount,
-                ...(dateId ? { dateId } : {}),
+                amount: new Prisma.Decimal(amount),
+                ...(resolvedDateId ? { dateId: resolvedDateId } : {}),
             },
             include: {
-                deal: { select: { id: true, dealName: true } },
+                deal: {
+                    select: {
+                        id: true,
+                        dealName: true,
+                        bdId: true,
+                        bd: { select: { firstName: true, lastName: true } },
+                        client: { select: { name: true } },
+                    },
+                },
+                date: { select: { year: true, month: true, quarter: true } },
             },
         })
+
+        await createTeamNotification({
+            dealId: payment.dealId,
+            type: 'FOLLOW_UP_DUE',
+            triggeredBy: 'NO_FOLLOW_UP_IN_14_DAYS',
+            content: `Payment of ${Number(payment.amount).toLocaleString('en-PH')} was logged for "${payment.deal.dealName}"${payment.date ? ` (${payment.date.month}/${payment.date.year})` : ''}.`,
+        }).catch((error) => logger.warn('Failed to create team payment notification', { error, dealId }))
 
         return {
             status: 201,
             body: {
-                ...payment,
+                id: payment.id,
                 amount: Number(payment.amount),
+                dealId: payment.dealId,
+                deal: payment.deal,
+                date: payment.date ?? null,
             },
         }
     } catch (error: any) {

@@ -1,49 +1,61 @@
 import { type Handlers, type StepConfig, logger } from 'motia'
 import { prisma } from '../../lib/db'
-import { createNotification } from '../../lib/notifications'
+import { createTeamNotification } from '../../lib/notifications'
 
 export const config = {
   name: 'Check Action Plan Due',
-  description: 'Daily 8 AM: alert BD members when action plan due dates have passed',
+  description: 'Daily 8:15 AM: notify BD members when current action plans are due or overdue',
   triggers: [
     {
       type: 'cron' as const,
-      expression: '0 0 8 * * *',
-    },
+      expression: '0 15 8 * * *', // sec min hour dom mon dow
+    }
   ],
 } as const satisfies StepConfig
 
 export const handler: Handlers<typeof config> = async () => {
-  const now = new Date()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
-  // Find open deals with overdue action plans (from the current active audit log)
-  const overdueDeals = await prisma.dealAuditLog.findMany({
+  const dueActions = await prisma.dealAuditLog.findMany({
     where: {
-      exitedAt: null, // Current stage entry
-      actionPlanDueDate: { lt: now },
-      deal: { isClosed: false },
+      exitedAt: null,
+      actionPlanDueDate: { lte: new Date() },
+      deal: {
+        isClosed: false,
+        contractStatus: { not: 'TERMINATED' },
+      },
     },
     include: {
       deal: {
-        select: { id: true, dealName: true, bdId: true },
+        select: {
+          id: true,
+          dealName: true,
+          bdId: true,
+        },
       },
+      stage: { select: { name: true } },
     },
   })
 
-  let created = 0
-  for (const log of overdueDeals) {
-    const daysOverdue = Math.floor(
-      (now.getTime() - log.actionPlanDueDate!.getTime()) / (1000 * 60 * 60 * 24)
-    )
-    const notif = await createNotification({
-      bdId: log.deal.bdId,
-      dealId: log.deal.id,
+  for (const action of dueActions) {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        dealId: action.dealId,
+        type: 'ACTION_PLAN_DUE',
+        createdAt: { gte: today },
+      },
+    })
+
+    if (existing) continue
+
+    await createTeamNotification({
+      dealId: action.dealId,
       type: 'ACTION_PLAN_DUE',
       triggeredBy: 'ACTION_PLAN_PASSED',
-      content: `Action plan overdue by ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''}: "${log.deal.dealName}" — ${log.actionPlan || 'No action plan set'}`,
-    })
-    if (notif) created++
+      content: `Action plan for "${action.deal.dealName}" in ${action.stage.name} is due. Review the next steps and update the deal.`,
+    }).catch((error) => logger.warn('Failed to create action-plan notification', { error, dealId: action.dealId }))
   }
 
-  logger.info(`Action plan due check: ${overdueDeals.length} overdue, created ${created} notifications`)
+  logger.info(`Checked ${dueActions.length} due action plans`)
 }

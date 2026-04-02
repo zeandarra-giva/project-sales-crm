@@ -17,4 +17,5 @@ export interface BundleService {
   name?: string;
   service_value: number;
   revenue_share_pct: number;
+  service?: Service;
 }

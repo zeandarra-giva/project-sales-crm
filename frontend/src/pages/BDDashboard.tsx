@@ -6,8 +6,9 @@ import {
 } from 'recharts';
 import {
   Target, TrendingUp, TrendingDown, Briefcase, AlertTriangle, Loader2,
-  Users, Layers, PhoneCall, Calendar,
+  Users, Layers, PhoneCall, Calendar, Download,
 } from 'lucide-react';
+import { downloadXlsx, pesoStr, pctStr } from '../lib/exportXlsx';
 import Header from '../components/layout/Header';
 import { MetricCard, Card, Badge, ProgressBar } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
@@ -61,6 +62,7 @@ export interface AnalyticsBDData {
   pipeline_by_stage: { stage_name: string; deal_count: number; total_value: number }[];
   open_deals: { deal_id: string; deal_name: string; stage_name: string; revenue: number; days_in_stage: number; client_name?: string; account_type?: string }[];
   service_revenue: { service_name: string; revenue: number; deal_count: number }[];
+  bundle_revenue: { bundle_name: string; revenue: number; deal_count: number }[];
   account_type_pipeline: { account_type: string; deal_count: number; total_value: number }[];
   lead_source: { lead_source: string; total_deals: number; won_deals: number; won_revenue: number }[];
   follow_up: { total_open: number; overdue_action_plans: number; overdue_follow_ups: number; upcoming_action_plans: number };
@@ -72,7 +74,7 @@ export default function BDDashboard() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
-  const [selectedQ, setSelectedQ] = useState(currentQuarter);
+  const [selectedQ, setSelectedQ] = useState<number | 'ALL'>(currentQuarter);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const { data: reportingPeriods } = useReportingPeriods();
   const availableYears = reportingPeriods?.years ?? [currentYear];
@@ -118,19 +120,99 @@ export default function BDDashboard() {
   const attainmentPct = Math.min(data.attainment_pct || 0, 100);
   const variance = data.variance || 0;
   const isAhead = variance >= 0;
+
+  const handleExport = () => {
+    const periodLabel = selectedQ === 'ALL' ? `${selectedYear}-All` : `${selectedYear}-Q${selectedQ}`;
+    const name = `${user?.firstName ?? 'BD'} ${user?.lastName ?? ''}`.trim();
+    downloadXlsx(`BD-Dashboard-${name}-${periodLabel}`, [
+      {
+        name: 'Summary',
+        rows: [{
+          'BD Rep': name,
+          'Period': periodLabel,
+          'Total Revenue': pesoStr(data.total_revenue),
+          'Quota': pesoStr(data.quota),
+          'Attainment %': pctStr(data.attainment_pct),
+          'Sales Forecast': pesoStr(data.sales_forecast),
+          'Open Pipeline': pesoStr(data.open_pipeline),
+          'Variance': pesoStr(data.variance),
+        }],
+      },
+      {
+        name: 'Revenue by Month',
+        rows: (data.revenue_by_month || []).map(r => ({
+          'Month': r.month_name,
+          'Revenue': pesoStr(r.revenue),
+          'Quota': pesoStr(r.quota),
+          'Attainment %': r.quota > 0 ? pctStr((r.revenue / r.quota) * 100) : '—',
+        })),
+      },
+      {
+        name: 'Open Deals',
+        rows: (data.open_deals || []).map(d => ({
+          'Deal Name': d.deal_name,
+          'Stage': d.stage_name,
+          'Client': d.client_name ?? '—',
+          'Account Type': d.account_type ?? '—',
+          'Revenue': pesoStr(d.revenue),
+          'Days in Stage': d.days_in_stage,
+        })),
+      },
+      {
+        name: 'Pipeline by Stage',
+        rows: (data.pipeline_by_stage || []).map(s => ({
+          'Stage': s.stage_name,
+          'Deals': s.deal_count,
+          'Total Value': pesoStr(s.total_value),
+        })),
+      },
+      {
+        name: 'Service Revenue',
+        rows: (data.service_revenue || []).map(s => ({
+          'Service': s.service_name,
+          'Revenue': pesoStr(s.revenue),
+          'Deals': s.deal_count,
+        })),
+      },
+      {
+        name: 'Bundle Revenue',
+        rows: (data.bundle_revenue || []).map(b => ({
+          'Bundle': b.bundle_name,
+          'Revenue': pesoStr(b.revenue),
+          'Deals': b.deal_count,
+        })),
+      },
+      {
+        name: 'Lead Source',
+        rows: (data.lead_source || []).map(ls => ({
+          'Lead Source': ls.lead_source,
+          'Total Deals': ls.total_deals,
+          'Won Deals': ls.won_deals,
+          'Won Revenue': pesoStr(ls.won_revenue),
+          'Win Rate %': ls.total_deals > 0 ? pctStr((ls.won_deals / ls.total_deals) * 100) : '0%',
+        })),
+      },
+    ]);
+  };
   const openStages = (data.pipeline_by_stage || []).filter(s => !['Closed Won', 'Closed Lost'].includes(s.stage_name));
   const totalServiceRevenue = (data.service_revenue || []).reduce((sum, s) => sum + s.revenue, 0);
+  const totalBundleRevenue = (data.bundle_revenue || []).reduce((sum, b) => sum + b.revenue, 0);
+  const revenueVsQuotaData = (data.revenue_by_month || []).map((entry) => ({
+    ...entry,
+    deficit: Math.max((entry.quota || 0) - (entry.revenue || 0), 0),
+    excess: Math.max((entry.revenue || 0) - (entry.quota || 0), 0),
+  }));
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title={`${user?.firstName}'s Dashboard`}
-        subtitle={`Q${selectedQ} ${selectedYear} · ${getQuarterRange(selectedQ, selectedYear)}`}
+        subtitle={`${getQuarterLabel(selectedQ)} ${selectedYear} · ${getQuarterRange(selectedQ, selectedYear)}`}
         action={{ label: 'New Deal', to: '/deals/new' }}
       />
 
       <div className="flex-1 overflow-y-auto p-6">
-        {/* Quarter selector */}
+        {/* Quarter selector + export */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <select
             value={selectedYear}
@@ -141,7 +223,7 @@ export default function BDDashboard() {
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          {[1, 2, 3, 4].map((quarter) => (
+          {(['ALL', 1, 2, 3, 4] as const).map((quarter) => (
             <button
               key={quarter}
               onClick={() => setSelectedQ(quarter)}
@@ -152,9 +234,15 @@ export default function BDDashboard() {
                   : 'bg-transparent border-[#e2e6f0] text-[#8b90a8] hover:text-[#4a5068]'
               )}
             >
-              {`Q${quarter}`}
+              {quarter === 'ALL' ? 'All' : `Q${quarter}`}
             </button>
           ))}
+          <button
+            onClick={handleExport}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#e2e6f0] bg-white text-[#4a5068] hover:border-[#3d5af1] hover:text-[#3d5af1] transition-all"
+          >
+            <Download size={12} /> Export XLSX
+          </button>
         </div>
 
         {/* Quota Attainment Hero — Revenue as main text, quota as sub-label */}
@@ -162,7 +250,7 @@ export default function BDDashboard() {
           <div className="absolute inset-0 bg-gradient-to-br from-[#4f6ef708] to-transparent pointer-events-none" />
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · Q{selectedQ} {selectedYear}</div>
+              <div className="text-xs font-medium text-[#4a5068] uppercase tracking-wider mb-2 font-display">Quota Attainment · {getQuarterLabel(selectedQ)} {selectedYear}</div>
               <div className="flex items-baseline gap-3">
                 <span className="text-5xl font-bold font-display text-[#1a1d2e]">{formatCurrency(data.total_revenue || 0, true)}</span>
                 <div>
@@ -205,7 +293,7 @@ export default function BDDashboard() {
         </Card>
 
         {/* Key metrics grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-4">
           <MetricCard
             label="Open Pipeline"
             value={formatCurrency(data.open_pipeline || 0, true)}
@@ -223,39 +311,45 @@ export default function BDDashboard() {
             delay={50}
           />
           <MetricCard
-            label="Monthly Variance"
-            value={`${(data.monthly_variance || 0) >= 0 ? '+' : ''}${formatCurrency(data.monthly_variance || 0, true)}`}
-            sub={data.monthly_excess_deficit || 'MTD'}
-            accent={(data.monthly_variance || 0) >= 0 ? '#10b981' : '#f43f5e'}
-            icon={(data.monthly_variance || 0) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+            label={selectedQ === 'ALL' ? 'Annual Variance' : 'Monthly Variance'}
+            value={`${((selectedQ === 'ALL' ? data.variance : data.monthly_variance) || 0) >= 0 ? '+' : ''}${formatCurrency(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0, true)}`}
+            sub={selectedQ === 'ALL' ? (data.excess_deficit || 'YTD') : (data.monthly_excess_deficit || 'MTD')}
+            accent={(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0) >= 0 ? '#10b981' : '#f43f5e'}
+            icon={(selectedQ === 'ALL' ? data.variance || 0 : data.monthly_variance || 0) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
             delay={100}
           />
           {/* Lead Source card */}
+          <MetricCard
+            label="Bundle Revenue"
+            value={formatCurrency(totalBundleRevenue, true)}
+            sub={`${(data.bundle_revenue || []).reduce((sum, b) => sum + b.deal_count, 0)} bundle deals`}
+            accent="#0f766e"
+            icon={<Target size={16} />}
+            delay={150}
+          />
           <MetricCard
             label="Lead Sources"
             value={String((data.lead_source || []).length)}
             sub={`${(data.lead_source || []).reduce((sum, s) => sum + s.total_deals, 0)} total deals`}
             accent="#059669"
             icon={<Layers size={16} />}
-            delay={150}
+            delay={200}
           />
-          {/* Follow-up card */}
           <MetricCard
             label="Follow-ups"
             value={String((data.follow_up?.overdue_action_plans || 0) + (data.follow_up?.overdue_follow_ups || 0))}
             sub={`overdue · ${data.follow_up?.upcoming_action_plans || 0} upcoming`}
             accent={(data.follow_up?.overdue_action_plans || 0) + (data.follow_up?.overdue_follow_ups || 0) > 0 ? '#f43f5e' : '#10b981'}
             icon={<PhoneCall size={16} />}
-            delay={200}
+            delay={250}
           />
-          {/* Account Type count */}
           <MetricCard
             label="Account Types"
             value={String((data.account_type_pipeline || []).length)}
             sub={`${(data.account_type_pipeline || []).reduce((sum, a) => sum + a.deal_count, 0)} open deals`}
             accent="#d97706"
             icon={<Users size={16} />}
-            delay={250}
+            delay={300}
           />
         </div>
 
@@ -263,17 +357,44 @@ export default function BDDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           {/* Revenue vs Quota bar chart */}
           <Card className="p-5">
-            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Revenue vs Quota (Monthly)</div>
+            <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">{selectedQ === 'ALL' ? 'Revenue vs Quota (Year)' : 'Revenue vs Quota (Monthly)'}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div className="rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">Revenue</div>
+                <div className="mt-1 text-sm font-semibold text-[#0F172A]">{formatCurrency(data.total_revenue || 0, true)}</div>
+              </div>
+              <div className="rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">Quota</div>
+                <div className="mt-1 text-sm font-semibold text-[#0F172A]">{formatCurrency(data.quota || 0, true)}</div>
+              </div>
+              <div className={cn(
+                'rounded-[8px] border px-3 py-2',
+                (data.variance || 0) >= 0
+                  ? 'border-[rgba(16,185,129,0.18)] bg-[rgba(16,185,129,0.06)]'
+                  : 'border-[rgba(244,63,94,0.18)] bg-[rgba(244,63,94,0.06)]'
+              )}>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#94A3B8]">
+                  {(data.variance || 0) >= 0 ? 'Excess' : 'Deficit'}
+                </div>
+                <div className={cn(
+                  'mt-1 text-sm font-semibold',
+                  (data.variance || 0) >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
+                )}>
+                  {formatCurrency(Math.abs(data.variance || 0), true)}
+                </div>
+              </div>
+            </div>
             <div className="h-64">
-              {(data.revenue_by_month || []).length > 0 ? (
+              {revenueVsQuotaData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.revenue_by_month} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <BarChart data={revenueVsQuotaData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f8" />
                     <XAxis dataKey="month_name" tick={{ fill: '#8b90a8', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₱${(v / 1000000).toFixed(1)}M`} />
                     <Tooltip {...TT} formatter={(val: number) => [formatCurrency(val), '']} />
                     <Bar dataKey="quota" name="Quota" fill="#e6eaf5" stroke="#c8cfe8" strokeWidth={1} radius={[4, 4, 0, 0]} />
                     <Bar dataKey="revenue" name="Revenue" fill="#dce3fd" stroke="#3d5af1" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="deficit" name="Deficit" fill="#fee2e2" stroke="#f43f5e" strokeWidth={1} radius={[4, 4, 0, 0]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -463,7 +584,12 @@ export default function BDDashboard() {
   );
 }
 
-function getQuarterRange(quarter: number, year: number): string {
+function getQuarterLabel(quarter: number | 'ALL'): string {
+  return quarter === 'ALL' ? 'All Quarters' : `Q${quarter}`;
+}
+
+function getQuarterRange(quarter: number | 'ALL', year: number): string {
+  if (quarter === 'ALL') return 'Jan 1 – Dec 31';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const startMonth = (quarter - 1) * 3;
   const endMonth = startMonth + 2;

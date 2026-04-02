@@ -16,6 +16,8 @@ import NewContactPage from './pages/NewContact';
 import NotificationsPage from './pages/Notifications';
 import ReportsPage from './pages/Reports';
 import PaymentsPage from './pages/Payments';
+import ServicesPage from './pages/ServicesPage';
+import { useAuthStore } from './store/authStore';
 
 const queryClient = new QueryClient();
 
@@ -41,6 +43,16 @@ function ManagerLayout() {
   );
 }
 
+function HomeRedirect() {
+  const { user } = useAuthStore();
+  return <Navigate to={user?.role === 'SALES_MANAGER' ? '/executive' : '/dashboard'} replace />;
+}
+
+function BDDashboardRoute() {
+  const { user } = useAuthStore();
+  return user?.role === 'SALES_MANAGER' ? <Navigate to="/executive" replace /> : <BDDashboard />;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -48,10 +60,11 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<BDDashboard />} />
+            <Route path="/" element={<HomeRedirect />} />
+            <Route path="/dashboard" element={<BDDashboardRoute />} />
             <Route element={<ManagerLayout />}>
               <Route path="/executive" element={<ExecutiveDashboard />} />
+              <Route path="/services" element={<ServicesPage />} />
             </Route>
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/deals/new" element={<NewDealPage />} />

@@ -13,6 +13,7 @@ import type { PipelineStage } from '../types/index';
 import { AlertTriangle } from 'lucide-react';
 
 const LEAD_SOURCES = ['All', 'Inbound', 'Outbound', 'Referral'];
+const CONTRACT_STATUS_FILTERS = ['All', 'Active', 'Terminated'] as const;
 
 export default function PipelinePage() {
   const { user } = useAuthStore();
@@ -20,7 +21,8 @@ export default function PipelinePage() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'All'>('All');
   const [sourceFilter, setSourceFilter] = useState('All');
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useState(true);
+  const [contractStatusFilter, setContractStatusFilter] = useState<(typeof CONTRACT_STATUS_FILTERS)[number]>('Active');
 
   const { data: allDeals = [], isLoading, error } = useQuery({
     queryKey: ['deals'],
@@ -32,6 +34,8 @@ export default function PipelinePage() {
     if (!showClosed && deal.is_closed) return false;
     if (stageFilter !== 'All' && deal.stage !== stageFilter) return false;
     if (sourceFilter !== 'All' && deal.lead_source !== sourceFilter) return false;
+    if (contractStatusFilter === 'Active' && deal.contract_status === 'TERMINATED') return false;
+    if (contractStatusFilter === 'Terminated' && deal.contract_status !== 'TERMINATED') return false;
     return true;
   });
 
@@ -114,6 +118,14 @@ export default function PipelinePage() {
               {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
 
+            <select
+              value={contractStatusFilter}
+              onChange={e => setContractStatusFilter(e.target.value as (typeof CONTRACT_STATUS_FILTERS)[number])}
+              className="h-9 cursor-pointer rounded-[8px] border border-[#E2E8F0] bg-white px-3 text-xs text-[#475569] shadow-sm focus:outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[rgba(0,122,255,0.12)]"
+            >
+              {CONTRACT_STATUS_FILTERS.map(status => <option key={status} value={status}>{status} contracts</option>)}
+            </select>
+
             <button
               onClick={() => setShowClosed(!showClosed)}
               className={cn(
@@ -123,7 +135,7 @@ export default function PipelinePage() {
                   : 'bg-white border-[#E2E8F0] text-[#64748B] shadow-sm hover:text-[#0F172A]'
               )}
             >
-              Show closed
+              {showClosed ? 'Hide closed' : 'Show closed'}
             </button>
           </div>
 
@@ -181,7 +193,10 @@ export default function PipelinePage() {
                     <div className="grid grid-cols-12 gap-4 items-center">
                       <div className="col-span-4">
                         <div className="text-sm font-semibold text-[#1a1d2e] truncate">{deal.deal_name}</div>
-                        <div className="text-xs text-[#8b90a8] truncate">{deal.client?.name}</div>
+                        <div className="text-xs text-[#8b90a8] truncate">
+                          {deal.client?.name}
+                          {deal.contract_status === 'TERMINATED' && ' · Terminated'}
+                        </div>
                       </div>
                       <div className="col-span-2">
                         <StagePill stage={deal.stage} daysInStage={deal.days_in_stage} size="sm" />

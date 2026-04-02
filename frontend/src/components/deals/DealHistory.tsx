@@ -10,6 +10,11 @@ interface DealHistoryProps {
 const stageColor = (stage: PipelineStage | undefined) =>
   stage ? (PIPELINE_STAGES.find(s => s.name === stage)?.color ?? '#8b90a8') : '#8b90a8';
 
+const activityColor = (log: DealAuditLog) => {
+  if (log.activity_type === 'contract_terminated') return '#E11D48';
+  return stageColor(log.stage);
+};
+
 export default function DealHistory({ logs }: DealHistoryProps) {
   if (logs.length === 0) {
     return <div className="text-xs text-[#8b90a8] py-4 text-center">No stage history yet</div>;
@@ -26,12 +31,15 @@ export default function DealHistory({ logs }: DealHistoryProps) {
 
           {/* Dot */}
           <div className="w-3.5 h-3.5 rounded-full border-2 border-white flex-shrink-0 mt-0.5 shadow-sm z-10"
-            style={{ background: stageColor(log.stage), boxShadow: `0 0 0 3px ${stageColor(log.stage)}20` }} />
+            style={{ background: activityColor(log), boxShadow: `0 0 0 3px ${activityColor(log)}20` }} />
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-semibold text-[#1a1d2e]">{log.stage}</span>
-              {log.days_in_stage != null && (
+              <span className="text-xs font-semibold text-[#1a1d2e]">{log.title || log.stage || 'Activity'}</span>
+              {log.activity_type === 'contract_terminated' && log.effective_date && (
+                <span className="text-[10px] text-[#E11D48]">· effective {formatDate(log.effective_date)}</span>
+              )}
+              {log.days_in_stage != null && log.activity_type !== 'contract_terminated' && (
                 <span className="text-[10px] text-[#8b90a8]">· {log.days_in_stage}d</span>
               )}
             </div>

@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { Deal, PipelineStage, LeadSource } from '../types'
+import type { Deal, PipelineStage, LeadSource, Bundle } from '../types'
 
 function mapDecisionRank(rank?: string) {
   switch (rank) {
@@ -31,6 +31,28 @@ function daysBetween(from: string | Date): number {
 export function mapDealToFrontend(d: any): Deal {
   const stageName = (d.stage?.name ?? 'Inquiry') as PipelineStage
   const currentAuditLog = d.auditLogs?.[0]
+  const mappedBundle: Bundle | undefined = d.bundle
+    ? {
+        id: d.bundle.id,
+        name: d.bundle.name,
+        services: (d.bundle.bundleServices ?? []).map((bundleService: any) => ({
+          service_id: bundleService.serviceId ?? bundleService.service_id,
+          bundle_id: bundleService.bundleId ?? bundleService.bundle_id,
+          name: bundleService.name ?? bundleService.service?.name,
+          service_value: Number(bundleService.serviceValue ?? bundleService.service_value ?? 0),
+          revenue_share_pct: Number(bundleService.revenueSharePct ?? bundleService.revenue_share_pct ?? 0),
+          service: bundleService.service
+            ? {
+                id: bundleService.service.id,
+                name: bundleService.service.name,
+                description: bundleService.service.description ?? undefined,
+                is_active: bundleService.service.isActive ?? bundleService.service.is_active ?? true,
+              }
+            : undefined,
+        })),
+      }
+    : undefined
+
   return {
     id: d.id,
     deal_name: d.dealName,
@@ -45,6 +67,10 @@ export function mapDealToFrontend(d: any): Deal {
     proposal_revision_count: d.proposalRevisionCount ?? 0,
     proposal_link: d.proposalLink ?? undefined,
     contract_link: d.contractLink ?? undefined,
+    contract_status: d.contractStatus ?? 'ACTIVE',
+    terminated_at: d.terminatedAt ?? undefined,
+    termination_reason: d.terminationReason ?? undefined,
+    termination_notes: d.terminationNotes ?? undefined,
     lead_source: LEAD_SOURCE_MAP[d.leadSource] ?? d.leadSource,
     final_proposed_value: d.finalProposedValue ? Number(d.finalProposedValue) : undefined,
     sales_cycle_days: d.salesCycleDays ?? undefined,
@@ -81,7 +107,19 @@ export function mapDealToFrontend(d: any): Deal {
       })),
     } : undefined,
     service: d.service ?? undefined,
-    bundle: d.bundle ?? undefined,
+    bundle: mappedBundle,
+    dealContacts: (d.dealContacts ?? []).map((dealContact: any) => ({
+      id: dealContact.id,
+      isPrimary: dealContact.isPrimary,
+      contact: {
+        id: dealContact.contact.id,
+        firstName: dealContact.contact.firstName,
+        lastName: dealContact.contact.lastName,
+        email: dealContact.contact.email,
+        number: dealContact.contact.number ?? undefined,
+        designation: dealContact.contact.designation ?? undefined,
+      },
+    })),
     auditLogs: d.auditLogs,
     probability_pct: STAGE_PROBABILITY[stageName] ?? 0,
     days_in_stage: d.lastStageUpdateAt ? daysBetween(d.lastStageUpdateAt) : 0,
@@ -108,6 +146,7 @@ export interface CreateDealPayload {
   leadSource: 'INBOUND' | 'OUTBOUND' | 'REFERRAL'
   contractStartDate: string
   contractEndDate: string
+  primaryContactId?: string
   serviceId?: string
   bundleId?: string
   proposalLink?: string
@@ -130,10 +169,22 @@ export interface UpdateDealPayload {
   dueDate?: string
   proposalLink?: string
   contractLink?: string
+  primaryContactId?: string | null
+}
+
+export interface TerminateDealPayload {
+  terminatedAt: string
+  reason: string
+  notes?: string
 }
 
 export async function updateDeal(id: string, data: UpdateDealPayload): Promise<Deal> {
   const res = await apiClient.patch<any>(`/api/deals/${id}`, data)
+  return mapDealToFrontend(res.data)
+}
+
+export async function terminateDeal(id: string, data: TerminateDealPayload): Promise<Deal> {
+  const res = await apiClient.post<any>(`/api/deals/${id}/terminate`, data)
   return mapDealToFrontend(res.data)
 }
 
@@ -168,14 +219,18 @@ export async function updateDealStage(id: string, data: UpdateDealStagePayload):
 
 export interface DealHistoryEntry {
   id: string
-  stage: PipelineStage
-  stageId: string
+  type: 'stage_change' | 'contract_terminated'
+  title: string
+  stage?: PipelineStage
+  stageId?: string
   enteredAt: string
   exitedAt?: string
   daysInStage?: number
   isCurrent: boolean
   notes?: string
   changedById: string
+  changedBy?: { id: string; firstName: string; lastName: string }
+  effectiveDate?: string
 }
 
 export async function getDealHistory(id: string): Promise<DealHistoryEntry[]> {

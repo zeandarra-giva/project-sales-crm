@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ExternalLink, Calendar, Clock, FileText, CheckCircle,
-  AlertTriangle, Edit2, Save, X, ChevronRight, History, User, Mail, Phone,
+  AlertTriangle, Edit2, Save, X, ChevronRight, History, User, Mail, Phone, ShieldAlert,
 } from 'lucide-react';
-import { Card, Button, Badge, Textarea, Input, Avatar } from '../components/ui/index';
+import { Card, Button, Badge, Textarea, Input, Avatar, Select } from '../components/ui/index';
 import StagePill from '../components/deals/StagePill';
 import DealHistory from '../components/deals/DealHistory';
-import { useDeal, useUpdateDeal, useUpdateDealStage, usePipelineStages, useDealHistory } from '../hooks/useDeals';
+import { useDeal, useUpdateDeal, useUpdateDealStage, usePipelineStages, useDealHistory, useTerminateDeal } from '../hooks/useDeals';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import type { PipelineStage, DealAuditLog } from '../types/index';
 
@@ -42,15 +42,28 @@ export default function DealDetail() {
 
   const updateMutation = useUpdateDeal();
   const stageMutation  = useUpdateDealStage();
+  const terminateMutation = useTerminateDeal();
 
   const [editing, setEditing]               = useState(false);
   const [stageConfirm, setStageConfirm]     = useState<PipelineStage | null>(null);
+  const [showTerminateModal, setShowTerminateModal] = useState(false);
   const [editRemarks, setEditRemarks]       = useState('');
   const [editActionPlan, setEditActionPlan] = useState('');
   const [contractLink, setContractLink]     = useState('');
+  const [primaryContactId, setPrimaryContactId] = useState('__NONE__');
+  const [terminationDate, setTerminationDate] = useState('');
+  const [terminationReason, setTerminationReason] = useState('');
+  const [terminationNotes, setTerminationNotes] = useState('');
   // Stage change modal fields (mandatory)
   const [stageRemarks, setStageRemarks]     = useState('');
   const [stageActionPlan, setStageActionPlan] = useState('');
+  const currentPrimaryDealContactId =
+    deal?.dealContacts?.find((dealContact: any) => dealContact.isPrimary)?.contact?.id ?? '__NONE__';
+
+  useEffect(() => {
+    if (!deal) return;
+    setPrimaryContactId(currentPrimaryDealContactId);
+  }, [deal?.id, currentPrimaryDealContactId]);
 
   if (isLoading) {
     return (
@@ -72,6 +85,16 @@ export default function DealDetail() {
   const currentStage = deal.stage;
   const stageIndex   = STAGE_ORDER.indexOf(currentStage);
   const isClosed     = ['Closed Won', 'Closed Lost'].includes(currentStage);
+  const isTerminated = deal.contract_status === 'TERMINATED';
+  const currentPrimaryDealContact = deal.dealContacts?.find((dealContact: any) => dealContact.isPrimary);
+  const linkedBundleServices = deal.bundle?.services ?? [];
+  const clientContactOptions = [
+    { value: '__NONE__', label: 'No primary contact yet' },
+    ...((deal.client?.contacts ?? []).map((contact: any) => ({
+      value: contact.id,
+      label: `${contact.first_name ?? ''} ${contact.last_name ?? ''}${contact.is_primary ? ' (Client Primary)' : ''}`.trim(),
+    }))),
+  ];
 
   // Look up the real DB UUID for a given stage name
   const getStageId = (name: PipelineStage): string | undefined =>
@@ -88,6 +111,13 @@ export default function DealDetail() {
     setEditActionPlan(currentActionPlan);
     setContractLink(deal.contract_link || '');
     setEditing(true);
+  };
+
+  const openTerminateModal = () => {
+    setTerminationDate(deal.terminated_at ? deal.terminated_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setTerminationReason(deal.termination_reason || '');
+    setTerminationNotes(deal.termination_notes || '');
+    setShowTerminateModal(true);
   };
 
   const saveEdit = () => {
@@ -146,16 +176,35 @@ export default function DealDetail() {
     setStageConfirm(null);
   };
 
+  const confirmTermination = () => {
+    if (!terminationDate || !terminationReason.trim()) return;
+
+    terminateMutation.mutate({
+      id: deal.id,
+      data: {
+        terminatedAt: new Date(`${terminationDate}T00:00:00.000Z`).toISOString(),
+        reason: terminationReason.trim(),
+        notes: terminationNotes.trim() || undefined,
+      },
+    }, {
+      onSuccess: () => setShowTerminateModal(false),
+    });
+  };
+
   // Map backend history entries to the DealAuditLog frontend type
   const auditLogs: DealAuditLog[] = history.map(h => ({
     id:            h.id,
+    activity_type: h.type,
+    title:         h.title,
     deal_id:       deal.id,
     stage:         h.stage,
     entered_at:    h.enteredAt,
     exited_at:     h.exitedAt,
     days_in_stage: h.daysInStage,
     changed_by:    h.changedById,
+    changedBy:     h.changedBy,
     notes:         h.notes,
+    effective_date: h.effectiveDate,
   }));
 
   return (
@@ -178,6 +227,9 @@ export default function DealDetail() {
           <Badge variant={deal.lead_source === 'Inbound' ? 'success' : deal.lead_source === 'Outbound' ? 'info' : 'warning'} size="sm">
             {deal.lead_source}
           </Badge>
+          {isTerminated && (
+            <Badge variant="danger" size="sm">Terminated</Badge>
+          )}
           {editing ? (
             <>
               <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}>
@@ -193,6 +245,15 @@ export default function DealDetail() {
                 <Edit2 size={14} /> Edit
               </Button>
             )
+          )}
+          {!isTerminated && currentStage === 'Closed Won' && (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={openTerminateModal}
+            >
+              <ShieldAlert size={14} /> Terminate Contract
+            </Button>
           )}
         </div>
       </div>
@@ -380,6 +441,88 @@ export default function DealDetail() {
               </div>
             )}
 
+            {showTerminateModal && (
+              <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white border border-[#e2e6f0] rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+
+                  {/* Modal header */}
+                  <div className="flex items-start gap-4 px-6 pt-6 pb-4 border-b border-[#f0f2f8]">
+                    <div className="w-10 h-10 rounded-xl bg-[rgba(244,63,94,0.08)] border border-[rgba(244,63,94,0.14)] flex items-center justify-center flex-shrink-0">
+                      <ShieldAlert size={18} className="text-[#E11D48]" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold font-display text-[#1a1d2e] text-[15px] leading-snug">Terminate Contract</h3>
+                      <p className="text-[13px] text-[#8b90a8] mt-0.5">
+                        This is a permanent action and cannot be undone.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowTerminateModal(false)}
+                      className="ml-auto p-1.5 rounded-lg text-[#8b90a8] hover:text-[#1a1d2e] hover:bg-[#f4f6fb] transition-all"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="px-6 py-4 flex flex-col gap-4">
+                    {/* Impact callout */}
+                    <div className="rounded-xl border border-[rgba(244,63,94,0.16)] bg-[rgba(244,63,94,0.04)] px-4 py-3">
+                      <p className="text-[12px] text-[#be123c] leading-relaxed">
+                        Terminating this contract will stop revenue recognition after the effective date, and log a contract-termination event in the activity log for churn and loss analysis.
+                      </p>
+                    </div>
+
+                    <Input
+                      label="Termination Effective Date *"
+                      type="date"
+                      value={terminationDate}
+                      onChange={e => setTerminationDate(e.target.value)}
+                      required
+                    />
+
+                    <Input
+                      label="Termination Reason *"
+                      value={terminationReason}
+                      onChange={e => setTerminationReason(e.target.value)}
+                      placeholder="e.g. Client requested early cancellation"
+                      required
+                    />
+
+                    <Textarea
+                      label="Notes (optional)"
+                      value={terminationNotes}
+                      onChange={e => setTerminationNotes(e.target.value)}
+                      rows={3}
+                      placeholder="Additional details for churn and loss analysis..."
+                    />
+
+                    {terminateMutation.isError && (
+                      <div className="rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-[12px] text-[#e11d48]">
+                        Failed to terminate this contract. Please check the date and try again.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modal footer */}
+                  <div className="flex gap-2 px-6 pb-6 pt-2 border-t border-[#f0f2f8]">
+                    <Button variant="secondary" size="md" onClick={() => setShowTerminateModal(false)} className="flex-1">
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="md"
+                      onClick={confirmTermination}
+                      loading={terminateMutation.isPending}
+                      disabled={terminateMutation.isPending || !terminationDate || !terminationReason.trim()}
+                      className="flex-1 bg-[#E11D48] border-[#E11D48] text-white hover:bg-[#BE123C] hover:border-[#BE123C]"
+                    >
+                      {terminateMutation.isPending ? 'Terminating...' : 'Confirm Termination'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Remarks — sourced from current DealAuditLog (Rev 1) */}
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
@@ -441,11 +584,75 @@ export default function DealDetail() {
             </Card>
 
             <Card className="p-5">
+              <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Services & Bundles</div>
+              <div className="flex flex-col gap-3">
+                {deal.service && (
+                  <div className="rounded-xl border border-[#e2e6f0] bg-[#f8fafc] px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-[#1a1d2e]">{deal.service.name}</div>
+                        {deal.service.description && (
+                          <div className="text-xs text-[#8b90a8] mt-1">{deal.service.description}</div>
+                        )}
+                      </div>
+                      <Badge variant="info" size="sm">Service</Badge>
+                    </div>
+                  </div>
+                )}
+
+                {deal.bundle && (
+                  <div className="rounded-xl border border-[#e2e6f0] bg-[#f8fafc] px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-[#1a1d2e]">{deal.bundle.name}</div>
+                      <Badge variant="warning" size="sm">Bundle</Badge>
+                    </div>
+                    {linkedBundleServices.length > 0 ? (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {linkedBundleServices.map((bundleService) => (
+                          <div
+                            key={`${bundleService.bundle_id}-${bundleService.service_id}`}
+                            className="rounded-lg border border-[#eef2f7] bg-white px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-[#1a1d2e]">
+                                  {bundleService.service?.name || bundleService.name || 'Unnamed service'}
+                                </div>
+                                {bundleService.name && bundleService.service?.name !== bundleService.name && (
+                                  <div className="text-[11px] text-[#8b90a8] mt-0.5">{bundleService.name}</div>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[11px] font-semibold text-[#4a5068]">
+                                  {bundleService.revenue_share_pct}% share
+                                </div>
+                                <div className="text-[11px] text-[#8b90a8]">
+                                  {formatCurrency(bundleService.service_value, true)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-[#8b90a8]">No bundle services are linked yet.</div>
+                    )}
+                  </div>
+                )}
+
+                {!deal.service && !deal.bundle && (
+                  <div className="text-sm text-[#8b90a8]">No service or bundle is linked to this deal.</div>
+                )}
+              </div>
+            </Card>
+
+            <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">Key Dates</div>
               <div className="flex flex-col gap-2.5">
                 {[
                   { label: 'Contract Start',   date: deal.start_date,           icon: <Calendar size={12} /> },
                   deal.due_date && { label: 'Contract End', date: deal.due_date, icon: <Calendar size={12} />, highlight: true },
+                  deal.terminated_at && { label: 'Terminated On', date: deal.terminated_at, icon: <AlertTriangle size={12} />, warning: true },
                   deal.closed_date && { label: 'Actual Close', date: deal.closed_date, icon: <CheckCircle size={12} /> },
                   currentActionPlanDueDate && {
                     label: 'Action Plan Due', date: currentActionPlanDueDate,
@@ -468,6 +675,37 @@ export default function DealDetail() {
 
             <Card className="p-5">
               <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-4">People</div>
+              <div className="mb-4 pb-4 border-b border-[#f0f2f8]">
+                <Select
+                  label="Primary Contact for Deal"
+                  value={primaryContactId}
+                  onChange={(e) => setPrimaryContactId(e.target.value)}
+                  options={clientContactOptions}
+                  disabled={(deal.client?.contacts?.length ?? 0) === 0 || updateMutation.isPending}
+                />
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-[#8b90a8]">
+                    {(deal.client?.contacts?.length ?? 0) === 0
+                      ? 'This client has no contacts yet.'
+                      : 'Change which client contact is marked as primary for this deal.'}
+                  </span>
+                  {(deal.client?.contacts?.length ?? 0) > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={updateMutation.isPending || primaryContactId === (currentPrimaryDealContact?.contact.id ?? '__NONE__')}
+                      onClick={() => updateMutation.mutate({
+                        id: deal.id,
+                        data: {
+                          primaryContactId: primaryContactId === '__NONE__' ? null : primaryContactId,
+                        },
+                      })}
+                    >
+                      {updateMutation.isPending ? 'Saving...' : 'Save Contact'}
+                    </Button>
+                  )}
+                </div>
+              </div>
               {deal.bd && (
                 <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#f0f2f8]">
                   <Avatar name={`${deal.bd.firstName} ${deal.bd.lastName}`} />
@@ -507,6 +745,17 @@ export default function DealDetail() {
             {(deal.proposal_link || deal.contract_link) && (
               <Card className="p-5">
                 <div className="text-xs font-semibold font-display text-[#4a5068] uppercase tracking-wider mb-3">Contract</div>
+                {isTerminated && (
+                  <div className="mb-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-3 py-2">
+                    <div className="text-xs font-semibold text-[#e11d48]">Contract terminated early</div>
+                    <div className="mt-1 text-[11px] text-[#be123c]">
+                      {deal.termination_reason || 'No termination reason recorded'}
+                    </div>
+                    {deal.termination_notes && (
+                      <div className="mt-1 text-[11px] text-[#be123c] whitespace-pre-wrap">{deal.termination_notes}</div>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   {deal.proposal_link && (
                     <a href={deal.proposal_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-[#3d5af1] transition-colors">

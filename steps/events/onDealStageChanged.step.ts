@@ -1,6 +1,6 @@
 import { type Handlers, type StepConfig, logger } from 'motia'
 import { z } from 'zod'
-import { prisma } from '../../lib/db'
+import { createTeamNotification } from '../../lib/notifications'
 
 // Schema for the data emitted by updateStage.step.ts
 const stageChangedSchema = z.object({
@@ -38,29 +38,12 @@ export const handler: Handlers<typeof config> = async (input) => {
             : ''
         const content = `${closedPrefix}"${data.dealName}" moved from ${data.previousStageName} to ${data.newStageName}.`
 
-        // Create notification for the BD rep who owns the deal
-        await prisma.notification.create({
-            data: {
-                content,
-                type: 'STAGE_CHANGE',
-                triggeredBy: 'STAGE_CHANGE',
-                bdId: data.bdId,
-                dealId: data.dealId,
-            },
+        await createTeamNotification({
+            content,
+            type: 'STAGE_CHANGE',
+            triggeredBy: 'STAGE_CHANGE',
+            dealId: data.dealId,
         })
-
-        // If a manager moved someone else's deal, also notify the manager
-        if (data.changedById !== data.bdId) {
-            await prisma.notification.create({
-                data: {
-                    content: `You moved "${data.dealName}" from ${data.previousStageName} to ${data.newStageName}.`,
-                    type: 'STAGE_CHANGE',
-                    triggeredBy: 'STAGE_CHANGE',
-                    bdId: data.changedById,
-                    dealId: data.dealId,
-                },
-            })
-        }
 
         logger.info('Stage change notification created', {
             dealId: data.dealId,

@@ -51,6 +51,15 @@ enum PeriodType {
   ANNUAL
 }
 
+enum ContractStatus {
+  ACTIVE
+  TERMINATED
+}
+
+enum DealActivityType {
+  CONTRACT_TERMINATED
+}
+
 enum NotificationType{
     STAGE_CHANGE
     DEAL_STUCK
@@ -141,6 +150,8 @@ model BD{
     forecastSnapshot ForecastSnapshot[]
     dealProjections DealProjection[]
     growthEntries GrowthEntry[]
+    terminatedDeals Deal[] @relation("TerminatedByBD")
+    dealActivities  DealActivity[] @relation("CreatedByBD")
 
     @@map("bd")
 }
@@ -313,6 +324,10 @@ model Deal {
   proposalRevisionCount Int      @default(0) @map("proposal_revision_count")
   proposalLink          String?  @map("proposal_link")
   contractLink          String?  @map("contract_link") // Required on Closed Won (Rev 8)
+  contractStatus        ContractStatus @default(ACTIVE) @map("contract_status")
+  terminatedAt          DateTime? @map("terminated_at")
+  terminationReason     String?   @map("termination_reason") @db.VarChar(120)
+  terminationNotes      String?   @map("termination_notes")
   leadSource            LeadSource @map("lead_source")
   finalProposedValue    Decimal?   @map("final_proposed_value") // Last price before Closed Lost
   salesCycleDays        Int?       @map("sales_cycle_days") // COMPUTED: start_date to closed_date
@@ -323,6 +338,7 @@ model Deal {
   clientId  String @map("client_id")
   serviceId String? @map("service_id") // Nullable if bundle deal
   bundleId  String? @map("bundle_id")  // Nullable if single-service deal
+  terminatedById String? @map("terminated_by_id")
 
   // Date fields — using native DateTime for query simplicity
   // PRD specifies FK -> Date dimension, but native dates are
@@ -340,6 +356,7 @@ model Deal {
   client  Client        @relation(fields: [clientId], references: [id])
   service Service?      @relation(fields: [serviceId], references: [id])
   bundle  Bundle?       @relation(fields: [bundleId], references: [id])
+  terminatedBy BD?      @relation("TerminatedByBD", fields: [terminatedById], references: [id])
 
   // Reverse relations (1:N)
   auditLogs     DealAuditLog[]
@@ -348,6 +365,7 @@ model Deal {
   dealSnapshots DealSnapshot[]
   notifications Notification[]
   payments      Payment[]
+  activities    DealActivity[]
 
   @@map("deal")
 }
@@ -378,6 +396,22 @@ model DealAuditLog {
   changedBy BD            @relation("ChangedByBD", fields: [changedById], references: [id])
 
   @@map("deal_audit_log")
+}
+
+model DealActivity {
+  id            String           @id @default(uuid())
+  dealId        String           @map("deal_id")
+  type          DealActivityType
+  title         String           @db.VarChar(120)
+  description   String?
+  effectiveDate DateTime?        @map("effective_date")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  createdById   String           @map("created_by_id")
+
+  deal      Deal @relation(fields: [dealId], references: [id])
+  createdBy BD   @relation("CreatedByBD", fields: [createdById], references: [id])
+
+  @@map("deal_activity")
 }
 
 // ============================================================

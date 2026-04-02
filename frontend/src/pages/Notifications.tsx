@@ -3,7 +3,7 @@ import { NotificationList } from '../components/notifications/index';
 import { useNotifications } from '../hooks/useNotifications';
 
 export default function NotificationsPage() {
-  const { notifications, unreadCount, isLoading, markRead, markAllRead } = useNotifications();
+  const { notifications, unreadCount, isLoading, error, markRead, markAllRead } = useNotifications();
 
   return (
     <div className="flex flex-col h-full">
@@ -15,6 +15,8 @@ export default function NotificationsPage() {
         <div className="max-w-2xl mx-auto">
           {isLoading ? (
             <div className="text-center py-12 text-[#8b90a8] text-sm">Loading notifications...</div>
+          ) : error ? (
+            <div className="text-center py-12 text-[#e11d48] text-sm">{error}</div>
           ) : (
             <NotificationList
               notifications={notifications}

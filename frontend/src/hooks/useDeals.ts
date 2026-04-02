@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Deal } from '../types'
 import {
-  getDeals, getDeal, createDeal, updateDeal,
+  getDeals, getDeal, createDeal, updateDeal, terminateDeal,
   getPipelineStages, updateDealStage, getDealHistory,
-  CreateDealPayload, UpdateDealPayload, UpdateDealStagePayload,
+  CreateDealPayload, UpdateDealPayload, UpdateDealStagePayload, TerminateDealPayload,
 } from '../api/deals'
 
 export function useDeals() {
@@ -33,6 +33,7 @@ export function useCreateDeal() {
       })
       qc.invalidateQueries({ queryKey: ['deals'] })
       qc.invalidateQueries({ queryKey: ['pipeline-stages'] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 }
@@ -44,6 +45,20 @@ export function useUpdateDeal() {
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['deals'] })
       qc.invalidateQueries({ queryKey: ['deal', id] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export function useTerminateDeal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: TerminateDealPayload }) => terminateDeal(id, data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['deals'] })
+      qc.invalidateQueries({ queryKey: ['deal', id] })
+      qc.invalidateQueries({ queryKey: ['deal-history', id] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 }

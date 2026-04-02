@@ -1,5 +1,6 @@
 import { type Handlers, type StepConfig, logger } from 'motia'
 import { prisma } from '../../lib/db'
+import { createTeamNotification } from '../../lib/notifications'
 
 export const config = {
   name: 'Check Stuck Deals',
@@ -38,14 +39,11 @@ export const handler: Handlers<typeof config> = async () => {
     })
 
     if (!existing) {
-      await prisma.notification.create({
-        data: {
-          bdId: deal.bd_id,
-          dealId: deal.id,
-          type: 'DEAL_STUCK',
-          triggeredBy: 'DAYS_IN_STAGE_EXCEEDED',
-          content: `Deal stuck in ${deal.stage_name}: "${deal.deal_name}" has been in ${deal.stage_name} for ${deal.days_in_stage} days (target: ${deal.target_duration_days} days)`,
-        },
+      await createTeamNotification({
+        dealId: deal.id,
+        type: 'DEAL_STUCK',
+        triggeredBy: 'DAYS_IN_STAGE_EXCEEDED',
+        content: `Deal stuck in ${deal.stage_name}: "${deal.deal_name}" has been in ${deal.stage_name} for ${deal.days_in_stage} days (target: ${deal.target_duration_days} days)`,
       })
       logger.info(`Stuck deal notification: ${deal.deal_name}`)
     }
