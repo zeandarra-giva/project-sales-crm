@@ -144,9 +144,9 @@ You need **three terminals** running simultaneously:
 
 **Terminal 1 — Motia Backend Engine:**
 ```bash
-iii-cli start --config config.yaml
+npm run dev
 ```
-This starts the Motia engine on port `3111` (REST API) and `3112` (Streams). It watches `steps/**/*.step.ts` and `lib/**/*.ts` for hot-reload.
+This starts the iii engine on port `3111` (REST API) and `3112` (Streams). It watches `steps/**/*.step.ts` and `lib/**/*.ts` for hot-reload through the exec module in `config.yaml`.
 
 **Terminal 2 — Frontend Dev Server:**
 ```bash
@@ -156,9 +156,9 @@ This starts the Vite dev server on `http://localhost:5173`. The frontend proxies
 
 **Terminal 3 — Database Studio (Optional):**
 ```bash
-npx prisma studio
+npm run db:studio
 ```
-Opens a visual database browser at `http://localhost:5555` where you can inspect and edit records directly.
+Opens Prisma Studio at `http://127.0.0.1:5556`. This avoids collisions with the default Studio port and binds only to localhost.
 
 ---
 
@@ -434,6 +434,12 @@ Make sure migrations have been run first (`npx prisma migrate dev`). The seed sc
 
 **JWT errors or 401s**
 Set a proper `JWT_SECRET` in your `.env`. In development, a fallback secret is used, but it will throw an error in production if `JWT_SECRET` is not set.
+
+**"`npm run dev` exits immediately"**
+`motia dev` in newer Motia releases only builds `dist/index-dev.js`; it does not start the iii engine. Use `npm run dev`, which runs `iii-cli start --config config.yaml`, and use `npm run build:dev` if you only want the Motia build artifact.
+
+**"`npx prisma studio` fails to start"**
+The plain command uses Prisma Studio defaults, which bind to `0.0.0.0:5555`. If that port is already taken or your machine rejects binding on all interfaces, use `npm run db:studio` instead. That runs Studio on `127.0.0.1:5556` without auto-opening a browser.
 
 **"iii-cli: command not found"**
 Install the Motia CLI globally: `npm install -g iii-cli`

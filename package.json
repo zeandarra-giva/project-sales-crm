@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "description": "Sales CRM backend powered by Motia",
   "scripts": {
-    "dev": "motia dev",
+    "dev": "iii-cli start --config config.yaml",
+    "build:dev": "motia dev",
     "build": "motia build",
     "start": "motia start",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
+    "db:studio": "prisma studio --hostname 127.0.0.1 --port 5556 --browser none",
     "engine": "iii-cli start --config config.yaml",
     "console": "iii-console",
     "frontend": "npm run dev --prefix frontend"
